@@ -194,27 +194,38 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 
 ## Roadmap
 
-1. MVP
-   - Conectar 1 câmera IP.
-   - Detectar movimento com OpenCV.
-   - Exibir stream e gerar evento básico.
-2. IA de detecção
-   - Integrar YOLO para reconhecimento de pessoas, carros e animais.
-   - Validar acurácia e desempenho no Linux e no Raspberry Pi.
-3. Multi-câmeras
-   - Suportar 4 câmeras simultâneas.
-   - Melhorar paralelismo e estabilidade.
-4. Alertas e dashboard
-   - Implementar notificações via Telegram/e-mail.
-   - Criar dashboard web com histórico.
-5. Expansão
-   - Suportar até 8 câmeras.
-   - Adicionar treinamentos customizados e integração com automação residencial.
+### 1. MVP ✅
+- [x] Conectar 1 câmera IP
+- [x] Detectar movimento com OpenCV
+- [x] Exibir stream e gerar evento básico
 
-## Melhoria futura
+### 2. IA de detecção ✅
+- [x] Integrar YOLO para reconhecimento de pessoas, carros e animais
+- [ ] Validar acurácia e desempenho no Raspberry Pi
 
-- Armazenamento em nuvem para backup e análise.
-- Treinamento personalizado de modelos para objetos específicos.
-- Integração com Home Assistant e sistemas de automação.
-- Suporte a detecção de comportamentos e anomalias.
-- Módulo móvel para notificações push e controle remoto.
+### 3. Multi-câmeras ✅
+- [x] Suportar 4 câmeras simultâneas
+- [x] Melhorar paralelismo e estabilidade
+
+### 4. Alertas e dashboard ✅
+- [x] Notificações via Telegram
+- [x] Integração MQTT
+- [x] Integração Home Assistant (HTTP events)
+- [x] Dashboard web com histórico
+- [x] CRUD de câmeras (adicionar/editar/excluir)
+- [x] CRUD de zonas com classificação (pública/segurança/privativa)
+- [x] Severidade de alertas baseada na classificação da zona
+- [x] Evento `no_motion` após 60s sem movimento (áreas privativas/segurança)
+- [x] Estilo adaptado (ESP-NOW Hub pattern)
+
+### 5. Expansão
+- [ ] Suportar até 8 câmeras
+- [ ] Treinamentos customizados de modelos
+- [ ] Integração com automação residencial (já parcial com HA)
+
+### Melhorias futuras
+- [ ] Armazenamento em nuvem para backup e análise
+- [ ] Notificações push via e-mail
+- [ ] Detecção de comportamentos e anomalias
+- [ ] Módulo móvel para notificações e controle remoto
+- [ ] Validação completa de performance em Raspberry Pi
