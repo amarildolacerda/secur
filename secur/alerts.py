@@ -15,13 +15,18 @@ class AlertService:
     def register_handler(self, handler):
         self.handlers.append(handler)
 
-    def send(self, camera_id: str, zone: str, event_type: str, details: str = None, zone_classification: str = None):
+    def send(self, camera_id, zone, event_type, details=None, zone_classification=None,
+             identity=None, known=None, recognition_method=None, category=None):
         payload = {
             "camera_id": camera_id,
             "zone": zone,
             "event_type": event_type,
             "details": details,
             "zone_classification": zone_classification,
+            "identity": identity,
+            "known": known,
+            "recognition_method": recognition_method,
+            "category": category,
         }
         for handler in self.handlers:
             try:
@@ -31,7 +36,7 @@ class AlertService:
 
 
 def telegram_handler(payload: Dict):
-    if payload.get("event_type") == "snapshot_info":
+    if payload.get("event_type") in ("snapshot_info", "identity_recognized", "unknown_detected"):
         return
     api_token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
@@ -57,7 +62,7 @@ def telegram_handler(payload: Dict):
 
 
 def mqtt_handler(payload: Dict):
-    if payload.get("event_type") == "snapshot_info":
+    if payload.get("event_type") in ("snapshot_info", "identity_recognized", "unknown_detected"):
         return
     broker = os.getenv("MQTT_BROKER_URL", "192.168.1.12")
     port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
@@ -109,7 +114,7 @@ def mqtt_handler(payload: Dict):
 
 
 def home_assistant_handler(payload: Dict):
-    if payload.get("event_type") == "snapshot_info":
+    if payload.get("event_type") in ("snapshot_info",):
         return
     url = os.getenv("HOME_ASSISTANT_URL", "http://192.168.1.12:8123")
     token = os.getenv("HOME_ASSISTANT_TOKEN")
@@ -124,6 +129,8 @@ def home_assistant_handler(payload: Dict):
     event = payload.get("event_type")
     if event in ("motion_detected", "no_motion") and zone_classification not in ("privativa", "segurança"):
         logger.debug("Home Assistant skipped: %s in zone classification '%s'", event, zone_classification)
+        return
+    if event not in ("motion_detected", "no_motion", "identity_recognized", "intruder_detected", "unknown_detected"):
         return
 
     event_url = f"{url.rstrip('/')}/api/events/{event_type}"
@@ -149,7 +156,7 @@ def _format_message(payload: Dict) -> str:
     zone = payload.get("zone")
     event_type = payload.get("event_type")
     details = payload.get("details") or "Sem detalhes adicionais."
-
+    identity = payload.get("identity")
     message = (
         "*Alerta de Segurança*\n"
         f"*Câmera:* {camera_id}\n"
@@ -157,6 +164,11 @@ def _format_message(payload: Dict) -> str:
         f"*Evento:* {event_type}\n"
         f"*Descrição:* {details}"
     )
+    if identity:
+        message += f"\n*Identidade:* {identity}"
+    category = payload.get("category")
+    if category:
+        message += f"\n*Categoria:* {category}"
     return message
 
 
