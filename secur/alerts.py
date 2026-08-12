@@ -193,6 +193,7 @@ def mqtt_register_device(cameras):
             cam_id = str(camera["id"])
             cam_name = camera["name"]
             safe_id = f"secur_cam{cam_id}"
+            zone = camera.get("zone") or "Geral"
 
             device = {
                 "identifiers": [safe_id],
@@ -200,6 +201,7 @@ def mqtt_register_device(cameras):
                 "model": "Secur Camera",
                 "manufacturer": "Secur",
                 "sw_version": "0.1.0",
+                "suggested_area": zone,
             }
 
             # Motion binary_sensor
