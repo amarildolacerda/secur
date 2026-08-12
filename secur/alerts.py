@@ -112,11 +112,15 @@ def home_assistant_handler(payload: Dict):
     }
 
     try:
-        response = requests.post(event_url, headers=headers, json=payload, timeout=10)
+        response = requests.post(event_url, headers=headers, json=payload, timeout=(3, 5))
         response.raise_for_status()
         logger.info("Home Assistant event sent event_type=%s camera_id=%s", event_type, payload.get("camera_id"))
+    except requests.exceptions.ConnectTimeout:
+        logger.warning("Home Assistant offline (timeout 3s): %s", url)
+    except requests.exceptions.ConnectionError:
+        logger.warning("Home Assistant connection refused: %s", url)
     except Exception:
-        logger.exception("Home Assistant event failed for event_type=%s", event_type)
+        logger.warning("Home Assistant event failed for event_type=%s", event_type)
 
 
 def _format_message(payload: Dict) -> str:
