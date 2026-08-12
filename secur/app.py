@@ -39,6 +39,7 @@ def create_app(camera_manager=None):
     @app.route("/camera/<int:camera_id>/snapshot")
     def camera_snapshot(camera_id):
         import logging
+        import threading
         log = logging.getLogger(__name__)
 
         camera = storage.get_camera(camera_id)
@@ -48,29 +49,46 @@ def create_app(camera_manager=None):
         source = camera["source"]
         log.info("Snapshot requested for camera %s (source=%s)", camera_id, source)
 
-        capture = cv2.VideoCapture(source)
-        if not capture.isOpened():
-            capture.release()
-            log.warning("Snapshot failed: could not open source %s", source)
-            return jsonify({"error": "Não foi possível abrir a fonte de vídeo"}), 502
+        result = {"frame": None, "error": None}
 
-        # Set timeout for network streams
-        is_network = source.startswith("http") or source.startswith("rtsp") or source.endswith(".m3u8")
-        if is_network:
-            capture.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000)
-            capture.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 10000)
-            # Try reading multiple frames to get past buffered/garbage frames
-            for i in range(5):
-                capture.read()
+        def capture_frame():
+            try:
+                cap = cv2.VideoCapture(source)
+                if not cap.isOpened():
+                    result["error"] = "Não foi possível abrir a fonte de vídeo"
+                    return
 
-        success, frame = capture.read()
-        capture.release()
+                is_network = source.startswith("http") or source.startswith("rtsp") or source.endswith(".m3u8")
+                if is_network:
+                    cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
+                    cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
+                    # Skip buffered/garbage frames
+                    for _ in range(3):
+                        cap.read()
 
-        if not success or frame is None:
-            log.warning("Snapshot failed: could not read frame from %s", source)
-            return jsonify({"error": "Não foi possível capturar o frame"}), 502
+                success, frame = cap.read()
+                cap.release()
 
-        success, jpg = cv2.imencode(".jpg", frame)
+                if not success or frame is None:
+                    result["error"] = "Não foi possível capturar o frame"
+                else:
+                    result["frame"] = frame
+            except Exception as e:
+                result["error"] = f"Exceção: {e}"
+
+        thread = threading.Thread(target=capture_frame, daemon=True)
+        thread.start()
+        thread.join(timeout=10)
+
+        if thread.is_alive():
+            log.warning("Snapshot timed out for camera %s (source=%s)", camera_id, source)
+            return jsonify({"error": "Timeout ao capturar frame (stream inacessível)"}), 504
+
+        if result["error"]:
+            log.warning("Snapshot failed for camera %s: %s", camera_id, result["error"])
+            return jsonify({"error": result["error"]}), 502
+
+        success, jpg = cv2.imencode(".jpg", result["frame"])
         if not success:
             return jsonify({"error": "Falha ao codificar imagem"}), 500
 
