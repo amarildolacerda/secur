@@ -1,6 +1,8 @@
 let cameraEditId = null;
 let zoneEditId = null;
 const appStartTime = Date.now();
+// local thumbnails for recently captured images (id -> base64)
+const localThumbnails = {};
 
 function formatUptime(ms) {
   const s = Math.floor(ms / 1000);
@@ -547,6 +549,197 @@ function renderZoneManagement(zones) {
   }
 }
 
+/* ========== Identities management ========== */
+async function fetchIdentitiesList() {
+  try {
+    return await fetchData('/identities');
+  } catch (e) { return []; }
+}
+
+function renderIdentities(list) {
+  const body = document.getElementById('identities-table-body');
+  if (!body) return;
+  body.innerHTML = list.map(i => {
+    const serverThumb = i.thumbnail_url ? i.thumbnail_url : null;
+    const localThumb = localThumbnails[i.id] ? `data:image/jpeg;base64,${localThumbnails[i.id]}` : null;
+    const src = serverThumb || localThumb || '';
+    const imgHtml = src ? `<img src="${src}" alt="thumb" style="width:48px;height:36px;object-fit:cover;border-radius:4px;margin-right:8px;vertical-align:middle;">` : '';
+    return `
+    <tr>
+      <td>${i.id}</td>
+      <td>${imgHtml}${i.name}</td>
+      <td>${i.species}</td>
+      <td>${i.created_at}</td>
+      <td><a href="#" data-id="${i.id}" class="del-identity">Remover</a></td>
+    </tr>
+  `;
+  }).join('');
+
+  document.querySelectorAll('.del-identity').forEach(a => a.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const id = a.dataset.id;
+    await fetch(`/identities/${id}`, { method: 'DELETE' });
+    await loadAndRenderIdentities();
+  }));
+}
+
+async function loadAndRenderIdentities() {
+  const list = await fetchIdentitiesList();
+  renderIdentities(list);
+}
+
+function setupIdentityForm() {
+  const addBtn = document.getElementById('add-identity-button');
+  if (addBtn) addBtn.addEventListener('click', () => {
+    // show the identity dialog from identities.html if present, otherwise prompt
+    const dialog = document.getElementById('identity-dialog');
+    if (dialog) dialog.classList.remove('hidden-panel');
+  });
+
+  // If the identities dialog exists, wire its form and inputs
+  // maintain a list of selected/captured base64 images in memory
+  window.identitySelected = window.identitySelected || [];
+  const fileInput = document.getElementById('identity-images');
+  const thumbsContainer = document.getElementById('identity-thumbnails');
+
+  function renderIdentityThumbnails(){
+    if (!thumbsContainer) return;
+    thumbsContainer.innerHTML = '';
+    window.identitySelected.forEach((b64, idx) => {
+      const div = document.createElement('div');
+      div.className = 'thumb-item';
+      div.dataset.idx = idx;
+      div.style.display = 'flex';
+      div.style.alignItems = 'center';
+      div.style.gap = '6px';
+      const img = document.createElement('img');
+      img.src = 'data:image/jpeg;base64,' + b64;
+      img.style.width = '64px'; img.style.height = '48px'; img.style.objectFit = 'cover'; img.style.border = '1px solid #ddd';
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'button-mini remove-thumb'; btn.textContent = '✕';
+      btn.addEventListener('click', () => { window.identitySelected.splice(idx,1); renderIdentityThumbnails(); });
+      div.appendChild(img); div.appendChild(btn);
+      thumbsContainer.appendChild(div);
+    });
+  }
+
+  if (fileInput){
+    fileInput.addEventListener('change', async (e) => {
+      const files = Array.from(fileInput.files || []);
+      for (const f of files){
+        const data = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.readAsDataURL(f); });
+        window.identitySelected.push(data);
+      }
+      // clear file input so same file can be reselected later
+      try{ fileInput.value = ''; }catch(e){}
+      renderIdentityThumbnails();
+    });
+  }
+
+  const form = document.getElementById('identity-form');
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('identity-name').value;
+      const species = document.getElementById('identity-species') ? document.getElementById('identity-species').value : 'person';
+      const images = (window.identitySelected || []).slice();
+      const res = await fetch('/identities', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name, species, images}) });
+      if (res.status === 201) {
+        const j = await res.json().catch(()=>null);
+        const dialog = document.getElementById('identity-dialog');
+        if (dialog) dialog.classList.add('hidden-panel');
+        try{
+          if (j && j.id){
+            // attach local thumbnail if we have one
+            if (window.identitySelected.length>0){ localThumbnails[j.id] = window.identitySelected[0]; }
+            window.identitySelected = [];
+            renderIdentityThumbnails();
+          }
+        }catch(e){}
+        await loadAndRenderIdentities();
+      } else {
+        const j = await res.json();
+        const msg = document.getElementById('identity-message');
+        if (msg) msg.textContent = j.error || 'Erro';
+      }
+    });
+  }
+
+  // dialog controls: close/cancel
+  const closeBtn = document.getElementById('identity-dialog-close');
+  if (closeBtn) closeBtn.addEventListener('click', () => { const d = document.getElementById('identity-dialog'); if (d) d.classList.add('hidden-panel'); });
+  const cancelBtn = document.getElementById('identity-cancel');
+  if (cancelBtn) cancelBtn.addEventListener('click', () => { const d = document.getElementById('identity-dialog'); if (d) d.classList.add('hidden-panel'); });
+
+  // capture button in dialog
+  const captureBtn = document.getElementById('identity-capture');
+  if (captureBtn) captureBtn.addEventListener('click', captureFromCamera);
+}
+
+async function captureFromCamera(){
+  const status = document.getElementById('capture-status');
+  if (status) status.textContent = 'Aguardando permissão...';
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({video:true});
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    await video.play();
+    await new Promise(res=>setTimeout(res, 200));
+    const w = video.videoWidth || 640;
+    const h = video.videoHeight || 480;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(video, 0, 0, w, h);
+    const data = c.toDataURL('image/jpeg').split(',')[1];
+    const preview = document.getElementById('capture-preview');
+    const previewArea = document.getElementById('capture-preview-area');
+    if (preview) preview.src = 'data:image/jpeg;base64,' + data;
+    if (previewArea) previewArea.style.display = '';
+    if (preview) preview.dataset.last = data;
+    if (status) status.textContent = 'Imagem capturada (aguardando aprovação)';
+    stream.getTracks().forEach(t=>t.stop());
+    video.remove();
+    setTimeout(()=>{ if (status) status.textContent=''; }, 3000);
+  }catch(err){
+    if (status) status.textContent = 'Erro: ' + (err.message || err);
+    setTimeout(()=>{ if (status) status.textContent=''; }, 4000);
+  }
+}
+
+// approve / recapture for embedded dialog
+document.addEventListener('click', function(e){
+  if (e.target && e.target.id === 'approve-capture'){
+    const preview = document.getElementById('capture-preview');
+    if (preview && preview.dataset.last){
+      // push into selected list and render thumbs
+      window.identitySelected = window.identitySelected || [];
+      window.identitySelected.push(preview.dataset.last);
+      renderIdentityThumbnails();
+      // also keep hidden textarea for backwards compatibility
+      const b64ta = document.getElementById('identity-images-b64');
+      if (b64ta) b64ta.value = (b64ta.value ? b64ta.value + '\n' : '') + preview.dataset.last;
+      // hide preview but keep dialog open
+      const previewArea = document.getElementById('capture-preview-area');
+      if (previewArea) previewArea.style.display = 'none';
+      delete preview.dataset.last;
+    }
+  }
+  if (e.target && e.target.id === 'recapture'){
+    // start a new camera capture without closing the dialog
+    captureFromCamera();
+  }
+  // remove thumb buttons
+  if (e.target && e.target.classList && e.target.classList.contains('remove-thumb')){
+    const btn = e.target;
+    const idx = Number(btn.parentElement.dataset.idx);
+    if (!isNaN(idx)){
+      window.identitySelected.splice(idx,1);
+      renderIdentityThumbnails();
+    }
+  }
+});
+
 async function renderDashboard() {
   const cameras = await fetchData('/cameras');
   const events = await fetchData('/events');
@@ -619,6 +812,7 @@ async function renderDashboard() {
   });
 
   await renderStatusFooter();
+  try { await loadAndRenderIdentities(); } catch (e) { /* ignore */ }
 }
 
 /* ========== Setup ========== */
@@ -682,6 +876,7 @@ setupSidebarNavigation();
 renderDashboard();
 setupCameraForm();
 setupZoneForm();
+  setupIdentityForm();
 setInterval(() => {
   renderDashboard();
   renderStatusFooter();

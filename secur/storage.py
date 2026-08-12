@@ -73,10 +73,19 @@ class EventStorage:
                     name TEXT NOT NULL,
                     species TEXT NOT NULL DEFAULT 'person',
                     created_at TEXT NOT NULL,
-                    embedding_path TEXT NOT NULL
+                    embedding_path TEXT NOT NULL,
+                    thumbnail_path TEXT
                 )
                 """
             )
+            # Ensure thumbnail_path column exists for older DBs
+            try:
+                cursor.execute("PRAGMA table_info(known_identities)")
+                cols = [r[1] for r in cursor.fetchall()]
+                if 'thumbnail_path' not in cols:
+                    cursor.execute("ALTER TABLE known_identities ADD COLUMN thumbnail_path TEXT")
+            except Exception:
+                pass
             self.connection.commit()
 
     def add_event(self, camera_id: str, zone: str, event_type: str, details: str = None):
@@ -198,6 +207,34 @@ class EventStorage:
         np.save(str(path), np.asarray(embedding, dtype=np.float32))
         return str(path)
 
+    def save_identity_thumbnail(self, name: str, b64data: str) -> str:
+        """Save a base64-encoded JPEG thumbnail for an identity and return the path."""
+        safe = "".join(c if c.isalnum() else "_" for c in name)
+        thumbs_dir = IDENTITY_EMBEDDINGS_DIR / "thumbnails"
+        thumbs_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{safe}_{int(time.time() * 1000)}.jpg"
+        path = thumbs_dir / filename
+        try:
+            import base64
+
+            raw = base64.b64decode(b64data)
+            with open(path, "wb") as f:
+                f.write(raw)
+            return str(path)
+        except Exception as e:
+            logger.warning("Failed to save thumbnail: %s", e)
+            return ""
+
+    def update_identity_thumbnail(self, identity_id: int, thumbnail_path: str) -> bool:
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "UPDATE known_identities SET thumbnail_path = ? WHERE id = ?",
+                (thumbnail_path, identity_id),
+            )
+            self.connection.commit()
+            return cursor.rowcount > 0
+
     def add_identity(self, name: str, species: str, embedding_path: str):
         timestamp = datetime.now(timezone.utc).isoformat()
         with self.lock:
@@ -212,13 +249,13 @@ class EventStorage:
     def list_identities(self):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, species, created_at FROM known_identities ORDER BY id ASC")
+            cursor.execute("SELECT id, name, species, created_at, thumbnail_path FROM known_identities ORDER BY id ASC")
             return [dict(row) for row in cursor.fetchall()]
 
     def get_identity(self, identity_id: int):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, species, created_at, embedding_path FROM known_identities WHERE id = ?", (identity_id,))
+            cursor.execute("SELECT id, name, species, created_at, embedding_path, thumbnail_path FROM known_identities WHERE id = ?", (identity_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
 

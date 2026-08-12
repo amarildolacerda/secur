@@ -195,7 +195,16 @@ def create_app(camera_manager=None):
     # ========== Identity endpoints ==========
     @app.route("/identities", methods=["GET"])
     def list_identities():
-        return jsonify(storage.list_identities())
+        items = storage.list_identities()
+        out = []
+        for it in items:
+            thumb = it.get('thumbnail_path')
+            if thumb:
+                it['thumbnail_url'] = f"/identities/{it['id']}/thumbnail"
+            else:
+                it['thumbnail_url'] = None
+            out.append(it)
+        return jsonify(out)
 
     @app.route("/identities", methods=["POST"])
     def add_identity():
@@ -206,8 +215,14 @@ def create_app(camera_manager=None):
 
         if not name or not species:
             return jsonify({"error": "name and species are required"}), 400
-        if species not in ("person", "animal"):
-            return jsonify({"error": "species must be 'person' or 'animal'"}), 400
+        # validate species against recognizer labels
+        try:
+            from .identity import RECOGNITION_LABELS
+            allowed = set(RECOGNITION_LABELS.values())
+        except Exception:
+            allowed = set(("person", "animal"))
+        if species not in allowed:
+            return jsonify({"error": f"species must be one of: {', '.join(sorted(allowed))}"}), 400
 
         images = []
         for s in images_b64:
@@ -230,7 +245,28 @@ def create_app(camera_manager=None):
         except Exception as e:
             return jsonify({"error": str(e)}), 400
 
+        # persist thumbnail (first provided base64) if available
+        try:
+            if images_b64:
+                thumb_b64 = images_b64[0]
+                thumb_path = storage.save_identity_thumbnail(name, thumb_b64)
+                if thumb_path:
+                    storage.update_identity_thumbnail(ident_id, thumb_path)
+        except Exception:
+            pass
+
         return jsonify({"id": ident_id, "name": name, "species": species}), 201
+
+    @app.route('/identities/<int:identity_id>/thumbnail')
+    def identity_thumbnail(identity_id: int):
+        ident = storage.get_identity(identity_id)
+        if not ident or not ident.get('thumbnail_path'):
+            return jsonify({'error': 'Thumbnail not found'}), 404
+        try:
+            from flask import send_file
+            return send_file(ident['thumbnail_path'], mimetype='image/jpeg')
+        except Exception:
+            return jsonify({'error': 'Failed to serve thumbnail'}), 500
 
     @app.route("/identities/<int:identity_id>", methods=["DELETE"])
     def delete_identity(identity_id):
@@ -239,9 +275,45 @@ def create_app(camera_manager=None):
             return jsonify({"error": "Identity not found"}), 404
         return jsonify({"status": "removido"}), 200
 
+    @app.route('/identities/import', methods=['POST'])
+    def import_identity():
+        """Create an identity directly with a thumbnail (bypass recognizer). Useful for testing."""
+        payload = request.get_json() or {}
+        name = payload.get('name')
+        species = payload.get('species')
+        thumb_b64 = payload.get('thumbnail')
+
+        if not name or not species:
+            return jsonify({'error': 'name and species are required'}), 400
+
+        # create a placeholder embedding file
+        try:
+            import numpy as _np
+            emb = _np.zeros((128,), dtype=_np.float32)
+            emb_path = storage.save_identity_embedding(name, emb)
+            ident_id = storage.add_identity(name, species, emb_path)
+            if thumb_b64:
+                thumb_path = storage.save_identity_thumbnail(name, thumb_b64)
+                if thumb_path:
+                    storage.update_identity_thumbnail(ident_id, thumb_path)
+            return jsonify({'id': ident_id, 'name': name, 'species': species}), 201
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
     @app.route("/identities/view")
     def identities_view():
-        return render_template("identities.html")
+        # derive species options from recognizer labels
+        try:
+            from .identity import RECOGNITION_LABELS
+            species_vals = sorted(set(RECOGNITION_LABELS.values()))
+        except Exception:
+            species_vals = ["person", "animal"]
+
+        def label_for(s):
+            return {"person": "Pessoa", "animal": "Animal", "vehicle": "Veículo"}.get(s, s.capitalize())
+
+        species_options = [{"value": s, "label": label_for(s)} for s in species_vals]
+        return render_template("identities.html", species_options=species_options)
 
     @app.route("/zones", methods=["POST"])
     def add_zone():

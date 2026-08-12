@@ -41,13 +41,29 @@
                     <div class="form-row">
                         <label for="identity-species">Espécie</label>
                         <select id="identity-species">
-                            <option value="person">Pessoa</option>
-                            <option value="animal">Animal</option>
+                            {% for s in species_options %}
+                            <option value="{{ s.value }}">{{ s.label }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="form-row">
-                        <label for="identity-images">Imagens (base64)</label>
-                        <textarea id="identity-images" placeholder="Cole imagens base64 (uma por linha)"></textarea>
+                        <label for="identity-images">Imagens</label>
+                        <input id="identity-images" type="file" accept="image/*" multiple />
+                        <textarea id="identity-images-b64" style="display:none;" aria-hidden="true"></textarea>
+                        <div id="identity-thumbnails" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;"></div>
+                        <div style="margin-top:8px">
+                            <button type="button" id="identity-capture" class="button-secondary">Capturar da câmera</button>
+                            <span id="capture-status" style="margin-left:8px;color:#666"></span>
+                        </div>
+                        <div id="capture-preview-area" style="margin-top:10px; display:none;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <img id="capture-preview" alt="Preview" style="max-width:160px;max-height:120px;border:1px solid #ddd;" />
+                                <div>
+                                    <button type="button" id="approve-capture" class="button-primary">Aprovar</button>
+                                    <button type="button" id="recapture" class="button-secondary">Refazer</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="button-primary">Salvar</button>
@@ -59,32 +75,6 @@
         </div>
     </div>
 
-    <script>
-    async function fetchIdentities(){
-        const res = await fetch('/identities');
-        const list = await res.json();
-        const tbody = document.getElementById('identities-table-body');
-        tbody.innerHTML = '';
-        list.forEach(i=>{
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${i.id}</td><td>${i.name}</td><td>${i.species}</td><td>${i.created_at}</td><td><a href="#" data-id="${i.id}" class="del">Remover</a></td>`;
-            tbody.appendChild(tr);
-        });
-        document.querySelectorAll('.del').forEach(a=>a.onclick=async (e)=>{e.preventDefault(); await fetch('/identities/'+a.dataset.id,{method:'DELETE'}); fetchIdentities();});
-    }
-    document.getElementById('add-identity-button').onclick = ()=>{document.getElementById('identity-dialog').classList.remove('hidden-panel')};
-    document.getElementById('identity-dialog-close').onclick = ()=>{document.getElementById('identity-dialog').classList.add('hidden-panel')};
-    document.getElementById('identity-cancel').onclick = ()=>{document.getElementById('identity-dialog').classList.add('hidden-panel')};
-    document.getElementById('identity-form').onsubmit = async (e)=>{
-        e.preventDefault();
-        const name = document.getElementById('identity-name').value;
-        const species = document.getElementById('identity-species').value;
-        const images = document.getElementById('identity-images').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-        const res = await fetch('/identities', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, species, images})});
-        if(res.status===201){ document.getElementById('identity-message').textContent='Salvo'; document.getElementById('identity-dialog').classList.add('hidden-panel'); fetchIdentities(); }
-        else { const j=await res.json(); document.getElementById('identity-message').textContent = j.error || 'Erro'; }
-    };
-    fetchIdentities();
-    </script>
+    <script src="/static/dashboard.js"></script>
 </body>
 </html>
