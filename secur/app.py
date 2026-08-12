@@ -38,32 +38,43 @@ def create_app(camera_manager=None):
 
     @app.route("/camera/<int:camera_id>/snapshot")
     def camera_snapshot(camera_id):
+        import logging
+        log = logging.getLogger(__name__)
+
         camera = storage.get_camera(camera_id)
         if not camera:
             return jsonify({"error": "Câmera não encontrada"}), 404
 
         source = camera["source"]
+        log.info("Snapshot requested for camera %s (source=%s)", camera_id, source)
+
         capture = cv2.VideoCapture(source)
         if not capture.isOpened():
             capture.release()
+            log.warning("Snapshot failed: could not open source %s", source)
             return jsonify({"error": "Não foi possível abrir a fonte de vídeo"}), 502
 
-        # HLS/HTTP streams need time to buffer
-        if source.startswith("http") or source.endswith(".m3u8"):
+        # Set timeout for network streams
+        is_network = source.startswith("http") or source.startswith("rtsp") or source.endswith(".m3u8")
+        if is_network:
             capture.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000)
+            capture.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 10000)
             # Try reading multiple frames to get past buffered/garbage frames
-            for _ in range(5):
+            for i in range(5):
                 capture.read()
 
         success, frame = capture.read()
         capture.release()
+
         if not success or frame is None:
+            log.warning("Snapshot failed: could not read frame from %s", source)
             return jsonify({"error": "Não foi possível capturar o frame"}), 502
 
         success, jpg = cv2.imencode(".jpg", frame)
         if not success:
             return jsonify({"error": "Falha ao codificar imagem"}), 500
 
+        log.info("Snapshot OK for camera %s", camera_id)
         return Response(jpg.tobytes(), mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
 
     @app.route("/docs")

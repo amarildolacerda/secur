@@ -60,6 +60,7 @@ function setupSidebarNavigation() {
 
 function createCameraCard(camera) {
   const zoneLabel = camera.zone || '-';
+  const imgId = `snapshot-${camera.id}`;
 
   return `
     <div class="card camera-card">
@@ -69,14 +70,34 @@ function createCameraCard(camera) {
       </div>
       <p>Zona: ${zoneLabel}</p>
       <p class="camera-source">Fonte: ${camera.source}</p>
-      <img
-        class="camera-preview"
-        src="/camera/${camera.id}/snapshot?ts=${Date.now()}"
-        alt="Preview da câmera"
-        onerror="this.style.display='none'"
-      />
+      <div class="camera-preview-wrapper">
+        <img
+          id="${imgId}"
+          class="camera-preview"
+          src="/camera/${camera.id}/snapshot?ts=${Date.now()}"
+          alt="Preview da câmera"
+          onload="this.parentElement.classList.remove('loading'); this.parentElement.classList.remove('error');"
+          onerror="this.parentElement.classList.remove('loading'); this.parentElement.classList.add('error'); this.style.display='none'; this.nextElementSibling.style.display='flex';"
+        />
+        <div class="camera-preview-error" style="display:none;">
+          <span>Falha ao carregar preview</span>
+          <button class="button-mini" onclick="retrySnapshot(${camera.id})">Tentar novamente</button>
+        </div>
+      </div>
     </div>
   `;
+}
+
+function retrySnapshot(cameraId) {
+  const img = document.getElementById(`snapshot-${cameraId}`);
+  if (img) {
+    const wrapper = img.parentElement;
+    wrapper.classList.add('loading');
+    wrapper.classList.remove('error');
+    img.style.display = '';
+    img.nextElementSibling.style.display = 'none';
+    img.src = `/camera/${cameraId}/snapshot?ts=${Date.now()}`;
+  }
 }
 
 function createCameraRow(camera) {
