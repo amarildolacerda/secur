@@ -22,5 +22,5 @@ services:
       - MQTT_PASSWORD=123
       - MQTT_TOPIC=homeassistant/secur/alert
       - HOME_ASSISTANT_URL=http://192.162.1.12:8123
-      - HOME_ASSISTANT_TOKEN=
+      - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
       - HOME_ASSISTANT_EVENT_TYPE=secur_alert
