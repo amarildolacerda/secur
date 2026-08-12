@@ -1,9 +1,15 @@
+import logging
 import sqlite3
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
-from .config import DB_PATH
+import numpy as np
+
+from .config import DB_PATH, IDENTITY_EMBEDDINGS_DIR
+
+logger = logging.getLogger(__name__)
 
 
 class EventStorage:
@@ -45,6 +51,17 @@ class EventStorage:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
                     classification TEXT NOT NULL DEFAULT 'pública'
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS known_identities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    species TEXT NOT NULL DEFAULT 'person',
+                    created_at TEXT NOT NULL,
+                    embedding_path TEXT NOT NULL
                 )
                 """
             )
@@ -161,6 +178,62 @@ class EventStorage:
             return
         for zone in default_zones:
             self.add_zone(zone["name"], zone.get("classification", "pública"))
+
+    def save_identity_embedding(self, name: str, embedding: np.ndarray) -> str:
+        safe = "".join(c if c.isalnum() else "_" for c in name)
+        filename = f"{safe}_{int(time.time() * 1000)}.npy"
+        path = IDENTITY_EMBEDDINGS_DIR / filename
+        np.save(str(path), np.asarray(embedding, dtype=np.float32))
+        return str(path)
+
+    def add_identity(self, name: str, species: str, embedding_path: str):
+        timestamp = datetime.utcnow().isoformat() + "Z"
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO known_identities (name, species, created_at, embedding_path) VALUES (?, ?, ?, ?)",
+                (name, species, timestamp, embedding_path),
+            )
+            self.connection.commit()
+            return cursor.lastrowid
+
+    def list_identities(self):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT id, name, species, created_at FROM known_identities ORDER BY id ASC")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_identity(self, identity_id: int):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT id, name, species, created_at, embedding_path FROM known_identities WHERE id = ?", (identity_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def load_identity_embedding(self, identity_id: int):
+        ident = self.get_identity(identity_id)
+        if not ident:
+            return None
+        from pathlib import Path
+        p = Path(ident["embedding_path"])
+        if not p.exists():
+            return None
+        return np.load(str(p))
+
+    def remove_identity(self, identity_id: int):
+        ident = self.get_identity(identity_id)
+        if not ident:
+            return False
+        try:
+            from pathlib import Path
+            Path(ident["embedding_path"]).unlink(missing_ok=True)
+        except Exception:
+            logger.warning("Falha ao remover arquivo de embedding para identidade %s", identity_id)
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("DELETE FROM known_identities WHERE id = ?", (identity_id,))
+            self.connection.commit()
+            return cursor.rowcount > 0
 
     def close(self):
         with self.lock:
