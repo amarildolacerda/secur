@@ -89,12 +89,15 @@ def mqtt_handler(payload: Dict):
             return
 
         client.publish(topic, json.dumps(payload), qos=0, retain=False)
-        # Also publish state for HA auto-discovery
-        client.publish("homeassistant/secur/alert_state", json.dumps(payload), qos=0, retain=False)
+        # Per-camera state for HA auto-discovery
+        cam_id = str(payload.get("camera_id", "0"))
+        cam_prefix = f"homeassistant/secur/cam{cam_id}"
+        client.publish(f"{cam_prefix}/alert_state", json.dumps(payload), qos=0, retain=False)
+        client.publish(f"{cam_prefix}/alert", json.dumps(payload), qos=0, retain=False)
         if payload.get("event_type") in ("motion_detected", "object_detected"):
-            client.publish("homeassistant/secur/state", "motion", qos=0, retain=True)
+            client.publish(f"{cam_prefix}/state", "motion", qos=0, retain=True)
         elif payload.get("event_type") == "no_motion":
-            client.publish("homeassistant/secur/state", "idle", qos=0, retain=True)
+            client.publish(f"{cam_prefix}/state", "idle", qos=0, retain=True)
         logger.info("MQTT alert published to topic=%s camera_id=%s", topic, payload.get("camera_id"))
     except Exception as e:
         logger.warning("MQTT alert failed (broker %s:%s): %s", broker, port, e)
@@ -158,7 +161,7 @@ def _format_message(payload: Dict) -> str:
 
 
 def mqtt_register_device(cameras):
-    """Publish MQTT auto-discovery config for Home Assistant."""
+    """Publish MQTT auto-discovery config for Home Assistant — per camera."""
     broker = os.getenv("MQTT_BROKER_URL", "192.168.1.12")
     port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
     username = os.getenv("MQTT_USERNAME", "kzuca")
@@ -185,63 +188,70 @@ def mqtt_register_device(cameras):
             logger.warning("MQTT register: connection timeout")
             return
 
-        # Device config
-        device = {
-            "identifiers": ["secur"],
-            "name": "Secur",
-            "model": "Secur Security System",
-            "manufacturer": "Secur",
-            "sw_version": "0.1.0",
-        }
+        # Register each camera as a separate device
+        for camera in cameras:
+            cam_id = str(camera["id"])
+            cam_name = camera["name"]
+            safe_name = cam_name.lower().replace(" ", "_").replace("-", "_")
+            topic_prefix = f"homeassistant/secur/cam{cam_id}"
 
-        # Motion sensor binary_sensor
-        motion_config = {
-            "name": "Secur Motion",
-            "state_topic": "homeassistant/secur/state",
-            "payload_on": "motion",
-            "payload_off": "idle",
-            "device_class": "motion",
-            "unique_id": "secur_motion",
-            "device": device,
-        }
-        client.publish(
-            "homeassistant/binary_sensor/secur/motion/config",
-            json.dumps(motion_config),
-            qos=1,
-            retain=True,
-        )
+            device = {
+                "identifiers": [f"secur_cam{cam_id}"],
+                "name": f"Secur - {cam_name}",
+                "model": "Secur Camera",
+                "manufacturer": "Secur",
+                "sw_version": "0.1.0",
+            }
 
-        # Alert sensor (event-based)
-        alert_config = {
-            "name": "Secur Alert",
-            "state_topic": "homeassistant/secur/alert_state",
-            "value_template": "{{ value_json.event_type }}",
-            "json_attributes_topic": "homeassistant/secur/alert",
-            "unique_id": "secur_alert",
-            "device": device,
-        }
-        client.publish(
-            "homeassistant/binary_sensor/secur/alert/config",
-            json.dumps(alert_config),
-            qos=1,
-            retain=True,
-        )
+            # Motion binary_sensor
+            motion_config = {
+                "name": f"{cam_name} Motion",
+                "state_topic": f"{topic_prefix}/state",
+                "payload_on": "motion",
+                "payload_off": "idle",
+                "device_class": "motion",
+                "unique_id": f"secur_cam{cam_id}_motion",
+                "device": device,
+            }
+            client.publish(
+                f"{topic_prefix}/binary_sensor/motion/config",
+                json.dumps(motion_config),
+                qos=1,
+                retain=True,
+            )
 
-        # Camera snapshot (image entity)
-        snapshot_config = {
-            "name": "Secur Snapshot",
-            "state_topic": "homeassistant/secur/snapshot",
-            "unique_id": "secur_snapshot",
-            "device": device,
-        }
-        client.publish(
-            "homeassistant/camera/secur/snapshot/config",
-            json.dumps(snapshot_config),
-            qos=1,
-            retain=True,
-        )
+            # Alert sensor
+            alert_config = {
+                "name": f"{cam_name} Alert",
+                "state_topic": f"{topic_prefix}/alert_state",
+                "value_template": "{{ value_json.event_type }}",
+                "json_attributes_topic": f"{topic_prefix}/alert",
+                "unique_id": f"secur_cam{cam_id}_alert",
+                "device": device,
+            }
+            client.publish(
+                f"{topic_prefix}/binary_sensor/alert/config",
+                json.dumps(alert_config),
+                qos=1,
+                retain=True,
+            )
 
-        logger.info("MQTT auto-discovery config published")
+            # Snapshot camera entity
+            snapshot_config = {
+                "name": f"{cam_name} Snapshot",
+                "state_topic": f"{topic_prefix}/snapshot",
+                "unique_id": f"secur_cam{cam_id}_snapshot",
+                "device": device,
+            }
+            client.publish(
+                f"{topic_prefix}/camera/snapshot/config",
+                json.dumps(snapshot_config),
+                qos=1,
+                retain=True,
+            )
+
+            logger.info("MQTT auto-discovery registered camera: %s (id=%s)", cam_name, cam_id)
+
     except Exception as e:
         logger.warning("MQTT register failed: %s", e)
     finally:
