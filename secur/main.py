@@ -83,7 +83,7 @@ class CameraWorker:
 
                 detections = self.object_detector.detect(frame)
                 if detections:
-                    event_type = "object_detected"
+                    event_type = "snapshot_info"
                     details = format_detections(detections)
                 else:
                     event_type = "motion_detected"

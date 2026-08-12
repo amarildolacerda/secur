@@ -115,13 +115,15 @@ function createZoneRow(zone) {
 }
 
 function createEventRow(event) {
+  const isInfo = event.event_type === 'snapshot_info';
+  const badge = isInfo ? '<span class="badge-info">info</span>' : '';
   return `
-    <tr>
+    <tr class="${isInfo ? 'event-info' : ''}">
       <td>${event.id}</td>
       <td>${new Date(event.timestamp).toLocaleString()}</td>
       <td>${event.camera_id}</td>
       <td>${event.zone || "-"}</td>
-      <td>${event.event_type}</td>
+      <td>${event.event_type} ${badge}</td>
       <td>${event.details || "-"}</td>
     </tr>
   `;

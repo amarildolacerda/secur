@@ -31,6 +31,8 @@ class AlertService:
 
 
 def telegram_handler(payload: Dict):
+    if payload.get("event_type") == "snapshot_info":
+        return
     api_token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -55,6 +57,8 @@ def telegram_handler(payload: Dict):
 
 
 def mqtt_handler(payload: Dict):
+    if payload.get("event_type") == "snapshot_info":
+        return
     broker = os.getenv("MQTT_BROKER_URL", "192.162.1.12")
     port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
     username = os.getenv("MQTT_USERNAME", "kzuca")
@@ -84,6 +88,8 @@ def mqtt_handler(payload: Dict):
 
 
 def home_assistant_handler(payload: Dict):
+    if payload.get("event_type") == "snapshot_info":
+        return
     url = os.getenv("HOME_ASSISTANT_URL", "http://192.162.1.12:8123")
     token = os.getenv("HOME_ASSISTANT_TOKEN")
     event_type = os.getenv("HOME_ASSISTANT_EVENT_TYPE", "secur_alert")
