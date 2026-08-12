@@ -13,9 +13,9 @@ Decisões já validadas com o usuário:
 - **Aprendizado (enroll)**: supervisionado — o usuário cadastra explicitamente, no dashboard,
   as identidades permitidas (nome + fotos de referência).
 - **Lógica de alerta**:
-  - Conhecido = nunca alerta (permitido em qualquer zona).
-  - Desconhecido em zona privativa/segurança = `intruder_detected` (alerta alta).
-  - Desconhecido em zona pública = `unknown_person` (notificação leve, sem disparo no Home Assistant).
+  - Conhecido = **não gera alerta de segurança** (sem alarme Telegram/MQTT), mas **envia evento ao Home Assistant** para automações (ex.: acender luz quando o dono chega).
+  - Desconhecido em zona privativa/segurança = `intruder_detected` (alerta alta: Telegram + MQTT + HA).
+  - Desconhecido em zona pública = `unknown_person` (notificação leve: só Telegram, sem HA/MQTT).
 - **Casamento (matching)**: embeddings + similaridade de cosseno com threshold configurável.
 
 ## 2. Arquitetura
@@ -72,8 +72,15 @@ CREATE TABLE IF NOT EXISTS known_identities (
 - O payload ganha os campos `identity` (nome ou `"unknown"`), `known` (bool) e
   `recognition_method` (`"face"` | `"reid"` | `None`).
 - `snapshot_info` continua sem disparar alerta (apenas informação).
-- Novos event types: `identity_recognized` (conhecido, info), `intruder_detected`
-  (desconhecido em zona privativa/segurança), `unknown_person` (desconhecido em zona pública).
+- Novos event types: `identity_recognized` (conhecido — evento para automações HA, sem alarme),
+  `intruder_detected` (desconhecido em zona privativa/segurança — alerta alta),
+  `unknown_person` (desconhecido em zona pública — notificação leve).
+- **Roteamento por canal**:
+  - `telegram_handler`: envia para `intruder_detected` e `unknown_person`; silencia `identity_recognized` e `snapshot_info`.
+  - `mqtt_handler`: envia apenas para `intruder_detected` (alarme de segurança); silencia os demais.
+  - `home_assistant_handler`: envia para `identity_recognized` (gatilho de automação) e `intruder_detected` (alerta);
+    silencia `unknown_person` e `snapshot_info`. O payload traz `identity`/`known` para a automação do HA
+    poder ramificar (ex.: "se identity == 'João' → acender luz").
 
 ### 3.5 Dashboard
 Nova página "Identidades" para gerenciar conhecidos: upload de fotos de referência,
@@ -87,9 +94,9 @@ Em `CameraWorker.run()` (`secur/main.py`), após `object_detector.detect(frame)`
    - Recorta o bounding box do frame.
    - Chama `identity_recognizer.recognize(crop, label)`.
 2. Decide alerta:
-   - `known == True` → `identity_recognized` (registra evento, **sem** alerta HA).
+   - `known == True` → `identity_recognized` (registra evento; **publica no Home Assistant** para automações, mas **sem** alarme Telegram/MQTT).
    - `known == False` e zona em `(privativa, segurança)` → `intruder_detected` (alerta alta: Telegram + MQTT + HA).
-   - `known == False` e zona `pública` → `unknown_person` (notificação leve: Telegram apenas, sem HA).
+   - `known == False` e zona `pública` → `unknown_person` (notificação leve: só Telegram, sem HA/MQTT).
    - Sem reconhecimento (modelos ausentes) → comportamento atual (só classe).
 
 A classificação da zona já é resolvida no worker (`zone_classification`).
