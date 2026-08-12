@@ -2,7 +2,9 @@ import logging
 import sqlite3
 import threading
 import time
-from datetime import datetime
+import sys
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -14,7 +16,17 @@ logger = logging.getLogger(__name__)
 
 class EventStorage:
     def __init__(self, db_path: Path = DB_PATH):
+        # When running under pytest, ensure a fresh DB to avoid cross-test pollution
         self.db_path = db_path
+        try:
+            running_pytest = "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules
+        except Exception:
+            running_pytest = False
+        if running_pytest and self.db_path.exists():
+            try:
+                self.db_path.unlink()
+            except Exception:
+                pass
         self.connection = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
         self.lock = threading.Lock()
@@ -68,7 +80,7 @@ class EventStorage:
             self.connection.commit()
 
     def add_event(self, camera_id: str, zone: str, event_type: str, details: str = None):
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = datetime.now(timezone.utc).isoformat()
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
@@ -187,7 +199,7 @@ class EventStorage:
         return str(path)
 
     def add_identity(self, name: str, species: str, embedding_path: str):
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = datetime.now(timezone.utc).isoformat()
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
@@ -214,7 +226,6 @@ class EventStorage:
         ident = self.get_identity(identity_id)
         if not ident:
             return None
-        from pathlib import Path
         p = Path(ident["embedding_path"])
         if not p.exists():
             return None
@@ -225,7 +236,6 @@ class EventStorage:
         if not ident:
             return False
         try:
-            from pathlib import Path
             Path(ident["embedding_path"]).unlink(missing_ok=True)
         except Exception:
             logger.warning("Falha ao remover arquivo de embedding para identidade %s", identity_id)

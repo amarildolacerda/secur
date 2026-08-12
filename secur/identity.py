@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 from typing import Callable, Dict, List, Optional
+import os
 
 from .config import IDENTITY_ENABLED, IDENTITY_MATCH_THRESHOLD
 from .storage import EventStorage
@@ -186,8 +187,8 @@ def build_recognizer(storage: EventStorage, face_embedder=None, reid_embedder=No
     from .config import IDENTITY_FACE_MODEL_PATH, IDENTITY_REID_MODEL_PATH, IDENTITY_MATCH_THRESHOLD, IDENTITY_ENABLED
     face = face_embedder
     reid = reid_embedder
-    if face is None and IDENTITY_FACE_MODEL_PATH and __import__("os").path.exists(IDENTITY_FACE_MODEL_PATH):
+    if face is None and IDENTITY_FACE_MODEL_PATH and os.path.exists(IDENTITY_FACE_MODEL_PATH):
         face = make_onnx_embedder(IDENTITY_FACE_MODEL_PATH, face_detect=True)
-    if reid is None and IDENTITY_REID_MODEL_PATH and __import__("os").path.exists(IDENTITY_REID_MODEL_PATH):
+    if reid is None and IDENTITY_REID_MODEL_PATH and os.path.exists(IDENTITY_REID_MODEL_PATH):
         reid = make_onnx_embedder(IDENTITY_REID_MODEL_PATH)
     return IdentityRecognizer(storage, face, reid, IDENTITY_MATCH_THRESHOLD, IDENTITY_ENABLED)
