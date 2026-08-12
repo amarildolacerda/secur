@@ -2,11 +2,30 @@ import cv2
 from flask import Flask, jsonify, render_template, request, Response
 from .camera import CameraStream
 from .storage import EventStorage
+import base64
+import cv2
+import numpy as np
+from typing import Optional
+
+try:
+    from .identity import build_recognizer, IdentityRecognizer
+except Exception:
+    build_recognizer = None
+    IdentityRecognizer = None
 
 
 def create_app(camera_manager=None):
     app = Flask(__name__, template_folder="templates", static_folder="static")
     storage = EventStorage()
+    # recognizer_factory hook: tests or callers may set app.recognizer_factory = lambda storage: recognizer
+    def _make_recognizer() -> Optional[object]:
+        if hasattr(app, "recognizer_factory") and callable(app.recognizer_factory):
+            return app.recognizer_factory(storage)
+        if build_recognizer is None:
+            return None
+        return build_recognizer(storage)
+
+    app.recognizer_factory_internal = _make_recognizer
 
     @app.route("/health")
     def health():
@@ -171,6 +190,54 @@ def create_app(camera_manager=None):
     @app.route("/zones")
     def zones():
         return jsonify(storage.list_zones())
+
+
+    # ========== Identity endpoints ==========
+    @app.route("/identities", methods=["GET"])
+    def list_identities():
+        return jsonify(storage.list_identities())
+
+    @app.route("/identities", methods=["POST"])
+    def add_identity():
+        payload = request.get_json() or {}
+        name = payload.get("name")
+        species = payload.get("species")
+        images_b64 = payload.get("images", [])
+
+        if not name or not species:
+            return jsonify({"error": "name and species are required"}), 400
+        if species not in ("person", "animal"):
+            return jsonify({"error": "species must be 'person' or 'animal'"}), 400
+
+        images = []
+        for s in images_b64:
+            try:
+                raw = base64.b64decode(s)
+                arr = np.frombuffer(raw, dtype=np.uint8)
+                img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                if img is not None:
+                    images.append(img)
+            except Exception:
+                continue
+
+        recognizer = app.recognizer_factory_internal()
+        if recognizer is None:
+            # fallback: save mean embedding directly via storage if no recognizer available
+            return jsonify({"error": "identity recognizer not configured"}), 503
+
+        try:
+            ident_id = recognizer.enroll(name, species, images)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+
+        return jsonify({"id": ident_id, "name": name, "species": species}), 201
+
+    @app.route("/identities/<int:identity_id>", methods=["DELETE"])
+    def delete_identity(identity_id):
+        removed = storage.remove_identity(identity_id)
+        if not removed:
+            return jsonify({"error": "Identity not found"}), 404
+        return jsonify({"status": "removido"}), 200
 
     @app.route("/zones", methods=["POST"])
     def add_zone():
