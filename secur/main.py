@@ -16,7 +16,7 @@ from .config import (
 from .camera import CameraStream
 from .detector import ObjectDetector
 from .motion import MotionDetector
-from .alerts import AlertService, telegram_handler, mqtt_handler, home_assistant_handler
+from .alerts import AlertService, telegram_handler, mqtt_handler, home_assistant_handler, mqtt_register_device
 from .app import create_app
 from .storage import EventStorage
 
@@ -185,6 +185,10 @@ def main():
 
     camera_manager = CameraManager(storage, alerts, object_detector)
     camera_manager.start()
+
+    # Register device with HA via MQTT auto-discovery
+    cameras = storage.list_cameras()
+    mqtt_register_device(cameras)
 
     storage.seed_zones([
         {"name": "Entrada", "classification": "pública"},

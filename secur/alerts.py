@@ -89,6 +89,12 @@ def mqtt_handler(payload: Dict):
             return
 
         client.publish(topic, json.dumps(payload), qos=0, retain=False)
+        # Also publish state for HA auto-discovery
+        client.publish("homeassistant/secur/alert_state", json.dumps(payload), qos=0, retain=False)
+        if payload.get("event_type") in ("motion_detected", "object_detected"):
+            client.publish("homeassistant/secur/state", "motion", qos=0, retain=True)
+        elif payload.get("event_type") == "no_motion":
+            client.publish("homeassistant/secur/state", "idle", qos=0, retain=True)
         logger.info("MQTT alert published to topic=%s camera_id=%s", topic, payload.get("camera_id"))
     except Exception as e:
         logger.warning("MQTT alert failed (broker %s:%s): %s", broker, port, e)
@@ -149,3 +155,98 @@ def _format_message(payload: Dict) -> str:
         f"*Descrição:* {details}"
     )
     return message
+
+
+def mqtt_register_device(cameras):
+    """Publish MQTT auto-discovery config for Home Assistant."""
+    broker = os.getenv("MQTT_BROKER_URL", "192.168.1.12")
+    port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
+    username = os.getenv("MQTT_USERNAME", "kzuca")
+    password = os.getenv("MQTT_PASSWORD", "123")
+
+    if not broker:
+        return
+
+    import paho.mqtt.client as mqtt
+
+    client = mqtt.Client()
+    if username and password:
+        client.username_pw_set(username, password)
+
+    try:
+        client.connect_async(broker, port, keepalive=10)
+        client.loop_start()
+        import time
+        deadline = time.time() + 3
+        while time.time() < deadline and not client.is_connected():
+            time.sleep(0.1)
+
+        if not client.is_connected():
+            logger.warning("MQTT register: connection timeout")
+            return
+
+        # Device config
+        device = {
+            "identifiers": ["secur"],
+            "name": "Secur",
+            "model": "Secur Security System",
+            "manufacturer": "Secur",
+            "sw_version": "0.1.0",
+        }
+
+        # Motion sensor binary_sensor
+        motion_config = {
+            "name": "Secur Motion",
+            "state_topic": "homeassistant/secur/state",
+            "payload_on": "motion",
+            "payload_off": "idle",
+            "device_class": "motion",
+            "unique_id": "secur_motion",
+            "device": device,
+        }
+        client.publish(
+            "homeassistant/binary_sensor/secur/motion/config",
+            json.dumps(motion_config),
+            qos=1,
+            retain=True,
+        )
+
+        # Alert sensor (event-based)
+        alert_config = {
+            "name": "Secur Alert",
+            "state_topic": "homeassistant/secur/alert_state",
+            "value_template": "{{ value_json.event_type }}",
+            "json_attributes_topic": "homeassistant/secur/alert",
+            "unique_id": "secur_alert",
+            "device": device,
+        }
+        client.publish(
+            "homeassistant/binary_sensor/secur/alert/config",
+            json.dumps(alert_config),
+            qos=1,
+            retain=True,
+        )
+
+        # Camera snapshot (image entity)
+        snapshot_config = {
+            "name": "Secur Snapshot",
+            "state_topic": "homeassistant/secur/snapshot",
+            "unique_id": "secur_snapshot",
+            "device": device,
+        }
+        client.publish(
+            "homeassistant/camera/secur/snapshot/config",
+            json.dumps(snapshot_config),
+            qos=1,
+            retain=True,
+        )
+
+        logger.info("MQTT auto-discovery config published")
+    except Exception as e:
+        logger.warning("MQTT register failed: %s", e)
+    finally:
+        try:
+            client.loop_stop()
+            client.disconnect()
+        except Exception:
+            pass
