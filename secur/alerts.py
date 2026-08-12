@@ -15,12 +15,13 @@ class AlertService:
     def register_handler(self, handler):
         self.handlers.append(handler)
 
-    def send(self, camera_id: str, zone: str, event_type: str, details: str = None):
+    def send(self, camera_id: str, zone: str, event_type: str, details: str = None, zone_classification: str = None):
         payload = {
             "camera_id": camera_id,
             "zone": zone,
             "event_type": event_type,
             "details": details,
+            "zone_classification": zone_classification,
         }
         for handler in self.handlers:
             try:
@@ -64,12 +65,22 @@ def mqtt_handler(payload: Dict):
         logger.debug("MQTT handler skipped: MQTT_BROKER_URL not configured")
         return
 
-    auth = {"username": username, "password": password} if username and password else None
+    import paho.mqtt.client as mqtt
+
+    client = mqtt.Client()
+    client._connect_timeout = 5
+    if username and password:
+        client.username_pw_set(username, password)
+
     try:
-        publish.single(topic, payload=json.dumps(payload), hostname=broker, port=port, auth=auth, qos=0, retain=False)
+        client.connect(broker, port, keepalive=10)
+        client.publish(topic, json.dumps(payload), qos=0, retain=False)
+        client.disconnect()
         logger.info("MQTT alert published to topic=%s camera_id=%s", topic, payload.get("camera_id"))
-    except Exception:
-        logger.exception("MQTT publish failed for topic=%s", topic)
+    except Exception as e:
+        logger.warning("MQTT alert failed (broker %s:%s): %s", broker, port, e)
+    finally:
+        client.loop_stop()
 
 
 def home_assistant_handler(payload: Dict):
@@ -79,6 +90,13 @@ def home_assistant_handler(payload: Dict):
 
     if not token:
         logger.debug("Home Assistant handler skipped: HOME_ASSISTANT_TOKEN not configured")
+        return
+
+    # Only trigger for motion/no_motion events in private/security zones
+    zone_classification = payload.get("zone_classification")
+    event = payload.get("event_type")
+    if event in ("motion_detected", "no_motion") and zone_classification not in ("privativa", "segurança"):
+        logger.debug("Home Assistant skipped: %s in zone classification '%s'", event, zone_classification)
         return
 
     event_url = f"{url.rstrip('/')}/api/events/{event_type}"
