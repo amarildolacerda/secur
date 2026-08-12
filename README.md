@@ -224,6 +224,7 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - [ ] Integração com automação residencial (já parcial com HA)
 
 ### Melhorias futuras
+- [ ] **Snapshot inteligente** — usar snapshots capturados para identificar pessoas, animais e veículos de forma amigável; notificar informações sem gerar alertas de segurança
 - [ ] Armazenamento em nuvem para backup e análise
 - [ ] Notificações push via e-mail
 - [ ] Detecção de comportamentos e anomalias
