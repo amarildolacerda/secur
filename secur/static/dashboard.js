@@ -198,6 +198,11 @@ function hideCameraForm() {
   }
 }
 
+function resetCameraList() {
+  const cameraList = document.getElementById('camera-list');
+  if (cameraList) delete cameraList.dataset.rendered;
+}
+
 async function submitCameraForm(event) {
   event.preventDefault();
 
@@ -253,6 +258,7 @@ async function submitCameraForm(event) {
     }
 
     hideCameraForm();
+    resetCameraList();
     renderDashboard();
   } finally {
     // Restore button state
@@ -269,6 +275,7 @@ async function deleteCamera(cameraId) {
     method: 'DELETE',
   });
   if (response.ok) {
+    resetCameraList();
     renderDashboard();
   }
 }
@@ -481,8 +488,12 @@ async function renderDashboard() {
     createSummaryCard('Último evento', lastEvent ? lastEvent.event_type : 'Nenhum', lastEventTime),
   ].join('');
 
+  // Only render camera cards if not already present (avoids snapshot flicker)
   const cameraList = document.getElementById('camera-list');
-  cameraList.innerHTML = cameras.map(createCameraCard).join('');
+  if (!cameraList.dataset.rendered) {
+    cameraList.innerHTML = cameras.map(createCameraCard).join('');
+    cameraList.dataset.rendered = '1';
+  }
 
   const eventsTable = document.getElementById('events-table');
   eventsTable.innerHTML = events.map(createEventRow).join('');
