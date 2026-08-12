@@ -184,6 +184,8 @@ async function submitCameraForm(event) {
   const sourceInput = document.getElementById('camera-source');
   const zoneInput = document.getElementById('camera-zone');
   const message = document.getElementById('camera-form-message');
+  const submitBtn = document.getElementById('camera-form-submit');
+  const cancelBtn = document.getElementById('cancel-camera-edit');
 
   const payload = {
     name: nameInput.value.trim(),
@@ -197,30 +199,47 @@ async function submitCameraForm(event) {
     return;
   }
 
+  // Show loading state
+  submitBtn.disabled = true;
+  submitBtn.classList.add('button-loading');
+  const originalText = submitBtn.textContent;
+  submitBtn.innerHTML = '<span class="spinner"></span> Validando stream...';
+  cancelBtn.disabled = true;
+  message.textContent = '';
+  message.classList.remove('error');
+
   let response;
-  if (cameraEditId) {
-    response = await fetch(`/cameras/${cameraEditId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  } else {
-    response = await fetch('/cameras', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  }
+  try {
+    if (cameraEditId) {
+      response = await fetch(`/cameras/${cameraEditId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      response = await fetch('/cameras', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
 
-  if (!response.ok) {
-    const error = await response.json();
-    message.textContent = error.error || 'Falha ao salvar câmera.';
-    message.classList.add('error');
-    return;
-  }
+    if (!response.ok) {
+      const error = await response.json();
+      message.textContent = error.error || 'Falha ao salvar câmera.';
+      message.classList.add('error');
+      return;
+    }
 
-  hideCameraForm();
-  renderDashboard();
+    hideCameraForm();
+    renderDashboard();
+  } finally {
+    // Restore button state
+    submitBtn.disabled = false;
+    submitBtn.classList.remove('button-loading');
+    submitBtn.textContent = originalText;
+    cancelBtn.disabled = false;
+  }
 }
 
 async function deleteCamera(cameraId) {
