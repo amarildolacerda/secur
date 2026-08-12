@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secur Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Secur Dashboard</h1>
+            <p>Monitoramento de câmeras e histórico de eventos em tempo real.</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="panel">
+            <h2>Visão geral</h2>
+            <div id="summary-cards" class="grid"></div>
+        </section>
+
+        <section class="panel">
+            <h2>Gerenciamento de câmeras</h2>
+            <form id="camera-form" class="camera-form">
+                <div class="form-row">
+                    <label for="camera-name">Nome</label>
+                    <input id="camera-name" type="text" placeholder="Nome da câmera" required>
+                </div>
+                <div class="form-row">
+                    <label for="camera-source">URL RTSP</label>
+                    <input id="camera-source" type="text" placeholder="rtsp://..." required>
+                </div>
+                <div class="form-row">
+                    <label for="camera-zone">Zona</label>
+                    <input id="camera-zone" type="text" placeholder="Ex: entrada">
+                </div>
+                <button type="submit" class="button-primary">Adicionar câmera</button>
+                <span id="camera-form-message" class="form-message"></span>
+            </form>
+        </section>
+
+        <section class="panel">
+            <h2>Status das câmeras</h2>
+            <div id="camera-list" class="grid"></div>
+        </section>
+
+        <section class="panel">
+            <h2>Eventos recentes</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Timestamp</th>
+                        <th>Câmera</th>
+                        <th>Zona</th>
+                        <th>Evento</th>
+                        <th>Detalhes</th>
+                    </tr>
+                </thead>
+                <tbody id="events-table"></tbody>
+            </table>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">Secur · Dashboard em tempo real</div>
+    </footer>
+
+    <script src="/static/dashboard.js"></script>
+</body>
+</html>

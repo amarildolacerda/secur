@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secur API Docs</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #f5f7fb; color: #222; }
+    h1 { color: #2c3e50; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { padding: 12px 10px; border: 1px solid #dce1e6; }
+    th { background: #2c3e50; color: white; text-align: left; }
+    tr:nth-child(even) { background: #f8fafd; }
+    .note { margin-top: 16px; padding: 12px; background: #e8f4ff; border-left: 4px solid #3498db; }
+    a { color: #3498db; }
+  </style>
+</head>
+<body>
+  <h1>Secur API Documentation</h1>
+  <p>Esta página lista os endpoints principais do backend Secur.</p>
+  <div class="note">
+    <strong>Observação:</strong> o dashboard está disponível em <a href="/">/</a>.
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Caminho</th>
+        <th>Método</th>
+        <th>Descrição</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in api_docs %}
+      <tr>
+        <td><code>{{ entry.path }}</code></td>
+        <td>{{ entry.method }}</td>
+        <td>{{ entry.description }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

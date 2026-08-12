@@ -1,0 +1,126 @@
+
+## 📋 Especificação do Projeto
+
+### 🎯 Objetivo
+Construir um sistema de vigilância inteligente inicialmente desenvolvido em PC/Linux, com deploy final planejado para Raspberry Pi. O sistema deve conectar câmeras IP, processar vídeo em tempo real com IA e gerar alertas para eventos de segurança.
+
+### ✅ Escopo do MVP
+- Prova de conceito em Linux com até 4 câmeras IP simultâneas.
+- Detecção de movimento e classificação básica de objetos.
+- Definição de zonas de interesse e regras configuráveis.
+- Alertas por Telegram.
+- Dashboard web simples para visualização e histórico.
+
+---
+
+## 📌 Requisitos
+
+### Funcionais
+- Capturar streams RTSP/HTTP de câmeras IP.
+- Detectar movimento em cada stream.
+- Classificar objetos em pessoas, veículos e animais.
+- Configurar zonas de interesse e horários sensíveis.
+- Gerar alertas quando regras de segurança forem violadas.
+- Registrar eventos com timestamp, câmera, tipo de evento e imagem de evidência.
+- Expor dashboard web para monitoramento em tempo real.
+
+### Não funcionais
+- Processamento em tempo real com latência baixa (<2s de atraso aceitável no MVP).
+- Uso eficiente de CPU/RAM para funcionar em Raspberry Pi 4.
+- Modularidade para trocar modelos de IA e adicionar canais de alerta.
+- Operação local sem depender exclusivamente da nuvem.
+- Persistência de eventos em banco leve para buscas rápidas.
+
+---
+
+## 🧩 Arquitetura proposta
+
+### Componentes
+- Captura de vídeo: OpenCV + ffmpeg/RTSP.
+- IA: modelo YOLOv5/YOLOv8 ou TensorFlow Lite para inferência de objetos.
+- Orquestração de câmeras: multiprocessing ou asyncio para cada stream.
+- Persistência: SQLite para eventos; opcional InfluxDB para séries temporais.
+- Backend: Flask ou FastAPI para APIs e dashboard.
+- Frontend: interface web leve com gráficos e visualização de câmeras.
+- Alertas: Telegram (e-mail/webhook em melhorias futuras) e integração futura com Home Assistant.
+
+### Fluxo de dados
+1. Captura do stream de cada câmera.
+2. Pré-processamento e detecção de movimento.
+3. Inferência de IA para classificação de objetos.
+4. Aplicação de regras de zona/hora.
+5. Registro do evento e disparo de alertas.
+6. Exibição no dashboard.
+
+---
+
+## 🔧 Hardware recomendado
+- PC/Linux para desenvolvimento inicial.
+- Raspberry Pi 4 com 4GB ou 8GB de RAM para deploy final.
+- Módulo de armazenamento rápido (SSD USB ou cartão microSD de alta classe).
+- Fonte de energia adequada para Pi e periféricos.
+- Rede estável via Ethernet preferencialmente; Wi-Fi como alternativa.
+- Câmeras IP com RTSP/HTTP e resolução compatível (720p recomendado).
+
+## 🖥️ Software recomendado
+- Linux (Ubuntu, Debian, Fedora) para desenvolvimento inicial.
+- Raspberry Pi OS 64-bit para o deploy final.
+- Python 3.11+.
+- OpenCV.
+- PyTorch, TensorFlow Lite ou ONNX Runtime.
+- Flask ou FastAPI.
+- SQLite.
+
+---
+
+## 🛠️ Funcionalidades principais
+- Detecção de movimento por câmera.
+- Classificação de objetos em categorias chave.
+- Zonas de interesse personalizáveis (entrada, quintal, garagem).
+- Regras de alerta baseadas em área, categoria e horário.
+- Visualização de câmeras ao vivo e histórico de eventos.
+- Exportação básica de logs e imagens de evidência.
+
+## 🚨 Casos de perigo
+- Pessoa em área restrita.
+- Veículo em área privada.
+- Animal grande em local proibido.
+- Movimento fora de horário autorizado.
+- Intrusão em porteiro automático ou portão.
+
+---
+
+## 📈 Roadmap
+1. MVP
+   - Conectar 1 câmera IP.
+   - Detectar movimento com OpenCV.
+   - Exibir stream e gerar evento básico.
+2. IA de detecção
+   - Integrar YOLO para reconhecimento de pessoas, carros e animais.
+   - Validar acurácia e desempenho no Pi.
+3. Multi-câmeras
+   - Suportar 4 câmeras simultâneas.
+   - Melhorar paralelismo e estabilidade.
+4. Alertas e dashboard
+   - Implementar notificações via Telegram/e-mail.
+   - Criar dashboard web com histórico.
+5. Expansão
+   - Suportar até 8 câmeras.
+   - Adicionar treinamentos customizados e integração com automação residencial.
+
+---
+
+## ⚠️ Riscos e restrições
+- Raspberry Pi pode ficar limitado ao processar múltiplos streams com IA.
+- Modelos grandes podem exigir otimização ou offloading para hardware dedicado.
+- Latência de rede e qualidade das câmeras afetam a detecção.
+- Instabilidades de Wi-Fi podem prejudicar a captura de vídeo.
+
+---
+
+## 💡 Melhoria futura
+- Armazenamento em nuvem para backup e análise.
+- Treinamento personalizado de modelos para objetos específicos.
+- Integração com Home Assistant e sistemas de automação.
+- Suporte a detecção de comportamentos e anomalias.
+- Módulo móvel para notificações push e controle remoto.

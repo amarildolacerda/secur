@@ -1,0 +1,45 @@
+import os
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+DATA_DIR = ROOT_DIR / "data"
+DATA_DIR.mkdir(exist_ok=True)
+DB_PATH = DATA_DIR / "events.db"
+
+DEFAULT_CAMERAS = [
+    {
+        "name": "Camera 1",
+        "source": "rtsp://username:password@192.168.1.100:554/stream",
+        "zone": "entrada",
+    }
+]
+
+MOTION_MIN_AREA = int(os.getenv("MOTION_MIN_AREA", "5000"))
+FRAME_WAIT_SECONDS = float(os.getenv("FRAME_WAIT_SECONDS", "0.1"))
+SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
+SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
+DETECTOR_MODEL_PATH = os.getenv("DETECTOR_MODEL_PATH", "")
+DETECTOR_CONFIDENCE = float(os.getenv("DETECTOR_CONFIDENCE", "0.25"))
+DETECTOR_IOU = float(os.getenv("DETECTOR_IOU", "0.45"))
+DETECTOR_CLASSES = [
+    "person",
+    "bicycle",
+    "car",
+    "motorcycle",
+    "bus",
+    "truck",
+    "cat",
+    "dog",
+    "cow",
+    "horse",
+    "sheep",
+    "bird",
+]
+HOME_ASSISTANT_URL = os.getenv("HOME_ASSISTANT_URL", "http://192.162.1.12:8123")
+HOME_ASSISTANT_TOKEN = os.getenv("HOME_ASSISTANT_TOKEN", "")
+HOME_ASSISTANT_EVENT_TYPE = os.getenv("HOME_ASSISTANT_EVENT_TYPE", "secur_alert")
+MQTT_BROKER_URL = os.getenv("MQTT_BROKER_URL", "192.162.1.12")
+MQTT_BROKER_PORT = int(os.getenv("MQTT_BROKER_PORT", "1883"))
+MQTT_USERNAME = os.getenv("MQTT_USERNAME", "kzuca")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "123")
+MQTT_TOPIC = os.getenv("MQTT_TOPIC", "homeassistant/secur/alert")
