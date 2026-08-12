@@ -3,7 +3,8 @@ services:
   secur:
     build: .
     container_name: secur_app
-    network_mode: host
+    ports:
+      - "0.0.0.0:8000:8000"
     volumes:
       - .:/app
       - ./data:/app/data
