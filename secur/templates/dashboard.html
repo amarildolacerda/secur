@@ -203,6 +203,24 @@
         </div>
     </div>
 
+    <!-- Live Player Modal -->
+    <div id="live-player-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
+        <div class="dialog-card live-player-card">
+            <div class="dialog-header">
+                <h3 id="live-player-title">Ao vivo</h3>
+                <button type="button" class="button-close" aria-label="Fechar" onclick="closeLivePlayer()">×</button>
+            </div>
+            <div id="live-video-container" class="live-video-container">
+                <video id="live-video" controls autoplay muted class="live-video"></video>
+            </div>
+            <div id="live-snapshot-container" class="live-snapshot-container" style="display:none;">
+                <img id="live-snapshot" class="live-snapshot" alt="Ao vivo" />
+                <p class="live-label">Ao vivo (atualização a cada 500ms)</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <script src="/static/dashboard.js"></script>
 </body>
 </html>

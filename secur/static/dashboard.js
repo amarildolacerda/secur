@@ -70,7 +70,7 @@ function createCameraCard(camera) {
       </div>
       <p>Zona: ${zoneLabel}</p>
       <p class="camera-source">Fonte: ${camera.source}</p>
-      <div class="camera-preview-wrapper">
+      <div class="camera-preview-wrapper" onclick="openLivePlayer(${camera.id}, '${camera.name}', '${camera.source}')" style="cursor:pointer;">
         <img
           id="${imgId}"
           class="camera-preview"
@@ -81,7 +81,7 @@ function createCameraCard(camera) {
         />
         <div class="camera-preview-error" style="display:none;">
           <span>Falha ao carregar preview</span>
-          <button class="button-mini" onclick="retrySnapshot(${camera.id})">Tentar novamente</button>
+          <button class="button-mini" onclick="event.stopPropagation(); retrySnapshot(${camera.id})">Tentar novamente</button>
         </div>
       </div>
     </div>
@@ -97,6 +97,81 @@ function retrySnapshot(cameraId) {
     img.style.display = '';
     img.nextElementSibling.style.display = 'none';
     img.src = `/camera/${cameraId}/snapshot?ts=${Date.now()}`;
+  }
+}
+
+/* ========== Live Player ========== */
+
+let livePlayerInterval = null;
+
+function openLivePlayer(cameraId, cameraName, source) {
+  const overlay = document.getElementById('live-player-overlay');
+  const title = document.getElementById('live-player-title');
+  const videoEl = document.getElementById('live-video');
+  const imgEl = document.getElementById('live-snapshot');
+  const videoContainer = document.getElementById('live-video-container');
+  const imgContainer = document.getElementById('live-snapshot-container');
+
+  title.textContent = cameraName;
+  overlay.classList.remove('hidden-panel');
+
+  // Determine stream type
+  const isHLS = source.endsWith('.m3u8') || source.includes('.m3u8');
+  const isHTTP = source.startsWith('http') && !isHLS;
+
+  if (isHLS && typeof Hls !== 'undefined' && Hls.isSupported()) {
+    // HLS stream
+    videoContainer.style.display = '';
+    imgContainer.style.display = 'none';
+
+    const hls = new Hls({ liveSyncDurationCount: 2, enableWorker: true });
+    hls.loadSource(source);
+    hls.attachMedia(videoEl);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => videoEl.play().catch(() => {}));
+    overlay._hls = hls;
+  } else if (isHLS && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+    // Safari native HLS
+    videoContainer.style.display = '';
+    imgContainer.style.display = 'none';
+    videoEl.src = source;
+    videoEl.play().catch(() => {});
+  } else if (isHTTP) {
+    // Direct HTTP video
+    videoContainer.style.display = '';
+    imgContainer.style.display = 'none';
+    videoEl.src = source;
+    videoEl.play().catch(() => {});
+  } else {
+    // RTSP fallback: pseudo-live via snapshot loop
+    videoContainer.style.display = 'none';
+    imgContainer.style.display = '';
+    imgEl.src = `/camera/${cameraId}/snapshot?ts=${Date.now()}`;
+    livePlayerInterval = setInterval(() => {
+      imgEl.src = `/camera/${cameraId}/snapshot?ts=${Date.now()}`;
+    }, 500);
+  }
+}
+
+function closeLivePlayer() {
+  const overlay = document.getElementById('live-player-overlay');
+  const videoEl = document.getElementById('live-video');
+
+  overlay.classList.add('hidden-panel');
+
+  // Stop HLS
+  if (overlay._hls) {
+    overlay._hls.destroy();
+    overlay._hls = null;
+  }
+
+  // Stop video
+  videoEl.pause();
+  videoEl.src = '';
+
+  // Stop snapshot loop
+  if (livePlayerInterval) {
+    clearInterval(livePlayerInterval);
+    livePlayerInterval = null;
   }
 }
 

@@ -497,6 +497,53 @@ tbody tr:last-child td {
   padding: 24px;
 }
 
+.live-player-card {
+  width: min(800px, 100%);
+  padding: 0;
+  overflow: hidden;
+}
+
+.live-player-card .dialog-header {
+  padding: 16px 20px;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.live-video-container {
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.live-video {
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  display: block;
+}
+
+.live-snapshot-container {
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.live-snapshot {
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+}
+
+.live-label {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  margin-top: 8px;
+}
+
 .dialog-header {
   display: flex;
   justify-content: space-between;
