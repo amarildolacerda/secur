@@ -43,7 +43,10 @@ def test_recognize_known_and_unknown(tmp_path, monkeypatch):
 
 
 def test_recognize_falls_back_to_reid():
-    db = type("S", (), {"list_identities": lambda: [], "load_identity_embedding": lambda i: None})()
+    db = type("S", (), {
+        "list_identities": staticmethod(lambda: []),
+        "load_identity_embedding": staticmethod(lambda i: None),
+    })()
     rec = IdentityRecognizer(db, face_embedder=lambda img: None, reid_embedder=lambda img: np.array([1.0, 0.0]),
                              threshold=0.6, enabled=True)
     res = rec.recognize(np.zeros((10, 10, 3), np.uint8), "dog")
