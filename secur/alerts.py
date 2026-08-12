@@ -91,13 +91,13 @@ def mqtt_handler(payload: Dict):
         client.publish(topic, json.dumps(payload), qos=0, retain=False)
         # Per-camera state for HA auto-discovery
         cam_id = str(payload.get("camera_id", "0"))
-        cam_prefix = f"homeassistant/secur/cam{cam_id}"
-        client.publish(f"{cam_prefix}/alert_state", json.dumps(payload), qos=0, retain=False)
-        client.publish(f"{cam_prefix}/alert", json.dumps(payload), qos=0, retain=False)
+        safe_id = f"secur_cam{cam_id}"
+        client.publish(f"secur/{safe_id}/alert_state", json.dumps(payload), qos=0, retain=False)
+        client.publish(f"secur/{safe_id}/alert", json.dumps(payload), qos=0, retain=False)
         if payload.get("event_type") in ("motion_detected", "object_detected"):
-            client.publish(f"{cam_prefix}/state", "motion", qos=0, retain=True)
+            client.publish(f"secur/{safe_id}/state", "motion", qos=0, retain=True)
         elif payload.get("event_type") == "no_motion":
-            client.publish(f"{cam_prefix}/state", "idle", qos=0, retain=True)
+            client.publish(f"secur/{safe_id}/state", "idle", qos=0, retain=True)
         logger.info("MQTT alert published to topic=%s camera_id=%s", topic, payload.get("camera_id"))
     except Exception as e:
         logger.warning("MQTT alert failed (broker %s:%s): %s", broker, port, e)
@@ -192,11 +192,10 @@ def mqtt_register_device(cameras):
         for camera in cameras:
             cam_id = str(camera["id"])
             cam_name = camera["name"]
-            safe_name = cam_name.lower().replace(" ", "_").replace("-", "_")
-            topic_prefix = f"homeassistant/secur/cam{cam_id}"
+            safe_id = f"secur_cam{cam_id}"
 
             device = {
-                "identifiers": [f"secur_cam{cam_id}"],
+                "identifiers": [safe_id],
                 "name": f"Secur - {cam_name}",
                 "model": "Secur Camera",
                 "manufacturer": "Secur",
@@ -206,15 +205,15 @@ def mqtt_register_device(cameras):
             # Motion binary_sensor
             motion_config = {
                 "name": f"{cam_name} Motion",
-                "state_topic": f"{topic_prefix}/state",
+                "state_topic": f"secur/{safe_id}/state",
                 "payload_on": "motion",
                 "payload_off": "idle",
                 "device_class": "motion",
-                "unique_id": f"secur_cam{cam_id}_motion",
+                "unique_id": f"{safe_id}_motion",
                 "device": device,
             }
             client.publish(
-                f"{topic_prefix}/binary_sensor/motion/config",
+                f"homeassistant/binary_sensor/{safe_id}_motion/config",
                 json.dumps(motion_config),
                 qos=1,
                 retain=True,
@@ -223,14 +222,14 @@ def mqtt_register_device(cameras):
             # Alert sensor
             alert_config = {
                 "name": f"{cam_name} Alert",
-                "state_topic": f"{topic_prefix}/alert_state",
+                "state_topic": f"secur/{safe_id}/alert_state",
                 "value_template": "{{ value_json.event_type }}",
-                "json_attributes_topic": f"{topic_prefix}/alert",
-                "unique_id": f"secur_cam{cam_id}_alert",
+                "json_attributes_topic": f"secur/{safe_id}/alert",
+                "unique_id": f"{safe_id}_alert",
                 "device": device,
             }
             client.publish(
-                f"{topic_prefix}/binary_sensor/alert/config",
+                f"homeassistant/binary_sensor/{safe_id}_alert/config",
                 json.dumps(alert_config),
                 qos=1,
                 retain=True,
@@ -239,12 +238,12 @@ def mqtt_register_device(cameras):
             # Snapshot camera entity
             snapshot_config = {
                 "name": f"{cam_name} Snapshot",
-                "state_topic": f"{topic_prefix}/snapshot",
-                "unique_id": f"secur_cam{cam_id}_snapshot",
+                "state_topic": f"secur/{safe_id}/snapshot",
+                "unique_id": f"{safe_id}_snapshot",
                 "device": device,
             }
             client.publish(
-                f"{topic_prefix}/camera/snapshot/config",
+                f"homeassistant/camera/{safe_id}_snapshot/config",
                 json.dumps(snapshot_config),
                 qos=1,
                 retain=True,
