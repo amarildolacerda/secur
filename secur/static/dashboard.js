@@ -493,6 +493,14 @@ async function renderDashboard() {
   if (!cameraList.dataset.rendered) {
     cameraList.innerHTML = cameras.map(createCameraCard).join('');
     cameraList.dataset.rendered = '1';
+  } else {
+    // Update only snapshot images with new timestamp
+    cameras.forEach(camera => {
+      const img = document.getElementById(`snapshot-${camera.id}`);
+      if (img && !img.parentElement.classList.contains('error')) {
+        img.src = `/camera/${camera.id}/snapshot?ts=${Date.now()}`;
+      }
+    });
   }
 
   const eventsTable = document.getElementById('events-table');
