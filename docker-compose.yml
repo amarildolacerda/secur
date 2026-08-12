@@ -8,6 +8,8 @@ services:
     volumes:
       - .:/app
       - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8000
@@ -21,6 +23,6 @@ services:
       - MQTT_USERNAME=kzuca
       - MQTT_PASSWORD=123
       - MQTT_TOPIC=homeassistant/secur/alert
-      - HOME_ASSISTANT_URL=http://192.162.1.12:8123
+      - HOME_ASSISTANT_URL=http://host.docker.internal:8123
       - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
       - HOME_ASSISTANT_EVENT_TYPE=secur_alert
