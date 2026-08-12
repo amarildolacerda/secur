@@ -72,19 +72,31 @@ def mqtt_handler(payload: Dict):
     import paho.mqtt.client as mqtt
 
     client = mqtt.Client()
-    client._connect_timeout = 5
     if username and password:
         client.username_pw_set(username, password)
 
     try:
-        client.connect(broker, port, keepalive=10)
+        client.connect_async(broker, port, keepalive=10)
+        client.loop_start()
+        import time
+        deadline = time.time() + 3
+        while time.time() < deadline and not client.is_connected():
+            time.sleep(0.1)
+        client.loop_stop()
+
+        if not client.is_connected():
+            logger.warning("MQTT connection timeout (broker %s:%s)", broker, port)
+            return
+
         client.publish(topic, json.dumps(payload), qos=0, retain=False)
-        client.disconnect()
         logger.info("MQTT alert published to topic=%s camera_id=%s", topic, payload.get("camera_id"))
     except Exception as e:
         logger.warning("MQTT alert failed (broker %s:%s): %s", broker, port, e)
     finally:
-        client.loop_stop()
+        try:
+            client.loop_stop()
+        except Exception:
+            pass
 
 
 def home_assistant_handler(payload: Dict):
