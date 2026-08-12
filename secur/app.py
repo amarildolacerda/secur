@@ -239,6 +239,10 @@ def create_app(camera_manager=None):
             return jsonify({"error": "Identity not found"}), 404
         return jsonify({"status": "removido"}), 200
 
+    @app.route("/identities/view")
+    def identities_view():
+        return render_template("identities.html")
+
     @app.route("/zones", methods=["POST"])
     def add_zone():
         payload = request.get_json() or {}

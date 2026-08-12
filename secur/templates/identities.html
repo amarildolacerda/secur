@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Identidades - Secur</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="main">
+        <section class="panel">
+            <div class="panel-header">
+                <div>
+                    <h2>Identidades conhecidas</h2>
+                    <p>Cadastre e gerencie identidades conhecidas.</p>
+                </div>
+                <button id="add-identity-button" class="button-primary">+ Cadastrar identidade</button>
+            </div>
+
+            <div id="identity-list" class="table-responsive">
+                <table>
+                    <thead>
+                        <tr><th>ID</th><th>Nome</th><th>Espécie</th><th>Criado</th><th>Ações</th></tr>
+                    </thead>
+                    <tbody id="identities-table-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <div id="identity-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
+            <div class="dialog-card">
+                <div class="dialog-header">
+                    <h3>Cadastrar identidade</h3>
+                    <button id="identity-dialog-close" type="button" class="button-close" aria-label="Fechar">×</button>
+                </div>
+                <form id="identity-form">
+                    <div class="form-row">
+                        <label for="identity-name">Nome</label>
+                        <input id="identity-name" type="text" required />
+                    </div>
+                    <div class="form-row">
+                        <label for="identity-species">Espécie</label>
+                        <select id="identity-species">
+                            <option value="person">Pessoa</option>
+                            <option value="animal">Animal</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="identity-images">Imagens (base64)</label>
+                        <textarea id="identity-images" placeholder="Cole imagens base64 (uma por linha)"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="button-primary">Salvar</button>
+                        <button type="button" class="button-secondary" id="identity-cancel">Cancelar</button>
+                    </div>
+                    <span id="identity-message" class="form-message"></span>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    async function fetchIdentities(){
+        const res = await fetch('/identities');
+        const list = await res.json();
+        const tbody = document.getElementById('identities-table-body');
+        tbody.innerHTML = '';
+        list.forEach(i=>{
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${i.id}</td><td>${i.name}</td><td>${i.species}</td><td>${i.created_at}</td><td><a href="#" data-id="${i.id}" class="del">Remover</a></td>`;
+            tbody.appendChild(tr);
+        });
+        document.querySelectorAll('.del').forEach(a=>a.onclick=async (e)=>{e.preventDefault(); await fetch('/identities/'+a.dataset.id,{method:'DELETE'}); fetchIdentities();});
+    }
+    document.getElementById('add-identity-button').onclick = ()=>{document.getElementById('identity-dialog').classList.remove('hidden-panel')};
+    document.getElementById('identity-dialog-close').onclick = ()=>{document.getElementById('identity-dialog').classList.add('hidden-panel')};
+    document.getElementById('identity-cancel').onclick = ()=>{document.getElementById('identity-dialog').classList.add('hidden-panel')};
+    document.getElementById('identity-form').onsubmit = async (e)=>{
+        e.preventDefault();
+        const name = document.getElementById('identity-name').value;
+        const species = document.getElementById('identity-species').value;
+        const images = document.getElementById('identity-images').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+        const res = await fetch('/identities', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, species, images})});
+        if(res.status===201){ document.getElementById('identity-message').textContent='Salvo'; document.getElementById('identity-dialog').classList.add('hidden-panel'); fetchIdentities(); }
+        else { const j=await res.json(); document.getElementById('identity-message').textContent = j.error || 'Erro'; }
+    };
+    fetchIdentities();
+    </script>
+</body>
+</html>
