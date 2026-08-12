@@ -53,11 +53,15 @@ class CameraStream:
         self.release()
 
     @staticmethod
-    def validate_source(source: str, timeout_seconds: float = 5.0) -> bool:
+    def validate_source(source: str, timeout_seconds: float = 15.0) -> bool:
         capture = cv2.VideoCapture(source)
         if not capture.isOpened():
             capture.release()
             return False
+
+        # HLS/HTTP streams need more time to buffer
+        if source.startswith("http") or source.endswith(".m3u8"):
+            capture.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000)
 
         deadline = time.time() + timeout_seconds
         valid = False
@@ -66,7 +70,7 @@ class CameraStream:
             if success and frame is not None:
                 valid = True
                 break
-            time.sleep(0.1)
+            time.sleep(0.2)
 
         capture.release()
         return valid

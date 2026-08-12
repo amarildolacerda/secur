@@ -33,6 +33,14 @@ Fornecer orientações claras sobre como dividir tarefas entre agentes de projet
 5. Garanta que qualquer mudança de arquitetura seja refletida em `SPEC.md` e `README.md`.
 6. Evite dependências pesadas no início; use versões leves e compatíveis.
 
+## Fluxo de branches e release
+
+- Código deve ser integrado em `dev` via pull request.
+- Não aplique alterações de código diretamente em `main`.
+- Para mover mudanças para produção, crie uma nova versão com tag baseada em `main`.
+- Use o formato de tag `v0.0.0` para a primeira versão e incremente conforme necessário.
+- Apenas a branch `main` deve conter código já liberado para produção.
+
 ## Como aplicar no projeto
 
 - Use o agente de especificação para planejar a próxima etapa antes de começar a codificar.

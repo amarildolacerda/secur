@@ -7,65 +7,201 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <header>
-        <div class="container">
-            <h1>Secur Dashboard</h1>
-            <p>Monitoramento de câmeras e histórico de eventos em tempo real.</p>
+    <aside class="sidebar">
+        <div class="logo">
+            <div class="logo-row">
+                <div class="logo-title">
+                    <h1>Secur</h1>
+                    <span>Dashboard</span>
+                </div>
+            </div>
         </div>
-    </header>
-
-    <main class="container">
-        <section class="panel">
-            <h2>Visão geral</h2>
-            <div id="summary-cards" class="grid"></div>
-        </section>
-
-        <section class="panel">
-            <h2>Gerenciamento de câmeras</h2>
-            <form id="camera-form" class="camera-form">
-                <div class="form-row">
-                    <label for="camera-name">Nome</label>
-                    <input id="camera-name" type="text" placeholder="Nome da câmera" required>
+        <nav>
+            <button type="button" class="nav-link active" data-section="overview" id="nav-overview">
+                <span class="icon">&#x1F4F7;</span>
+                <span>Visão geral</span>
+            </button>
+            <button type="button" class="nav-link" data-section="camera-status" id="nav-camera-status">
+                <span class="icon">&#x1F50D;</span>
+                <span>Status câmeras</span>
+            </button>
+            <button type="button" class="nav-link" data-section="recent-events" id="nav-recent-events">
+                <span class="icon">&#x1F4CB;</span>
+                <span>Eventos</span>
+            </button>
+            <div class="nav-divider"></div>
+            <div class="nav-group">
+                <button type="button" class="nav-group-head" onclick="toggleCrudNav()">
+                    <span class="icon">&#x2699;</span>
+                    <span>Manutenção</span>
+                    <span class="chev">&#9662;</span>
+                </button>
+                <div class="nav-group-list" id="crud-nav-list">
+                    <button type="button" class="nav-sublink" data-section="camera-management">
+                        <span class="dot" style="background:var(--primary)"></span>
+                        <span>Câmeras</span>
+                    </button>
+                    <button type="button" class="nav-sublink" data-section="zones-management">
+                        <span class="dot" style="background:var(--info)"></span>
+                        <span>Zonas</span>
+                    </button>
+                    <a href="/docs" class="nav-sublink" target="_blank">
+                        <span class="dot" style="background:var(--muted-subtle)"></span>
+                        <span>API Docs</span>
+                    </a>
                 </div>
-                <div class="form-row">
-                    <label for="camera-source">URL RTSP</label>
-                    <input id="camera-source" type="text" placeholder="rtsp://..." required>
+            </div>
+        </nav>
+        <div class="footer-nav">v0.1.0</div>
+    </aside>
+
+    <div class="main">
+        <div id="page">
+            <section class="panel" id="overview">
+                <h2>Visão geral</h2>
+                <div id="summary-cards" class="grid"></div>
+            </section>
+
+            <section class="panel hidden-panel" id="camera-management">
+                <div class="panel-header">
+                    <div>
+                        <h2>Gerenciamento de câmeras</h2>
+                        <p>Lista de câmeras cadastradas e ações de editar/excluir.</p>
+                    </div>
+                    <button id="add-camera-button" class="button-primary">+ Adicionar câmera</button>
                 </div>
-                <div class="form-row">
-                    <label for="camera-zone">Zona</label>
-                    <input id="camera-zone" type="text" placeholder="Ex: entrada">
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nome</th>
+                                <th>Fonte</th>
+                                <th>Zona</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="camera-table-body"></tbody>
+                    </table>
                 </div>
-                <button type="submit" class="button-primary">Adicionar câmera</button>
-                <span id="camera-form-message" class="form-message"></span>
-            </form>
-        </section>
+            </section>
 
-        <section class="panel">
-            <h2>Status das câmeras</h2>
-            <div id="camera-list" class="grid"></div>
-        </section>
+            <div id="camera-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true" aria-labelledby="camera-dialog-title">
+                <div class="dialog-card">
+                    <div class="dialog-header">
+                        <h3 id="camera-dialog-title">Adicionar câmera</h3>
+                        <button id="camera-dialog-close" type="button" class="button-close" aria-label="Fechar">×</button>
+                    </div>
+                    <form id="camera-form">
+                        <div class="form-row">
+                            <label for="camera-name">Nome</label>
+                            <input id="camera-name" type="text" placeholder="Nome da câmera" required>
+                        </div>
+                        <div class="form-row">
+                            <label for="camera-source">URL RTSP</label>
+                            <input id="camera-source" type="text" placeholder="rtsp://..." required>
+                        </div>
+                        <div class="form-row">
+                            <label for="camera-zone">Zona</label>
+                            <select id="camera-zone">
+                                <option value="">Nenhuma zona</option>
+                            </select>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="button-primary" id="camera-form-submit">Salvar</button>
+                            <button type="button" class="button-secondary" id="cancel-camera-edit">Cancelar</button>
+                        </div>
+                        <span id="camera-form-message" class="form-message"></span>
+                    </form>
+                </div>
+            </div>
 
-        <section class="panel">
-            <h2>Eventos recentes</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Timestamp</th>
-                        <th>Câmera</th>
-                        <th>Zona</th>
-                        <th>Evento</th>
-                        <th>Detalhes</th>
-                    </tr>
-                </thead>
-                <tbody id="events-table"></tbody>
-            </table>
-        </section>
-    </main>
+            <section class="panel hidden-panel" id="zones-management">
+                <div class="panel-header">
+                    <div>
+                        <h2>Gerenciamento de zonas</h2>
+                        <p>Cadastro de zonas com classificação de severidade de alerta.</p>
+                    </div>
+                    <button id="add-zone-button" class="button-primary">+ Adicionar zona</button>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nome</th>
+                                <th>Classificação</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="zone-table-body"></tbody>
+                    </table>
+                </div>
+            </section>
 
-    <footer>
-        <div class="container">Secur · Dashboard em tempo real</div>
-    </footer>
+            <div id="zone-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true" aria-labelledby="zone-dialog-title">
+                <div class="dialog-card">
+                    <div class="dialog-header">
+                        <h3 id="zone-dialog-title">Adicionar zona</h3>
+                        <button id="zone-dialog-close" type="button" class="button-close" aria-label="Fechar">×</button>
+                    </div>
+                    <form id="zone-form">
+                        <div class="form-row">
+                            <label for="zone-name">Nome</label>
+                            <input id="zone-name" type="text" placeholder="Nome da zona" required>
+                        </div>
+                        <div class="form-row">
+                            <label for="zone-classification">Classificação</label>
+                            <select id="zone-classification" required>
+                                <option value="pública">Pública</option>
+                                <option value="segurança">Segurança</option>
+                                <option value="privativa">Privativa</option>
+                            </select>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="button-primary" id="zone-form-submit">Salvar</button>
+                            <button type="button" class="button-secondary" id="cancel-zone-edit">Cancelar</button>
+                        </div>
+                        <span id="zone-form-message" class="form-message"></span>
+                    </form>
+                </div>
+            </div>
+
+            <section class="panel hidden-panel" id="camera-status">
+                <h2>Status das câmeras</h2>
+                <div id="camera-list" class="grid"></div>
+            </section>
+
+            <section class="panel hidden-panel" id="recent-events">
+                <h2>Eventos recentes</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Timestamp</th>
+                            <th>Câmera</th>
+                            <th>Zona</th>
+                            <th>Evento</th>
+                            <th>Detalhes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="events-table"></tbody>
+                </table>
+            </section>
+        </div>
+    </div>
+
+    <div class="app-footer" id="app-footer">
+        <div class="footer-left">
+            <span id="status-health">Status: carregando...</span>
+            <span id="status-cameras">Câmeras: —</span>
+            <span id="status-workers">Workers: —</span>
+        </div>
+        <div class="footer-right">
+            <span id="status-uptime">Uptime: —</span>
+            <span id="status-recent">Eventos: —</span>
+        </div>
+    </div>
 
     <script src="/static/dashboard.js"></script>
 </body>
