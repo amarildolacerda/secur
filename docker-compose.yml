@@ -3,13 +3,10 @@ services:
   secur:
     build: .
     container_name: secur_app
-    ports:
-      - "8000:8000"
+    network_mode: host
     volumes:
       - .:/app
       - ./data:/app/data
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8000
@@ -18,11 +15,11 @@ services:
       - FRAME_WAIT_SECONDS=0.1
       - TELEGRAM_BOT_TOKEN=
       - TELEGRAM_CHAT_ID=
-      - MQTT_BROKER_URL=host.docker.internal
+      - MQTT_BROKER_URL=192.162.1.12
       - MQTT_BROKER_PORT=1883
       - MQTT_USERNAME=kzuca
       - MQTT_PASSWORD=123
       - MQTT_TOPIC=homeassistant/secur/alert
-      - HOME_ASSISTANT_URL=http://host.docker.internal:8123
+      - HOME_ASSISTANT_URL=http://192.162.1.12:8123
       - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
       - HOME_ASSISTANT_EVENT_TYPE=secur_alert
