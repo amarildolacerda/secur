@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secur Dashboard</title>
+    <title>SecurityAI Dashboard</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
         <div class="logo">
             <div class="logo-row">
                 <div class="logo-title">
-                    <h1>Secur</h1>
+                    <h1>Security</h1>
                     <span>Dashboard</span>
                 </div>
             </div>
@@ -23,15 +23,15 @@
             </button>
             <button type="button" class="nav-link" data-section="camera-status" id="nav-camera-status">
                 <span class="icon">&#x1F50D;</span>
-                <span>Status câmeras</span>
+                <span>Câmeras</span>
             </button>
             <button type="button" class="nav-link" data-section="recent-events" id="nav-recent-events">
                 <span class="icon">&#x1F4CB;</span>
                 <span>Eventos</span>
             </button>
             <div class="nav-divider"></div>
-            <div class="nav-group">
-                <button type="button" class="nav-group-head" onclick="toggleCrudNav()">
+            <div class="nav-group collapsed">
+                <button type="button" class="nav-group-head"  onclick="toggleCrudNav()">
                     <span class="icon">&#x2699;</span>
                     <span>Manutenção</span>
                     <span class="chev">&#9662;</span>
@@ -45,10 +45,11 @@
                         <span class="dot" style="background:var(--info)"></span>
                         <span>Zonas</span>
                     </button>
-                    <a href="/docs" class="nav-sublink" target="_blank">
-                        <span class="dot" style="background:var(--muted-subtle)"></span>
-                        <span>API Docs</span>
-                    </a>
+                   
+                    <button type="button" class="nav-sublink" data-section="identities-management">
+                        <span class="dot" style="background:var(--info)"></span>
+                        <span>Identidades</span>
+                    </button>
                 </div>
             </div>
         </nav>
@@ -61,6 +62,53 @@
                 <h2>Visão geral</h2>
                 <div id="summary-cards" class="grid"></div>
             </section>
+
+            <!-- Identity dialog (copied from identities view) -->
+            <div id="identity-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
+                <div class="dialog-card">
+                    <div class="dialog-header">
+                        <h3>Cadastrar identidade</h3>
+                        <button id="identity-dialog-close" type="button" class="button-close" aria-label="Fechar">×</button>
+                    </div>
+                    <form id="identity-form">
+                        <div class="form-row">
+                            <label for="identity-name">Nome</label>
+                            <input id="identity-name" type="text" required />
+                        </div>
+                        <div class="form-row">
+                            <label for="identity-species">Espécie</label>
+                            <select id="identity-species">
+                                <!-- options populated by identities view when loaded or fallback -->
+                                <option value="person">Pessoa</option>
+                                <option value="animal">Animal</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="identity-images">Imagens</label>
+                                <input id="identity-images" type="file" accept="image/*" multiple />
+                                <textarea id="identity-images-b64" style="display:none;" aria-hidden="true"></textarea>
+                            <div style="margin-top:8px">
+                                    <button type="button" id="identity-capture" class="button-secondary">Capturar da câmera</button>
+                                    <span id="capture-status" style="margin-left:8px;color:#666"></span>
+                                </div>
+                            <div id="capture-preview-area" style="margin-top:10px; display:none;">
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <img id="capture-preview" alt="Preview" style="max-width:160px;max-height:120px;border:1px solid #ddd;" />
+                                    <div>
+                                        <button type="button" id="approve-capture" class="button-primary">Aprovar</button>
+                                        <button type="button" id="recapture" class="button-secondary">Refazer</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="button-primary">Salvar</button>
+                            <button type="button" class="button-secondary" id="identity-cancel">Cancelar</button>
+                        </div>
+                        <span id="identity-message" class="form-message"></span>
+                    </form>
+                </div>
+            </div>
 
             <section class="panel hidden-panel" id="camera-management">
                 <div class="panel-header">
@@ -188,6 +236,24 @@
                     <tbody id="events-table"></tbody>
                 </table>
             </section>
+
+            <section class="panel hidden-panel" id="identities-management">
+                <div class="panel-header">
+                    <div>
+                        <h2>Identidades conhecidas</h2>
+                        <p>Cadastre e gerencie identidades conhecidas.</p>
+                    </div>
+                    <button id="add-identity-button" class="button-primary">+ Cadastrar identidade</button>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr><th>ID</th><th>Nome</th><th>Espécie</th><th>Criado</th><th>Ações</th></tr>
+                        </thead>
+                        <tbody id="identities-table-body"></tbody>
+                    </table>
+                </div>
+            </section>
         </div>
     </div>
 
@@ -203,6 +269,24 @@
         </div>
     </div>
 
+    <!-- Live Player Modal -->
+    <div id="live-player-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
+        <div class="dialog-card live-player-card">
+            <div class="dialog-header">
+                <h3 id="live-player-title">Ao vivo</h3>
+                <button type="button" class="button-close" aria-label="Fechar" onclick="closeLivePlayer()">×</button>
+            </div>
+            <div id="live-video-container" class="live-video-container">
+                <video id="live-video" controls autoplay muted class="live-video"></video>
+            </div>
+            <div id="live-snapshot-container" class="live-snapshot-container" style="display:none;">
+                <img id="live-snapshot" class="live-snapshot" alt="Ao vivo" />
+                <p class="live-label">Ao vivo (atualização a cada 500ms)</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <script src="/static/dashboard.js"></script>
 </body>
 </html>

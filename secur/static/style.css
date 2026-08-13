@@ -207,7 +207,7 @@ body {
 }
 
 .sidebar .footer-nav {
-  padding: 12px 20px;
+  padding: 9px 20px;
   border-top: 1px solid var(--border);
   font-size: 0.7rem;
   color: var(--muted-subtle);
@@ -372,6 +372,27 @@ tbody tr:last-child td {
   background: var(--border-strong);
 }
 
+.button-loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .button-mini {
   padding: 4px 10px;
   font-size: 0.78rem;
@@ -476,6 +497,53 @@ tbody tr:last-child td {
   padding: 24px;
 }
 
+.live-player-card {
+  width: min(800px, 100%);
+  padding: 0;
+  overflow: hidden;
+}
+
+.live-player-card .dialog-header {
+  padding: 16px 20px;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.live-video-container {
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.live-video {
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  display: block;
+}
+
+.live-snapshot-container {
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.live-snapshot {
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+}
+
+.live-label {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  margin-top: 8px;
+}
+
 .dialog-header {
   display: flex;
   justify-content: space-between;
@@ -535,6 +603,43 @@ tbody tr:last-child td {
   border: 1px solid var(--border);
 }
 
+.camera-preview-wrapper {
+  position: relative;
+  min-height: 80px;
+}
+
+.camera-preview-wrapper.loading::before {
+  content: '';
+  position: absolute;
+  inset: 10px 0 0 0;
+  background: var(--border);
+  border-radius: var(--radius-sm);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.camera-preview-wrapper.error {
+  min-height: 60px;
+}
+
+.camera-preview-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px;
+  margin-top: 10px;
+  background: var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
 .camera-card .button-secondary {
   margin-top: 10px;
   width: 100%;
@@ -565,6 +670,22 @@ tbody tr:last-child td {
 .badge.off {
   background: rgba(220, 38, 38, 0.12);
   color: var(--danger);
+}
+
+.badge-info {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  font-size: 0.65rem;
+  font-weight: 500;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--info);
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+tr.event-info td {
+  color: var(--text-secondary);
 }
 
 /* ---------- Footer ---------- */

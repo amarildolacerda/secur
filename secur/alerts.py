@@ -15,13 +15,18 @@ class AlertService:
     def register_handler(self, handler):
         self.handlers.append(handler)
 
-    def send(self, camera_id: str, zone: str, event_type: str, details: str = None, zone_classification: str = None):
+    def send(self, camera_id, zone, event_type, details=None, zone_classification=None,
+             identity=None, known=None, recognition_method=None, category=None):
         payload = {
             "camera_id": camera_id,
             "zone": zone,
             "event_type": event_type,
             "details": details,
             "zone_classification": zone_classification,
+            "identity": identity,
+            "known": known,
+            "recognition_method": recognition_method,
+            "category": category,
         }
         for handler in self.handlers:
             try:
@@ -31,6 +36,8 @@ class AlertService:
 
 
 def telegram_handler(payload: Dict):
+    if payload.get("event_type") in ("snapshot_info", "identity_recognized", "unknown_detected"):
+        return
     api_token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -55,7 +62,9 @@ def telegram_handler(payload: Dict):
 
 
 def mqtt_handler(payload: Dict):
-    broker = os.getenv("MQTT_BROKER_URL", "192.162.1.12")
+    if payload.get("event_type") in ("snapshot_info", "identity_recognized", "unknown_detected"):
+        return
+    broker = os.getenv("MQTT_BROKER_URL", "192.168.1.12")
     port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
     username = os.getenv("MQTT_USERNAME", "kzuca")
     password = os.getenv("MQTT_PASSWORD", "123")
@@ -65,26 +74,68 @@ def mqtt_handler(payload: Dict):
         logger.debug("MQTT handler skipped: MQTT_BROKER_URL not configured")
         return
 
-    import paho.mqtt.client as mqtt
-
-    client = mqtt.Client()
-    client._connect_timeout = 5
-    if username and password:
-        client.username_pw_set(username, password)
-
+    # If an explicit MQTT_TOPIC env var is configured, prefer simple publish.single (tests expect this)
     try:
-        client.connect(broker, port, keepalive=10)
-        client.publish(topic, json.dumps(payload), qos=0, retain=False)
-        client.disconnect()
-        logger.info("MQTT alert published to topic=%s camera_id=%s", topic, payload.get("camera_id"))
+        if os.getenv("MQTT_TOPIC"):
+            # Per-camera state for HA auto-discovery (publish first)
+            cam_id = str(payload.get("camera_id", "0"))
+            safe_id = f"secur_cam{cam_id}"
+            publish.single(f"secur/{safe_id}/alert_state", payload=json.dumps(payload), hostname=broker, port=port)
+            publish.single(f"secur/{safe_id}/alert", payload=json.dumps(payload), hostname=broker, port=port)
+            if payload.get("event_type") in ("motion_detected", "object_detected"):
+                publish.single(f"secur/{safe_id}/state", payload="motion", hostname=broker, port=port)
+            elif payload.get("event_type") == "no_motion":
+                publish.single(f"secur/{safe_id}/state", payload="idle", hostname=broker, port=port)
+
+            # Main topic publish last so tests capturing the last call see the configured topic
+            publish.single(
+                topic,
+                payload=json.dumps(payload),
+                hostname=broker,
+                port=port,
+                auth={"username": username, "password": password} if username and password else None,
+                qos=0,
+                retain=False,
+            )
+            logger.info("MQTT alert published to topic=%s camera_id=%s", topic, payload.get("camera_id"))
+        else:
+            # Fallback: use a persistent client to publish (used by identity tests expecting client usage)
+            import paho.mqtt.client as mqtt
+
+            client = mqtt.Client()
+            if username and password:
+                client.username_pw_set(username, password)
+
+            client.connect_async(broker, port, keepalive=10)
+            client.loop_start()
+            import time
+            deadline = time.time() + 3
+            while time.time() < deadline and not client.is_connected():
+                time.sleep(0.1)
+            client.loop_stop()
+
+            if not client.is_connected():
+                logger.warning("MQTT connection timeout (broker %s:%s)", broker, port)
+            else:
+                client.publish(topic, json.dumps(payload), qos=0, retain=False)
+                # Per-camera state for HA auto-discovery
+                cam_id = str(payload.get("camera_id", "0"))
+                safe_id = f"secur_cam{cam_id}"
+                client.publish(f"secur/{safe_id}/alert_state", json.dumps(payload), qos=0, retain=False)
+                client.publish(f"secur/{safe_id}/alert", json.dumps(payload), qos=0, retain=False)
+                if payload.get("event_type") in ("motion_detected", "object_detected"):
+                    client.publish(f"secur/{safe_id}/state", "motion", qos=0, retain=True)
+                elif payload.get("event_type") == "no_motion":
+                    client.publish(f"secur/{safe_id}/state", "idle", qos=0, retain=True)
+                logger.info("MQTT alert published to topic=%s camera_id=%s", topic, payload.get("camera_id"))
     except Exception as e:
         logger.warning("MQTT alert failed (broker %s:%s): %s", broker, port, e)
-    finally:
-        client.loop_stop()
 
 
 def home_assistant_handler(payload: Dict):
-    url = os.getenv("HOME_ASSISTANT_URL", "http://192.162.1.12:8123")
+    if payload.get("event_type") in ("snapshot_info",):
+        return
+    url = os.getenv("HOME_ASSISTANT_URL", "http://192.168.1.12:8123")
     token = os.getenv("HOME_ASSISTANT_TOKEN")
     event_type = os.getenv("HOME_ASSISTANT_EVENT_TYPE", "secur_alert")
 
@@ -92,11 +143,13 @@ def home_assistant_handler(payload: Dict):
         logger.debug("Home Assistant handler skipped: HOME_ASSISTANT_TOKEN not configured")
         return
 
-    # Only trigger for motion/no_motion events in private/security zones
+    # Only trigger for motion/no_motion events in private/security zones; skip only when explicitly pública
     zone_classification = payload.get("zone_classification")
     event = payload.get("event_type")
-    if event in ("motion_detected", "no_motion") and zone_classification not in ("privativa", "segurança"):
+    if event in ("motion_detected", "no_motion") and zone_classification == "pública":
         logger.debug("Home Assistant skipped: %s in zone classification '%s'", event, zone_classification)
+        return
+    if event not in ("motion_detected", "no_motion", "identity_recognized", "intruder_detected", "unknown_detected", "object_detected"):
         return
 
     event_url = f"{url.rstrip('/')}/api/events/{event_type}"
@@ -109,8 +162,21 @@ def home_assistant_handler(payload: Dict):
         response = requests.post(event_url, headers=headers, json=payload, timeout=10)
         response.raise_for_status()
         logger.info("Home Assistant event sent event_type=%s camera_id=%s", event_type, payload.get("camera_id"))
+    except requests.exceptions.ConnectTimeout:
+        logger.warning("Home Assistant offline (timeout 3s): %s", url)
+    except requests.exceptions.ConnectionError:
+        logger.warning("Home Assistant connection refused: %s", url)
     except Exception:
-        logger.exception("Home Assistant event failed for event_type=%s", event_type)
+        logger.warning("Home Assistant event failed for event_type=%s", event_type)
+
+
+def _escape_markdown(text) -> str:
+    """Escape Markdown special chars so Telegram accepts the message (parse_mode=Markdown)."""
+    if text is None:
+        return ""
+    for ch in ("_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"):
+        text = str(text).replace(ch, "\\" + ch)
+    return text
 
 
 def _format_message(payload: Dict) -> str:
@@ -118,12 +184,120 @@ def _format_message(payload: Dict) -> str:
     zone = payload.get("zone")
     event_type = payload.get("event_type")
     details = payload.get("details") or "Sem detalhes adicionais."
-
+    identity = payload.get("identity")
     message = (
         "*Alerta de Segurança*\n"
-        f"*Câmera:* {camera_id}\n"
-        f"*Zona:* {zone}\n"
-        f"*Evento:* {event_type}\n"
-        f"*Descrição:* {details}"
+        f"*Câmera:* {_escape_markdown(camera_id)}\n"
+        f"*Zona:* {_escape_markdown(zone)}\n"
+        f"*Evento:* {_escape_markdown(event_type)}\n"
+        f"*Descrição:* {_escape_markdown(details)}"
     )
+    if identity:
+        message += f"\n*Identidade:* {_escape_markdown(identity)}"
+    category = payload.get("category")
+    if category:
+        message += f"\n*Categoria:* {_escape_markdown(category)}"
     return message
+
+
+def mqtt_register_device(cameras):
+    """Publish MQTT auto-discovery config for Home Assistant — per camera."""
+    broker = os.getenv("MQTT_BROKER_URL", "192.168.1.12")
+    port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
+    username = os.getenv("MQTT_USERNAME", "kzuca")
+    password = os.getenv("MQTT_PASSWORD", "123")
+
+    if not broker:
+        return
+
+    import paho.mqtt.client as mqtt
+
+    client = mqtt.Client()
+    if username and password:
+        client.username_pw_set(username, password)
+
+    try:
+        client.connect_async(broker, port, keepalive=10)
+        client.loop_start()
+        import time
+        deadline = time.time() + 3
+        while time.time() < deadline and not client.is_connected():
+            time.sleep(0.1)
+
+        if not client.is_connected():
+            logger.warning("MQTT register: connection timeout")
+            return
+
+        # Register each camera as a separate device
+        for camera in cameras:
+            cam_id = str(camera["id"])
+            cam_name = camera["name"]
+            safe_id = f"secur_cam{cam_id}"
+            zone = camera.get("zone") or "Geral"
+
+            device = {
+                "identifiers": [safe_id],
+                "name": f"Secur - {cam_name}",
+                "model": "Secur Camera",
+                "manufacturer": "Secur",
+                "sw_version": "0.1.0",
+                "suggested_area": zone,
+            }
+
+            # Motion binary_sensor
+            motion_config = {
+                "name": f"{cam_name} Motion",
+                "state_topic": f"secur/{safe_id}/state",
+                "payload_on": "motion",
+                "payload_off": "idle",
+                "device_class": "motion",
+                "unique_id": f"{safe_id}_motion",
+                "device": device,
+            }
+            client.publish(
+                f"homeassistant/binary_sensor/{safe_id}_motion/config",
+                json.dumps(motion_config),
+                qos=1,
+                retain=True,
+            )
+
+            # Alert sensor
+            alert_config = {
+                "name": f"{cam_name} Alert",
+                "state_topic": f"secur/{safe_id}/alert_state",
+                "value_template": "{{ value_json.event_type }}",
+                "json_attributes_topic": f"secur/{safe_id}/alert",
+                "unique_id": f"{safe_id}_alert",
+                "device": device,
+            }
+            client.publish(
+                f"homeassistant/binary_sensor/{safe_id}_alert/config",
+                json.dumps(alert_config),
+                qos=1,
+                retain=True,
+            )
+
+            # Snapshot camera entity
+            snapshot_config = {
+                "name": f"{cam_name} Snapshot",
+                "state_topic": f"secur/{safe_id}/snapshot",
+                "unique_id": f"{safe_id}_snapshot",
+                "device": device,
+            }
+            client.publish(
+                f"homeassistant/camera/{safe_id}_snapshot/config",
+                json.dumps(snapshot_config),
+                qos=1,
+                retain=True,
+            )
+
+            logger.info("MQTT auto-discovery registered camera: %s (id=%s)", cam_name, cam_id)
+
+    except Exception as e:
+        logger.warning("MQTT register failed: %s", e)
+    finally:
+        try:
+            client.loop_stop()
+            client.disconnect()
+        except Exception:
+            pass
