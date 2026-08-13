@@ -286,6 +286,18 @@
         </div>
     </div>
 
+    <!-- Thumbnail History Modal -->
+    <div id="thumb-history-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
+        <div class="dialog-card thumb-history-card">
+            <div class="dialog-header">
+                <h3 id="thumb-history-title">Histórico</h3>
+                <button type="button" class="button-close" aria-label="Fechar" onclick="closeThumbHistory()">×</button>
+            </div>
+            <div id="thumb-history-grid" class="thumb-history-grid"></div>
+            <p id="thumb-history-empty" class="thumb-history-empty">Nenhum thumbnail capturado ainda.</p>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <script src="/static/dashboard.js"></script>
 </body>

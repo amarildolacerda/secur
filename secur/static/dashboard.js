@@ -72,7 +72,7 @@ function createCameraCard(camera) {
       </div>
       <p>Zona: ${zoneLabel}</p>
       <p class="camera-source">Fonte: ${camera.source}</p>
-      <div class="camera-preview-wrapper" onclick="openLivePlayer(${camera.id}, '${camera.name}', '${camera.source}')" style="cursor:pointer;">
+      <div class="camera-preview-wrapper" onclick="openThumbHistory(${camera.id}, '${camera.name}')" style="cursor:pointer;">
         <img
           id="${imgId}"
           class="camera-preview"
@@ -85,6 +85,9 @@ function createCameraCard(camera) {
           <span>Falha ao carregar preview</span>
           <button class="button-mini" onclick="event.stopPropagation(); retrySnapshot(${camera.id})">Tentar novamente</button>
         </div>
+      </div>
+      <div class="camera-card-actions">
+        <button class="button-secondary button-mini" onclick="event.stopPropagation(); openLivePlayer(${camera.id}, '${camera.name}', '${camera.source}')">Ao vivo</button>
       </div>
     </div>
   `;
@@ -175,6 +178,45 @@ function closeLivePlayer() {
     clearInterval(livePlayerInterval);
     livePlayerInterval = null;
   }
+}
+
+/* ========== Thumbnail History ========== */
+
+function openThumbHistory(cameraId, cameraName) {
+  const overlay = document.getElementById('thumb-history-overlay');
+  const title = document.getElementById('thumb-history-title');
+  const grid = document.getElementById('thumb-history-grid');
+  const empty = document.getElementById('thumb-history-empty');
+
+  title.textContent = `Histórico — ${cameraName}`;
+  grid.innerHTML = '';
+  empty.style.display = 'none';
+  overlay.classList.remove('hidden-panel');
+
+  fetch(`/camera/${cameraId}/thumbnails`)
+    .then(r => r.json())
+    .then(items => {
+      if (!items || items.length === 0) {
+        empty.style.display = '';
+        return;
+      }
+      grid.innerHTML = items.map(item => `
+        <div class="thumb-history-item">
+          <img src="${item.url}" alt="thumbnail" loading="lazy" />
+          <span class="thumb-history-time">${new Date(item.timestamp).toLocaleString()}</span>
+          <span class="thumb-history-event">${item.event_type}</span>
+        </div>
+      `).join('');
+    })
+    .catch(() => {
+      empty.textContent = 'Falha ao carregar histórico.';
+      empty.style.display = '';
+    });
+}
+
+function closeThumbHistory() {
+  const overlay = document.getElementById('thumb-history-overlay');
+  if (overlay) overlay.classList.add('hidden-panel');
 }
 
 function createCameraRow(camera) {
