@@ -53,3 +53,8 @@ MQTT_BROKER_PORT = int(os.getenv("MQTT_BROKER_PORT", "1883"))
 MQTT_USERNAME = os.getenv("MQTT_USERNAME", "kzuca")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "123")
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "homeassistant/secur/alert")
+
+THUMBNAILS_DIR = DATA_DIR / "thumbnails"
+THUMBNAILS_DIR.mkdir(exist_ok=True)
+THUMBNAIL_INTERVAL_SECONDS = float(os.getenv("THUMBNAIL_INTERVAL_SECONDS", "10"))
+THUMBNAIL_HISTORY_SIZE = int(os.getenv("THUMBNAIL_HISTORY_SIZE", "20"))

@@ -2,6 +2,7 @@ import json
 import logging
 import time
 import threading
+import cv2
 from .config import (
     DEFAULT_CAMERAS,
     DETECTOR_CLASSES,
@@ -14,6 +15,9 @@ from .config import (
     MOTION_MIN_AREA,
     NO_MOTION_ALERT_SECONDS,
     ALERT_COOLDOWN_SECONDS,
+    THUMBNAILS_DIR,
+    THUMBNAIL_INTERVAL_SECONDS,
+    THUMBNAIL_HISTORY_SIZE,
 )
 from .camera import CameraStream
 from .detector import ObjectDetector
@@ -66,6 +70,7 @@ class CameraWorker:
         last_motion_time = None
         no_motion_alerted = False
         last_alert_time = {}
+        last_thumb_time = None
 
         while not self.stop_event.is_set():
             frame = camera_stream.read()
@@ -124,6 +129,23 @@ class CameraWorker:
                     logger.exception("Erro no processamento do frame (câmera %s)", self.camera.get("name"))
                     time.sleep(1)
                     continue
+
+                # Thumbnail history: capture at most 1 per interval during continuous motion
+                now_thumb = time.time()
+                if should_capture_thumbnail(last_thumb_time, now_thumb, THUMBNAIL_INTERVAL_SECONDS):
+                    try:
+                        cam_dir = THUMBNAILS_DIR / f"cam{self.camera['id']}"
+                        cam_dir.mkdir(parents=True, exist_ok=True)
+                        filename = f"{int(now_thumb * 1000)}.jpg"
+                        path = cam_dir / filename
+                        ok, jpg = cv2.imencode(".jpg", frame)
+                        if ok:
+                            path.write_bytes(jpg.tobytes())
+                            self.storage.add_camera_thumbnail(self.camera["id"], str(path), event_type)
+                            self.storage.prune_camera_thumbnails(self.camera["id"], keep=THUMBNAIL_HISTORY_SIZE)
+                            last_thumb_time = now_thumb
+                    except Exception:
+                        logger.warning("Falha ao capturar thumbnail (câmera %s)", self.camera.get("name"))
             else:
                 # No motion: after NO_MOTION_ALERT_SECONDS without any occurrence, send "sem movimento"
                 if (last_motion_time is not None
@@ -165,6 +187,12 @@ def format_detections(detections):
         ]
     )
     return f"Objetos detectados: {', '.join(labels)} | detalhes: {details}"
+
+
+def should_capture_thumbnail(last_thumb_time, now, interval):
+    if last_thumb_time is None:
+        return True
+    return (now - last_thumb_time) >= interval
 
 
 class CameraManager:

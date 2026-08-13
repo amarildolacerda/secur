@@ -1,5 +1,5 @@
 import numpy as np
-from secur.main import decide_worker_event
+from secur.main import decide_worker_event, should_capture_thumbnail
 
 
 def test_decide_worker_event_known():
@@ -15,3 +15,10 @@ def test_decide_worker_event_intruder():
     ident = {"identity_id": None, "name": "unknown", "known": False, "method": "reid", "confidence": 0.3}
     event_type, details, identity_name, known, _label, category = decide_worker_event(dets, ident, "privativa", "Cam1", "person")
     assert event_type == "intruder_detected"
+
+
+def test_should_capture_thumbnail_interval():
+    assert should_capture_thumbnail(None, 1000.0, 10.0) is True
+    assert should_capture_thumbnail(1000.0, 1005.0, 10.0) is False
+    assert should_capture_thumbnail(1000.0, 1010.0, 10.0) is True
+    assert should_capture_thumbnail(1000.0, 1010.0001, 10.0) is True
