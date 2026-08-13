@@ -83,3 +83,49 @@ def test_add_camera_accepts_valid_source(client, monkeypatch):
     assert response.json["name"] == "Test Camera"
     assert response.json["source"] == "valid-source"
     assert response.json["zone"] == "test"
+
+
+def test_camera_thumbnails_route(client, monkeypatch):
+    from secur.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+    resp = client.post("/cameras", json={"name": "Cam", "source": "source://x", "zone": "entrada"})
+    assert resp.status_code == 201
+    cam_id = resp.json["id"]
+
+    # no thumbnails yet
+    resp = client.get(f"/camera/{cam_id}/thumbnails")
+    assert resp.status_code == 200
+    assert resp.json == []
+
+
+def test_camera_thumbnails_route_404(client):
+    resp = client.get("/camera/999/thumbnails")
+    assert resp.status_code == 404
+
+
+def test_thumbnail_image_route_404(client):
+    resp = client.get("/thumbnails/999/image")
+    assert resp.status_code == 404
+
+
+def test_notifications_get(client):
+    resp = client.get("/api/notifications")
+    assert resp.status_code == 200
+    body = resp.json
+    assert [c["key"] for c in body["channels"]] == ["telegram", "automation"]
+    assert "motion_detected" in [e["key"] for e in body["events"]]
+    assert "routing" in body
+
+
+def test_notifications_put(client):
+    resp = client.put("/api/notifications/routing", json={"channel": "telegram", "event_type": "no_motion", "enabled": True})
+    assert resp.status_code == 200
+    body = client.get("/api/notifications").json
+    assert body["routing"]["telegram"]["no_motion"] is True
+
+
+def test_notifications_put_invalid(client):
+    resp = client.put("/api/notifications/routing", json={"channel": "nope", "event_type": "no_motion", "enabled": True})
+    assert resp.status_code == 400
+    resp = client.put("/api/notifications/routing", json={"channel": "telegram", "event_type": "nope", "enabled": True})
+    assert resp.status_code == 400

@@ -1,7 +1,9 @@
 import cv2
-from flask import Flask, jsonify, render_template, request, Response
+import os
+from flask import Flask, jsonify, render_template, request, Response, send_file
 from .camera import CameraStream
 from .storage import EventStorage
+from .notifications import CHANNELS, EVENT_TYPES
 import base64
 import numpy as np
 from typing import Optional
@@ -120,6 +122,32 @@ def create_app(camera_manager=None):
         log.info("Snapshot OK for camera %s", camera_id)
         return Response(jpg.tobytes(), mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
 
+    @app.route("/camera/<int:camera_id>/thumbnails")
+    def camera_thumbnails(camera_id):
+        camera = storage.get_camera(camera_id)
+        if not camera:
+            return jsonify({"error": "Câmera não encontrada"}), 404
+        items = storage.list_camera_thumbnails(camera_id, limit=20)
+        out = []
+        for it in items:
+            out.append({
+                "id": it["id"],
+                "timestamp": it["timestamp"],
+                "event_type": it["event_type"],
+                "url": f"/thumbnails/{it['id']}/image",
+            })
+        return jsonify(out)
+
+    @app.route("/thumbnails/<int:thumb_id>/image")
+    def thumbnail_image(thumb_id):
+        item = storage.get_camera_thumbnail(thumb_id)
+        if not item:
+            return jsonify({"error": "Thumbnail não encontrado"}), 404
+        path = item["path"]
+        if not os.path.exists(path):
+            return jsonify({"error": "Thumbnail não encontrado"}), 404
+        return send_file(path, mimetype="image/jpeg")
+
     @app.route("/docs")
     def docs():
         api_docs = [
@@ -137,6 +165,10 @@ def create_app(camera_manager=None):
             {"path": "/zones/<id>", "method": "PUT", "description": "Update a zone"},
             {"path": "/zones/<id>", "method": "DELETE", "description": "Remove a zone"},
             {"path": "/events", "method": "GET", "description": "Recent event history"},
+            {"path": "/camera/<id>/thumbnails", "method": "GET", "description": "Lista os últimos thumbnails da câmera"},
+            {"path": "/thumbnails/<id>/image", "method": "GET", "description": "Imagem JPEG de um thumbnail"},
+            {"path": "/api/notifications", "method": "GET", "description": "Canais, eventos e routing de notificações"},
+            {"path": "/api/notifications/routing", "method": "PUT", "description": "Atualiza routing de um evento em um canal"},
         ]
         return render_template("docs.html", api_docs=api_docs)
 
@@ -186,6 +218,7 @@ def create_app(camera_manager=None):
         removed = storage.remove_camera(camera_id)
         if not removed:
             return jsonify({"error": "Câmera não encontrada"}), 404
+        storage.remove_camera_thumbnails(camera_id)
         return jsonify({"status": "removido"}), 200
 
     @app.route("/events")
@@ -196,6 +229,32 @@ def create_app(camera_manager=None):
     @app.route("/zones")
     def zones():
         return jsonify(storage.list_zones())
+
+    @app.route("/api/notifications")
+    def notifications_get():
+        routing = storage.get_all_routing()
+        return jsonify({
+            "channels": CHANNELS,
+            "events": EVENT_TYPES,
+            "routing": routing,
+        })
+
+    @app.route("/api/notifications/routing", methods=["PUT"])
+    def notifications_put():
+        payload = request.get_json() or {}
+        channel = payload.get("channel")
+        event_type = payload.get("event_type")
+        enabled = payload.get("enabled")
+        if enabled is None:
+            return jsonify({"error": "enabled é obrigatório"}), 400
+        valid_channels = {c["key"] for c in CHANNELS}
+        valid_events = {e["key"] for e in EVENT_TYPES}
+        if channel not in valid_channels:
+            return jsonify({"error": "canal inválido"}), 400
+        if event_type not in valid_events:
+            return jsonify({"error": "evento inválido"}), 400
+        storage.set_routing(channel, event_type, bool(enabled))
+        return jsonify({"status": "ok"}), 200
 
 
     # ========== Identity endpoints ==========
