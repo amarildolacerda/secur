@@ -3,9 +3,11 @@ from flask import Flask, jsonify, render_template, request, Response
 from .camera import CameraStream
 from .storage import EventStorage
 import base64
-import cv2
 import numpy as np
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 try:
     from .identity import build_recognizer, IdentityRecognizer
@@ -19,6 +21,10 @@ def create_app(camera_manager=None):
     storage = EventStorage()
     # recognizer_factory hook: tests or callers may set app.recognizer_factory = lambda storage: recognizer
     def _make_recognizer() -> Optional[object]:
+        # Prefer the shared recognizer used by the camera workers so cache
+        # refreshes (enroll/remove/import) propagate to live recognition.
+        if camera_manager is not None and getattr(camera_manager, "identity_recognizer", None) is not None:
+            return camera_manager.identity_recognizer
         if hasattr(app, "recognizer_factory") and callable(app.recognizer_factory):
             return app.recognizer_factory(storage)
         if build_recognizer is None:
@@ -252,8 +258,10 @@ def create_app(camera_manager=None):
                 thumb_path = storage.save_identity_thumbnail(name, thumb_b64)
                 if thumb_path:
                     storage.update_identity_thumbnail(ident_id, thumb_path)
+                else:
+                    logger.warning("Falha ao salvar thumbnail para identidade %s", name)
         except Exception:
-            pass
+            logger.exception("Falha ao persistir thumbnail para identidade %s", name)
 
         return jsonify({"id": ident_id, "name": name, "species": species}), 201
 
@@ -270,7 +278,11 @@ def create_app(camera_manager=None):
 
     @app.route("/identities/<int:identity_id>", methods=["DELETE"])
     def delete_identity(identity_id):
-        removed = storage.remove_identity(identity_id)
+        recognizer = app.recognizer_factory_internal()
+        if recognizer is not None and hasattr(recognizer, "remove_identity"):
+            removed = recognizer.remove_identity(identity_id)
+        else:
+            removed = storage.remove_identity(identity_id)
         if not removed:
             return jsonify({"error": "Identity not found"}), 404
         return jsonify({"status": "removido"}), 200
@@ -286,19 +298,44 @@ def create_app(camera_manager=None):
         if not name or not species:
             return jsonify({'error': 'name and species are required'}), 400
 
-        # create a placeholder embedding file
+        # validate species against recognizer labels
+        try:
+            from .identity import RECOGNITION_LABELS
+            allowed = set(RECOGNITION_LABELS.values())
+        except Exception:
+            allowed = set(("person", "animal"))
+        if species not in allowed:
+            return jsonify({'error': f"species must be one of: {', '.join(sorted(allowed))}"}), 400
+
+        # create a placeholder embedding file with the real embedder dimension
         try:
             import numpy as _np
-            emb = _np.zeros((128,), dtype=_np.float32)
+            recognizer = app.recognizer_factory_internal()
+            dim = 128
+            if recognizer is not None:
+                for embedder in (getattr(recognizer, "face_embedder", None), getattr(recognizer, "reid_embedder", None)):
+                    if embedder is None:
+                        continue
+                    try:
+                        probe = embedder(_np.zeros((32, 32, 3), dtype=_np.uint8))
+                        if probe is not None and probe.size > 0:
+                            dim = int(probe.size)
+                            break
+                    except Exception:
+                        continue
+            emb = _np.zeros((dim,), dtype=_np.float32)
             emb_path = storage.save_identity_embedding(name, emb)
             ident_id = storage.add_identity(name, species, emb_path)
             if thumb_b64:
                 thumb_path = storage.save_identity_thumbnail(name, thumb_b64)
                 if thumb_path:
                     storage.update_identity_thumbnail(ident_id, thumb_path)
+            if recognizer is not None and hasattr(recognizer, "refresh_cache"):
+                recognizer.refresh_cache()
             return jsonify({'id': ident_id, 'name': name, 'species': species}), 201
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            logger.exception("Falha ao importar identidade")
+            return jsonify({'error': 'falha ao importar identidade'}), 500
 
     @app.route("/identities/view")
     def identities_view():

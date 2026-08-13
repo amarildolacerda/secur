@@ -53,6 +53,35 @@ def test_recognize_falls_back_to_reid():
     assert res["method"] == "reid" and res["known"] is False
 
 
+def test_recognize_skips_shape_mismatched_cache_entries():
+    """Cached embeddings with a different dimension must be skipped, not crash."""
+    db = type("S", (), {
+        "list_identities": staticmethod(lambda: [
+            {"id": 1, "name": "Dim128", "species": "person"},
+        ]),
+        "load_identity_embedding": staticmethod(lambda i: np.zeros((128,), dtype=np.float32)),
+    })()
+    rec = IdentityRecognizer(db, face_embedder=_stub_embedder([1, 0, 0]), reid_embedder=None,
+                             threshold=0.6, enabled=True)
+    # query embedding has dim 3, cached has dim 128 -> must not raise
+    res = rec.recognize(np.zeros((10, 10, 3), np.uint8), "person")
+    assert res["known"] is False and res["name"] == "unknown"
+
+
+def test_recognize_skips_zero_norm_cache_entries():
+    """All-zero cached embeddings must be skipped (never match)."""
+    db = type("S", (), {
+        "list_identities": staticmethod(lambda: [
+            {"id": 1, "name": "Zero", "species": "person"},
+        ]),
+        "load_identity_embedding": staticmethod(lambda i: np.zeros((3,), dtype=np.float32)),
+    })()
+    rec = IdentityRecognizer(db, face_embedder=_stub_embedder([1, 0, 0]), reid_embedder=None,
+                             threshold=0.6, enabled=True)
+    res = rec.recognize(np.zeros((10, 10, 3), np.uint8), "person")
+    assert res["known"] is False and res["name"] == "unknown"
+
+
 def test_decide_event_routing():
     known = {"name": "João", "known": True}
     intruder = {"name": "unknown", "known": False}

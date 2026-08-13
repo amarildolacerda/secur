@@ -215,7 +215,7 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - [x] CRUD de câmeras (adicionar/editar/excluir)
 - [x] CRUD de zonas com classificação (pública/segurança/privativa)
 - [x] Severidade de alertas baseada na classificação da zona
-- [x] Evento `no_motion` após 60s sem movimento (áreas privativas/segurança)
+- [x] Evento `no_motion` após 60s sem movimento (todas as zonas, configurável via `NO_MOTION_ALERT_SECONDS`)
 - [x] Estilo adaptado (ESP-NOW Hub pattern)
 
 ### 5. Expansão

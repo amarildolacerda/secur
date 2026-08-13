@@ -170,6 +170,15 @@ def home_assistant_handler(payload: Dict):
         logger.warning("Home Assistant event failed for event_type=%s", event_type)
 
 
+def _escape_markdown(text) -> str:
+    """Escape Markdown special chars so Telegram accepts the message (parse_mode=Markdown)."""
+    if text is None:
+        return ""
+    for ch in ("_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"):
+        text = str(text).replace(ch, "\\" + ch)
+    return text
+
+
 def _format_message(payload: Dict) -> str:
     camera_id = payload.get("camera_id")
     zone = payload.get("zone")
@@ -178,16 +187,16 @@ def _format_message(payload: Dict) -> str:
     identity = payload.get("identity")
     message = (
         "*Alerta de Segurança*\n"
-        f"*Câmera:* {camera_id}\n"
-        f"*Zona:* {zone}\n"
-        f"*Evento:* {event_type}\n"
-        f"*Descrição:* {details}"
+        f"*Câmera:* {_escape_markdown(camera_id)}\n"
+        f"*Zona:* {_escape_markdown(zone)}\n"
+        f"*Evento:* {_escape_markdown(event_type)}\n"
+        f"*Descrição:* {_escape_markdown(details)}"
     )
     if identity:
-        message += f"\n*Identidade:* {identity}"
+        message += f"\n*Identidade:* {_escape_markdown(identity)}"
     category = payload.get("category")
     if category:
-        message += f"\n*Categoria:* {category}"
+        message += f"\n*Categoria:* {_escape_markdown(category)}"
     return message
 
 

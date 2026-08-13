@@ -85,6 +85,10 @@ class IdentityRecognizer:
             self._refresh_cache()
         best_id, best_name, best_score = None, "unknown", -1.0
         for ident_id, ident_name, known_emb in self._cache.get(species, []):
+            if known_emb.shape != emb.shape:
+                continue
+            if np.linalg.norm(known_emb) == 0.0:
+                continue
             score = cosine_similarity(emb, known_emb)
             if score > best_score:
                 best_score, best_id, best_name = score, ident_id, ident_name
@@ -96,6 +100,10 @@ class IdentityRecognizer:
         result = self.storage.remove_identity(identity_id)
         self._refresh_cache()
         return result
+
+    def refresh_cache(self):
+        """Reload the in-memory identity cache from storage (e.g. after direct storage writes)."""
+        self._refresh_cache()
 
     def list_identities(self) -> List[dict]:
         return self.storage.list_identities()

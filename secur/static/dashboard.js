@@ -550,6 +550,16 @@ function renderZoneManagement(zones) {
 }
 
 /* ========== Identities management ========== */
+function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function fetchIdentitiesList() {
   try {
     return await fetchData('/identities');
@@ -563,14 +573,14 @@ function renderIdentities(list) {
     const serverThumb = i.thumbnail_url ? i.thumbnail_url : null;
     const localThumb = localThumbnails[i.id] ? `data:image/jpeg;base64,${localThumbnails[i.id]}` : null;
     const src = serverThumb || localThumb || '';
-    const imgHtml = src ? `<img src="${src}" alt="thumb" style="width:48px;height:36px;object-fit:cover;border-radius:4px;margin-right:8px;vertical-align:middle;">` : '';
+    const imgHtml = src ? `<img src="${escapeHtml(src)}" alt="thumb" style="width:48px;height:36px;object-fit:cover;border-radius:4px;margin-right:8px;vertical-align:middle;">` : '';
     return `
     <tr>
-      <td>${i.id}</td>
-      <td>${imgHtml}${i.name}</td>
-      <td>${i.species}</td>
-      <td>${i.created_at}</td>
-      <td><a href="#" data-id="${i.id}" class="del-identity">Remover</a></td>
+      <td>${escapeHtml(i.id)}</td>
+      <td>${imgHtml}${escapeHtml(i.name)}</td>
+      <td>${escapeHtml(i.species)}</td>
+      <td>${escapeHtml(i.created_at)}</td>
+      <td><a href="#" data-id="${escapeHtml(i.id)}" class="del-identity">Remover</a></td>
     </tr>
   `;
   }).join('');

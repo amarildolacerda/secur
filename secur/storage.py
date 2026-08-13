@@ -276,6 +276,12 @@ class EventStorage:
             Path(ident["embedding_path"]).unlink(missing_ok=True)
         except Exception:
             logger.warning("Falha ao remover arquivo de embedding para identidade %s", identity_id)
+        thumb = ident.get("thumbnail_path")
+        if thumb:
+            try:
+                Path(thumb).unlink(missing_ok=True)
+            except Exception:
+                logger.warning("Falha ao remover thumbnail para identidade %s", identity_id)
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute("DELETE FROM known_identities WHERE id = ?", (identity_id,))

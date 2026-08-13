@@ -12,6 +12,8 @@ from .config import (
     SERVER_HOST,
     SERVER_PORT,
     MOTION_MIN_AREA,
+    NO_MOTION_ALERT_SECONDS,
+    ALERT_COOLDOWN_SECONDS,
 )
 from .camera import CameraStream
 from .detector import ObjectDetector
@@ -62,6 +64,7 @@ class CameraWorker:
         motion_detector = MotionDetector(min_area=MOTION_MIN_AREA)
         last_motion_time = None
         no_motion_alerted = False
+        last_alert_time = {}
 
         while not self.stop_event.is_set():
             frame = camera_stream.read()
@@ -83,46 +86,52 @@ class CameraWorker:
                 last_motion_time = time.time()
                 no_motion_alerted = False
 
-                detections = self.object_detector.detect(frame)
-                identity_info = None
-                identity_label = None
-                if detections and self.identity_recognizer is not None:
-                    for det in detections:
-                        if det["label"] in RECOGNITION_LABELS:
-                            bbox = det["bbox"]
-                            x, y, w, h = bbox["x"], bbox["y"], bbox["w"], bbox["h"]
-                            crop = frame[y:y + h, x:x + w]
-                            if crop.size > 0:
-                                identity_info = self.identity_recognizer.recognize(crop, det["label"])
-                                identity_label = det["label"]
-                                break
+                try:
+                    detections = self.object_detector.detect(frame)
+                    identity_info = None
+                    identity_label = None
+                    if detections and self.identity_recognizer is not None:
+                        for det in detections:
+                            if det["label"] in RECOGNITION_LABELS:
+                                bbox = det["bbox"]
+                                x, y, w, h = bbox["x"], bbox["y"], bbox["w"], bbox["h"]
+                                crop = frame[y:y + h, x:x + w]
+                                if crop.size > 0:
+                                    identity_info = self.identity_recognizer.recognize(crop, det["label"])
+                                    identity_label = det["label"]
+                                    break
 
-                event_type, details, identity_name, known, _label, category = decide_worker_event(
-                    detections, identity_info, zone_classification, self.camera["name"], identity_label
-                )
+                    event_type, details, identity_name, known, _label, category = decide_worker_event(
+                        detections, identity_info, zone_classification, self.camera["name"], identity_label
+                    )
 
-                self.storage.add_event(self.camera["id"], zone_name, event_type, details)
-                self.alerts.send(
-                    self.camera["id"], zone_name, event_type, details, zone_classification,
-                    identity=identity_name, known=known, category=category,
-                    recognition_method=identity_info.get("method") if identity_info else None,
-                )
+                    now = time.time()
+                    if now - last_alert_time.get(event_type, 0.0) >= ALERT_COOLDOWN_SECONDS:
+                        last_alert_time[event_type] = now
+                        self.storage.add_event(self.camera["id"], zone_name, event_type, details)
+                        self.alerts.send(
+                            self.camera["id"], zone_name, event_type, details, zone_classification,
+                            identity=identity_name, known=known, category=category,
+                            recognition_method=identity_info.get("method") if identity_info else None,
+                        )
+                    else:
+                        logger.debug(
+                            "Evento suprimido (cooldown %ss) câmera=%s evento=%s",
+                            ALERT_COOLDOWN_SECONDS, self.camera.get("name"), event_type,
+                        )
+                except Exception:
+                    logger.exception("Erro no processamento do frame (câmera %s)", self.camera.get("name"))
+                    time.sleep(1)
+                    continue
             else:
-                # No motion: check if 60s elapsed and alert HA for private/security
+                # No motion: after NO_MOTION_ALERT_SECONDS without any occurrence, send "sem movimento"
                 if (last_motion_time is not None
                         and not no_motion_alerted
-                        and zone_classification in ("privativa", "segurança")
-                        and (time.time() - last_motion_time) >= 60):
-                    no_motion_event = {
-                        "camera_id": self.camera["id"],
-                        "zone": zone_name,
-                        "event_type": "no_motion",
-                        "details": f"Sem movimento há 60s na câmera {self.camera['name']}",
-                        "zone_classification": zone_classification,
-                    }
+                        and (time.time() - last_motion_time) >= NO_MOTION_ALERT_SECONDS):
+                    details = f"Sem movimento há {int(NO_MOTION_ALERT_SECONDS)}s na câmera {self.camera['name']}"
                     self.alerts.send(
                         self.camera["id"], zone_name, "no_motion",
-                        no_motion_event["details"], zone_classification,
+                        details, zone_classification,
                     )
                     no_motion_alerted = True
 
