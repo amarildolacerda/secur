@@ -114,7 +114,6 @@ class CameraWorker:
                     now = time.time()
                     if now - last_alert_time.get(event_type, 0.0) >= ALERT_COOLDOWN_SECONDS:
                         last_alert_time[event_type] = now
-                        self.storage.add_event(self.camera["id"], zone_name, event_type, details)
                         self.alerts.send(
                             self.camera["id"], zone_name, event_type, details, zone_classification,
                             identity=identity_name, known=known, category=category,
@@ -237,7 +236,7 @@ class CameraManager:
 def main():
     storage = EventStorage()
     storage.seed_default_routing(DEFAULT_ROUTING)
-    alerts = AlertService()
+    alerts = AlertService(storage=storage)
     alerts.register_handler(telegram_handler)
     alerts.register_handler(mqtt_handler)
     alerts.register_handler(home_assistant_handler)

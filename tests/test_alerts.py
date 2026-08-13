@@ -183,3 +183,48 @@ def test_alert_service_skips_no_motion_for_telegram(monkeypatch):
     service.register_handler(telegram_handler)
     service.routing = {"telegram": {"no_motion": False}}
     service.send("1", "entrada", "no_motion", "teste")
+
+
+def test_event_store_handler_records_event(monkeypatch):
+    from secur.alerts import event_store_handler
+
+    recorded = {}
+
+    class FakeStorage:
+        def add_event(self, camera_id, zone, event_type, details=None):
+            recorded["camera_id"] = camera_id
+            recorded["zone"] = zone
+            recorded["event_type"] = event_type
+            recorded["details"] = details
+
+    handler = event_store_handler(FakeStorage())
+    payload = {
+        "camera_id": "1",
+        "zone": "entrada",
+        "event_type": "motion_detected",
+        "details": "Movimento detectado",
+        "identity": "João",
+        "known": True,
+        "category": "person",
+    }
+    handler(payload)
+
+    assert recorded["camera_id"] == "1"
+    assert recorded["zone"] == "entrada"
+    assert recorded["event_type"] == "motion_detected"
+    assert recorded["details"] == "Movimento detectado"
+
+
+def test_alert_service_with_storage_registers_store_handler(monkeypatch):
+    recorded = []
+
+    class FakeStorage:
+        def add_event(self, camera_id, zone, event_type, details=None):
+            recorded.append((camera_id, zone, event_type, details))
+
+    service = AlertService(storage=FakeStorage())
+    service.send("1", "entrada", "no_motion", "Sem movimento")
+
+    assert len(recorded) == 1
+    assert recorded[0][0] == "1"
+    assert recorded[0][2] == "no_motion"

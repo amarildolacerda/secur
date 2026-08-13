@@ -5,9 +5,10 @@ from secur.storage import EventStorage
 
 
 @pytest.fixture
-def app():
-    app = create_app()
-    app.config.update({"TESTING": True})
+def app(tmp_path):
+    db_path = tmp_path / "test.db"
+    app = create_app(db_path=db_path)
+    app.config.update({"TESTING": True, "TEST_DB_PATH": str(db_path)})
     return app
 
 
@@ -18,7 +19,7 @@ def client(app):
 
 @pytest.fixture
 def storage(app):
-    return EventStorage()
+    return EventStorage(app.config.get("TEST_DB_PATH"))
 
 
 # ========== Zone CRUD ==========
@@ -145,8 +146,11 @@ def test_delete_zone_not_found(client):
 # ========== Alert zone classification ==========
 
 
-def test_home_assistant_fires_for_privativa_motion():
+def test_home_assistant_fires_for_privativa_motion(monkeypatch):
     from secur.alerts import home_assistant_handler
+
+    monkeypatch.setenv("HOME_ASSISTANT_TOKEN", "tok")
+    monkeypatch.setenv("HOME_ASSISTANT_URL", "http://ha")
 
     fired = []
 
@@ -176,8 +180,11 @@ def test_home_assistant_fires_for_privativa_motion():
         alerts_mod.requests.post = original
 
 
-def test_home_assistant_fires_for_seguranca_motion():
+def test_home_assistant_fires_for_seguranca_motion(monkeypatch):
     from secur.alerts import home_assistant_handler
+
+    monkeypatch.setenv("HOME_ASSISTANT_TOKEN", "tok")
+    monkeypatch.setenv("HOME_ASSISTANT_URL", "http://ha")
 
     fired = []
 
@@ -236,8 +243,11 @@ def test_home_assistant_skips_publica_motion():
         alerts_mod.requests.post = original
 
 
-def test_home_assistant_fires_object_detected_any_zone():
+def test_home_assistant_fires_object_detected_any_zone(monkeypatch):
     from secur.alerts import home_assistant_handler
+
+    monkeypatch.setenv("HOME_ASSISTANT_TOKEN", "tok")
+    monkeypatch.setenv("HOME_ASSISTANT_URL", "http://ha")
 
     fired = []
 

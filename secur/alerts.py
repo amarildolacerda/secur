@@ -11,8 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class AlertService:
-    def __init__(self):
+    def __init__(self, storage=None):
         self.handlers = []
+        if storage is not None:
+            self.register_handler(event_store_handler(storage))
 
     def register_handler(self, handler):
         self.handlers.append(handler)
@@ -40,6 +42,21 @@ class AlertService:
                 handler(payload)
             except Exception:
                 logger.exception("Alert handler failed: %s", handler.__name__)
+
+
+def event_store_handler(storage):
+    """Handler que grava o evento na tabela interna (dashboard). Nunca filtrado por routing."""
+    def handler(payload: Dict):
+        try:
+            storage.add_event(
+                payload.get("camera_id"),
+                payload.get("zone"),
+                payload.get("event_type"),
+                payload.get("details"),
+            )
+        except Exception:
+            logger.exception("Falha ao gravar evento na tabela interna")
+    return handler
 
 
 def telegram_handler(payload: Dict):
