@@ -5,8 +5,9 @@ from secur.camera import CameraStream
 
 
 @pytest.fixture
-def app():
-    app = create_app()
+def app(tmp_path):
+    db_path = tmp_path / "test.db"
+    app = create_app(db_path=db_path)
     app.config.update({"TESTING": True})
     return app
 

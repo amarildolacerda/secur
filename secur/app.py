@@ -18,9 +18,9 @@ except Exception:
     IdentityRecognizer = None
 
 
-def create_app(camera_manager=None):
+def create_app(camera_manager=None, db_path=None):
     app = Flask(__name__, template_folder="templates", static_folder="static")
-    storage = EventStorage()
+    storage = EventStorage(db_path) if db_path is not None else EventStorage()
     # recognizer_factory hook: tests or callers may set app.recognizer_factory = lambda storage: recognizer
     def _make_recognizer() -> Optional[object]:
         # Prefer the shared recognizer used by the camera workers so cache
