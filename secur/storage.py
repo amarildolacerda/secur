@@ -4,6 +4,7 @@ import threading
 import time
 import sys
 import os
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -86,6 +87,27 @@ class EventStorage:
                     cursor.execute("ALTER TABLE known_identities ADD COLUMN thumbnail_path TEXT")
             except Exception:
                 pass
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS camera_thumbnails (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    camera_id INTEGER NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    event_type TEXT,
+                    path TEXT NOT NULL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notification_routing (
+                    channel TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    PRIMARY KEY (channel, event_type)
+                )
+                """
+            )
             self.connection.commit()
 
     def add_event(self, camera_id: str, zone: str, event_type: str, details: str = None):
@@ -287,6 +309,108 @@ class EventStorage:
             cursor.execute("DELETE FROM known_identities WHERE id = ?", (identity_id,))
             self.connection.commit()
             return cursor.rowcount > 0
+
+    def add_camera_thumbnail(self, camera_id: int, path: str, event_type: str) -> int:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO camera_thumbnails (camera_id, timestamp, event_type, path) VALUES (?, ?, ?, ?)",
+                (camera_id, timestamp, event_type, path),
+            )
+            self.connection.commit()
+            return cursor.lastrowid
+
+    def list_camera_thumbnails(self, camera_id: int, limit: int = 20):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, timestamp, camera_id, event_type, path FROM camera_thumbnails "
+                "WHERE camera_id = ? ORDER BY id DESC LIMIT ?",
+                (camera_id, limit),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def prune_camera_thumbnails(self, camera_id: int, keep: int = 20):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, path FROM camera_thumbnails WHERE camera_id = ? ORDER BY id DESC LIMIT -1 OFFSET ?",
+                (camera_id, keep),
+            )
+            excess = [dict(row) for row in cursor.fetchall()]
+            for item in excess:
+                try:
+                    Path(item["path"]).unlink(missing_ok=True)
+                except Exception:
+                    logger.warning("Falha ao remover thumbnail %s", item["path"])
+                cursor.execute("DELETE FROM camera_thumbnails WHERE id = ?", (item["id"],))
+            self.connection.commit()
+
+    def remove_camera_thumbnails(self, camera_id: int):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT path FROM camera_thumbnails WHERE camera_id = ?", (camera_id,))
+            rows = cursor.fetchall()
+            for row in rows:
+                try:
+                    Path(row["path"]).unlink(missing_ok=True)
+                except Exception:
+                    logger.warning("Falha ao remover thumbnail %s", row["path"])
+            cursor.execute("DELETE FROM camera_thumbnails WHERE camera_id = ?", (camera_id,))
+            self.connection.commit()
+
+    def get_camera_thumbnail(self, thumb_id: int):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, camera_id, timestamp, event_type, path FROM camera_thumbnails WHERE id = ?",
+                (thumb_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_routing(self, channel: str) -> dict:
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT event_type, enabled FROM notification_routing WHERE channel = ?",
+                (channel,),
+            )
+            return {row["event_type"]: bool(row["enabled"]) for row in cursor.fetchall()}
+
+    def set_routing(self, channel: str, event_type: str, enabled: bool):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO notification_routing (channel, event_type, enabled) VALUES (?, ?, ?) "
+                "ON CONFLICT(channel, event_type) DO UPDATE SET enabled = excluded.enabled",
+                (channel, event_type, int(enabled)),
+            )
+            self.connection.commit()
+
+    def get_all_routing(self) -> dict:
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT channel, event_type, enabled FROM notification_routing")
+            routing = {}
+            for row in cursor.fetchall():
+                routing.setdefault(row["channel"], {})[row["event_type"]] = bool(row["enabled"])
+            return routing
+
+    def seed_default_routing(self, defaults: dict):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT COUNT(*) AS c FROM notification_routing")
+            if cursor.fetchone()["c"] > 0:
+                return
+            for channel, events in defaults.items():
+                for event_type, enabled in events.items():
+                    cursor.execute(
+                        "INSERT INTO notification_routing (channel, event_type, enabled) VALUES (?, ?, ?)",
+                        (channel, event_type, int(enabled)),
+                    )
+            self.connection.commit()
 
     def close(self):
         with self.lock:
