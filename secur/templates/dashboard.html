@@ -29,6 +29,10 @@
                 <span class="icon">&#x1F4CB;</span>
                 <span>Eventos</span>
             </button>
+            <button type="button" class="nav-link" data-section="notifications" id="nav-notifications">
+                <span class="icon">&#x1F514;</span>
+                <span>Notificações</span>
+            </button>
             <div class="nav-divider"></div>
             <div class="nav-group collapsed">
                 <button type="button" class="nav-group-head"  onclick="toggleCrudNav()">
@@ -235,6 +239,27 @@
                     </thead>
                     <tbody id="events-table"></tbody>
                 </table>
+            </section>
+
+            <section class="panel hidden-panel" id="notifications">
+                <div class="panel-header">
+                    <div>
+                        <h2>Configuração de notificações</h2>
+                        <p>Escolha quais tipos de evento são notificados em cada canal.</p>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Evento</th>
+                                <th>Categoria</th>
+                                <th id="notif-channel-headers"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="notifications-table-body"></tbody>
+                    </table>
+                </div>
             </section>
 
             <section class="panel hidden-panel" id="identities-management">
