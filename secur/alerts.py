@@ -5,6 +5,8 @@ import os
 import requests
 import paho.mqtt.publish as publish
 
+from .notifications import is_enabled
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,7 +18,7 @@ class AlertService:
         self.handlers.append(handler)
 
     def send(self, camera_id, zone, event_type, details=None, zone_classification=None,
-             identity=None, known=None, recognition_method=None, category=None):
+             identity=None, known=None, recognition_method=None, category=None, routing=None):
         payload = {
             "camera_id": camera_id,
             "zone": zone,
@@ -28,7 +30,12 @@ class AlertService:
             "recognition_method": recognition_method,
             "category": category,
         }
+        if routing is None:
+            routing = getattr(self, "routing", None)
         for handler in self.handlers:
+            channel = getattr(handler, "channel", None)
+            if channel is not None and routing is not None and not is_enabled(routing, channel, event_type):
+                continue
             try:
                 handler(payload)
             except Exception:
@@ -36,8 +43,6 @@ class AlertService:
 
 
 def telegram_handler(payload: Dict):
-    if payload.get("event_type") in ("snapshot_info", "identity_recognized", "unknown_detected"):
-        return
     api_token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -61,9 +66,10 @@ def telegram_handler(payload: Dict):
         logger.exception("Telegram alert failed for camera_id=%s", payload.get("camera_id"))
 
 
+telegram_handler.channel = "telegram"
+
+
 def mqtt_handler(payload: Dict):
-    if payload.get("event_type") in ("snapshot_info", "identity_recognized", "unknown_detected"):
-        return
     broker = os.getenv("MQTT_BROKER_URL", "192.168.1.12")
     port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
     username = os.getenv("MQTT_USERNAME", "kzuca")
@@ -132,9 +138,10 @@ def mqtt_handler(payload: Dict):
         logger.warning("MQTT alert failed (broker %s:%s): %s", broker, port, e)
 
 
+mqtt_handler.channel = "automation"
+
+
 def home_assistant_handler(payload: Dict):
-    if payload.get("event_type") in ("snapshot_info",):
-        return
     url = os.getenv("HOME_ASSISTANT_URL", "http://192.168.1.12:8123")
     token = os.getenv("HOME_ASSISTANT_TOKEN")
     event_type = os.getenv("HOME_ASSISTANT_EVENT_TYPE", "secur_alert")
@@ -168,6 +175,9 @@ def home_assistant_handler(payload: Dict):
         logger.warning("Home Assistant connection refused: %s", url)
     except Exception:
         logger.warning("Home Assistant event failed for event_type=%s", event_type)
+
+
+home_assistant_handler.channel = "automation"
 
 
 def _escape_markdown(text) -> str:

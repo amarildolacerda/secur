@@ -22,6 +22,7 @@ from .alerts import AlertService, telegram_handler, mqtt_handler, home_assistant
 from .app import create_app
 from .storage import EventStorage
 from .identity import IdentityRecognizer, decide_event, RECOGNITION_LABELS, build_recognizer
+from .notifications import DEFAULT_ROUTING
 
 logging.basicConfig(
     level=logging.INFO,
@@ -207,10 +208,12 @@ class CameraManager:
 
 def main():
     storage = EventStorage()
+    storage.seed_default_routing(DEFAULT_ROUTING)
     alerts = AlertService()
     alerts.register_handler(telegram_handler)
     alerts.register_handler(mqtt_handler)
     alerts.register_handler(home_assistant_handler)
+    alerts.routing = storage.get_all_routing()
 
     object_detector = ObjectDetector(
         model_path=DETECTOR_MODEL_PATH,
