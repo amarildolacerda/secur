@@ -296,6 +296,29 @@ def test_update_camera_mask_polygons(client, monkeypatch):
     )
     assert resp.status_code == 200
     assert resp.json["mask_polygons"] == polygons
+    # GET detail: mask_polygons persiste no round-trip
+    resp = client.get("/cameras")
+    assert resp.json[0]["mask_polygons"] == polygons
+
+
+def test_add_camera_rejects_malformed_mask_polygons(client, monkeypatch):
+    from secur.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+    bad_cases = [
+        [[{"x": 0}]],                       # falta y
+        [[["a", "b"]]],                     # pontos não-dict
+        [[{"x": "a", "y": 0}]],             # x não numérico
+        [[{"x": 0, "y": 0}, {"x": "b", "y": 5}]],  # y não numérico
+        [[{"x": True, "y": 0}]],            # bool não é numérico
+        [[]],                               # polígono vazio
+    ]
+    for bad in bad_cases:
+        response = client.post(
+            "/cameras",
+            data=json.dumps({"name": "Cam", "source": "valid-source", "mask_polygons": bad}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400, f"deveria rejeitar mask_polygons={bad}"
 
 
 def test_snapshot_route_applies_mask_polygons(client, monkeypatch):

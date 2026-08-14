@@ -28,6 +28,32 @@ def _is_valid_schedule(schedule):
         return False
     return True
 
+
+def _validate_mask_polygons(mask_polygons):
+    """Valida mask_polygons (mesmo formato de exclusion_zones).
+
+    Retorna None se válido, ou uma mensagem de erro. Polígonos malformados
+    (ponto sem y, ponto não-dict, x/y não numérico) quebrariam
+    apply_mask_blur no worker (frame_for_storage, fora de try/except) —
+    matando a thread da câmera silenciosamente.
+    """
+    if mask_polygons is None:
+        return None
+    if not isinstance(mask_polygons, list):
+        return "mask_polygons deve ser uma lista de polígonos"
+    for poly in mask_polygons:
+        if not isinstance(poly, list) or not poly:
+            return "mask_polygons deve ser uma lista de polígonos (cada polígono é uma lista não vazia de pontos)"
+        for point in poly:
+            if not isinstance(point, dict):
+                return "cada ponto de mask_polygons deve ser um objeto com x e y"
+            x = point.get("x")
+            y = point.get("y")
+            if (not isinstance(x, (int, float)) or isinstance(x, bool)
+                    or not isinstance(y, (int, float)) or isinstance(y, bool)):
+                return "cada ponto de mask_polygons deve ter x e y numéricos"
+    return None
+
 try:
     from .identity import build_recognizer, IdentityRecognizer
 except Exception:
@@ -249,8 +275,9 @@ def create_app(camera_manager=None, db_path=None):
             return jsonify({"error": "alert_classes deve ser uma lista"}), 400
         if exclusion_zones is not None and not isinstance(exclusion_zones, list):
             return jsonify({"error": "exclusion_zones deve ser uma lista de polígonos"}), 400
-        if mask_polygons is not None and not isinstance(mask_polygons, list):
-            return jsonify({"error": "mask_polygons deve ser uma lista de polígonos"}), 400
+        mask_err = _validate_mask_polygons(mask_polygons)
+        if mask_err:
+            return jsonify({"error": mask_err}), 400
 
         if not CameraStream.validate_source(source):
             return jsonify({"error": "source inválido ou stream inacessível"}), 400
@@ -283,8 +310,9 @@ def create_app(camera_manager=None, db_path=None):
             return jsonify({"error": "alert_classes deve ser uma lista"}), 400
         if exclusion_zones is not None and not isinstance(exclusion_zones, list):
             return jsonify({"error": "exclusion_zones deve ser uma lista de polígonos"}), 400
-        if mask_polygons is not None and not isinstance(mask_polygons, list):
-            return jsonify({"error": "mask_polygons deve ser uma lista de polígonos"}), 400
+        mask_err = _validate_mask_polygons(mask_polygons)
+        if mask_err:
+            return jsonify({"error": mask_err}), 400
 
         if not CameraStream.validate_source(source):
             return jsonify({"error": "source inválido ou stream inacessível"}), 400
