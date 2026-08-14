@@ -30,6 +30,7 @@ from .camera import CameraStream
 from .detector import ObjectDetector
 from .motion import MotionDetector
 from .geometry import bbox_center_in_polygons
+from .masking import frame_for_storage
 from .alerts import AlertService, telegram_handler, mqtt_handler, home_assistant_handler, mqtt_register_device
 from .app import create_app
 from .storage import EventStorage
@@ -94,6 +95,10 @@ class CameraWorker:
                 time.sleep(1)
                 continue
 
+            # Máscara de privacidade: o que é salvo/exibido (thumbnail, clipe,
+            # snapshot) usa o frame mascarado; a detecção abaixo usa `frame` original.
+            storage_frame = frame_for_storage(frame, self.camera.get("mask_polygons"))
+
             now = time.time()
 
             # Sample the pre-event buffer at CLIP_FPS cadence so the window
@@ -102,7 +107,7 @@ class CameraWorker:
             # (~46MB at 640x480 per camera) to keep the worker footprint low.
             if now - last_buffer_push >= 1.0 / CLIP_FPS:
                 last_buffer_push = now
-                ok, jpg = cv2.imencode(".jpg", frame)
+                ok, jpg = cv2.imencode(".jpg", storage_frame)
                 if ok:
                     frame_buffer.push(jpg)
 
@@ -116,7 +121,7 @@ class CameraWorker:
                         # matching the pre-event buffer sampling.
                         if now - last_clip_write >= 1.0 / CLIP_FPS:
                             last_clip_write = now
-                            clip_writer.write(frame)
+                            clip_writer.write(storage_frame)
                             clip_frames_written += 1
                     else:
                         clip_writer.release()
@@ -209,7 +214,7 @@ class CameraWorker:
                                 cam_dir.mkdir(parents=True, exist_ok=True)
                                 filename = f"{int(time.time() * 1000)}.jpg"
                                 path = cam_dir / filename
-                                ok, jpg = cv2.imencode(".jpg", frame)
+                                ok, jpg = cv2.imencode(".jpg", storage_frame)
                                 if ok:
                                     path.write_bytes(jpg.tobytes())
                                     self.storage.add_camera_thumbnail(self.camera["id"], str(path), event_type)
@@ -294,7 +299,7 @@ class CameraWorker:
                         cam_dir.mkdir(parents=True, exist_ok=True)
                         filename = f"{int(now_thumb * 1000)}.jpg"
                         path = cam_dir / filename
-                        ok, jpg = cv2.imencode(".jpg", frame)
+                        ok, jpg = cv2.imencode(".jpg", storage_frame)
                         if ok:
                             path.write_bytes(jpg.tobytes())
                             self.storage.add_camera_thumbnail(self.camera["id"], str(path), event_type)
