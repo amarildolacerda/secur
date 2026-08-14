@@ -243,6 +243,45 @@ def test_home_assistant_skips_publica_motion():
         alerts_mod.requests.post = original
 
 
+def test_add_zone_with_schedule(client):
+    response = client.post(
+        "/zones",
+        data=json.dumps({"name": "Sala", "classification": "privativa",
+                         "schedule": {"start": "22:00", "end": "06:00"}}),
+        content_type="application/json",
+    )
+    assert response.status_code == 201
+    assert response.json["schedule"] == {"start": "22:00", "end": "06:00"}
+
+
+def test_add_zone_invalid_schedule(client):
+    response = client.post(
+        "/zones",
+        data=json.dumps({"name": "Sala", "classification": "privativa",
+                         "schedule": {"start": "25:00", "end": "06:00"}}),
+        content_type="application/json",
+    )
+    assert response.status_code == 400
+
+
+def test_update_zone_with_schedule(client):
+    res = client.post(
+        "/zones",
+        data=json.dumps({"name": "Z", "classification": "pública"}),
+        content_type="application/json",
+    )
+    zone_id = res.json["id"]
+
+    response = client.put(
+        f"/zones/{zone_id}",
+        data=json.dumps({"name": "Z", "classification": "privativa",
+                         "schedule": {"start": "08:00", "end": "18:00"}}),
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    assert response.json["schedule"] == {"start": "08:00", "end": "18:00"}
+
+
 def test_home_assistant_fires_object_detected_any_zone(monkeypatch):
     from secur.alerts import home_assistant_handler
 

@@ -130,3 +130,37 @@ def test_notifications_put_invalid(client):
     assert resp.status_code == 400
     resp = client.put("/api/notifications/routing", json={"channel": "telegram", "event_type": "nope", "enabled": True})
     assert resp.status_code == 400
+
+
+def test_add_camera_with_alert_classes(client, monkeypatch):
+    from secur.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+    response = client.post(
+        "/cameras",
+        data=json.dumps({
+            "name": "Cam", "source": "valid-source", "zone": "entrada",
+            "alert_classes": ["person", "car"],
+            "exclusion_zones": [[{"x": 0, "y": 0}, {"x": 100, "y": 0}, {"x": 100, "y": 100}]],
+        }),
+        content_type="application/json",
+    )
+    assert response.status_code == 201
+    assert response.json["alert_classes"] == ["person", "car"]
+    assert response.json["exclusion_zones"] == [[{"x": 0, "y": 0}, {"x": 100, "y": 0}, {"x": 100, "y": 100}]]
+
+
+def test_add_camera_rejects_invalid_alert_classes(client, monkeypatch):
+    from secur.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+    response = client.post(
+        "/cameras",
+        data=json.dumps({"name": "Cam", "source": "valid-source", "alert_classes": "person"}),
+        content_type="application/json",
+    )
+    assert response.status_code == 400
+
+
+def test_api_classes(client):
+    response = client.get("/api/classes")
+    assert response.status_code == 200
+    assert "person" in response.json["classes"]

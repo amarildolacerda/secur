@@ -1,5 +1,6 @@
 import cv2
 import os
+import time
 from flask import Flask, jsonify, render_template, request, Response, send_file
 from .camera import CameraStream
 from .storage import EventStorage
@@ -10,6 +11,21 @@ from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _is_valid_schedule(schedule):
+    if not isinstance(schedule, dict):
+        return False
+    start = schedule.get("start")
+    end = schedule.get("end")
+    if not isinstance(start, str) or not isinstance(end, str):
+        return False
+    try:
+        time.strptime(start, "%H:%M")
+        time.strptime(end, "%H:%M")
+    except ValueError:
+        return False
+    return True
 
 try:
     from .identity import build_recognizer, IdentityRecognizer
@@ -182,15 +198,25 @@ def create_app(camera_manager=None, db_path=None):
         name = payload.get("name")
         source = payload.get("source")
         zone = payload.get("zone")
+        alert_classes = payload.get("alert_classes")
+        exclusion_zones = payload.get("exclusion_zones")
 
         if not name or not source:
             return jsonify({"error": "name and source são obrigatórios"}), 400
 
+        if alert_classes is not None and not isinstance(alert_classes, list):
+            return jsonify({"error": "alert_classes deve ser uma lista"}), 400
+        if exclusion_zones is not None and not isinstance(exclusion_zones, list):
+            return jsonify({"error": "exclusion_zones deve ser uma lista de polígonos"}), 400
+
         if not CameraStream.validate_source(source):
             return jsonify({"error": "source inválido ou stream inacessível"}), 400
 
-        camera_id = storage.add_camera(name, source, zone)
-        return jsonify({"id": camera_id, "name": name, "source": source, "zone": zone}), 201
+        camera_id = storage.add_camera(name, source, zone, alert_classes=alert_classes, exclusion_zones=exclusion_zones)
+        return jsonify({
+            "id": camera_id, "name": name, "source": source, "zone": zone,
+            "alert_classes": alert_classes, "exclusion_zones": exclusion_zones,
+        }), 201
 
     @app.route("/cameras/<int:camera_id>", methods=["PUT"])
     def update_camera(camera_id):
@@ -202,14 +228,21 @@ def create_app(camera_manager=None, db_path=None):
         name = payload.get("name")
         source = payload.get("source")
         zone = payload.get("zone")
+        alert_classes = payload.get("alert_classes")
+        exclusion_zones = payload.get("exclusion_zones")
 
         if not name or not source:
             return jsonify({"error": "name and source são obrigatórios"}), 400
 
+        if alert_classes is not None and not isinstance(alert_classes, list):
+            return jsonify({"error": "alert_classes deve ser uma lista"}), 400
+        if exclusion_zones is not None and not isinstance(exclusion_zones, list):
+            return jsonify({"error": "exclusion_zones deve ser uma lista de polígonos"}), 400
+
         if not CameraStream.validate_source(source):
             return jsonify({"error": "source inválido ou stream inacessível"}), 400
 
-        storage.update_camera(camera_id, name, source, zone)
+        storage.update_camera(camera_id, name, source, zone, alert_classes=alert_classes, exclusion_zones=exclusion_zones)
         updated_camera = storage.get_camera(camera_id)
         return jsonify(updated_camera), 200
 
@@ -255,6 +288,11 @@ def create_app(camera_manager=None, db_path=None):
             return jsonify({"error": "evento inválido"}), 400
         storage.set_routing(channel, event_type, bool(enabled))
         return jsonify({"status": "ok"}), 200
+
+    @app.route("/api/classes")
+    def classes():
+        from .config import DETECTOR_CLASSES
+        return jsonify({"classes": DETECTOR_CLASSES})
 
 
     # ========== Identity endpoints ==========
@@ -416,6 +454,7 @@ def create_app(camera_manager=None, db_path=None):
         payload = request.get_json() or {}
         name = payload.get("name")
         classification = payload.get("classification", "pública")
+        schedule = payload.get("schedule")
 
         if not name:
             return jsonify({"error": "name é obrigatório"}), 400
@@ -423,12 +462,15 @@ def create_app(camera_manager=None, db_path=None):
         if classification not in ('privativa', 'segurança', 'pública'):
             return jsonify({"error": "classification deve ser: privativa, segurança ou pública"}), 400
 
+        if schedule is not None and not _is_valid_schedule(schedule):
+            return jsonify({"error": "schedule deve ser {\"start\": \"HH:MM\", \"end\": \"HH:MM\"}"}), 400
+
         existing = storage.list_zones()
         if any(z["name"] == name for z in existing):
             return jsonify({"error": "Zona com esse nome já existe"}), 400
 
-        zone_id = storage.add_zone(name, classification)
-        return jsonify({"id": zone_id, "name": name, "classification": classification}), 201
+        zone_id = storage.add_zone(name, classification, schedule=schedule)
+        return jsonify({"id": zone_id, "name": name, "classification": classification, "schedule": schedule}), 201
 
     @app.route("/zones/<int:zone_id>", methods=["PUT"])
     def update_zone(zone_id):
@@ -439,6 +481,7 @@ def create_app(camera_manager=None, db_path=None):
         payload = request.get_json() or {}
         name = payload.get("name")
         classification = payload.get("classification")
+        schedule = payload.get("schedule")
 
         if not name or not classification:
             return jsonify({"error": "name e classification são obrigatórios"}), 400
@@ -446,7 +489,10 @@ def create_app(camera_manager=None, db_path=None):
         if classification not in ('privativa', 'segurança', 'pública'):
             return jsonify({"error": "classification deve ser: privativa, segurança ou pública"}), 400
 
-        storage.update_zone(zone_id, name, classification)
+        if schedule is not None and not _is_valid_schedule(schedule):
+            return jsonify({"error": "schedule deve ser {\"start\": \"HH:MM\", \"end\": \"HH:MM\"}"}), 400
+
+        storage.update_zone(zone_id, name, classification, schedule=schedule)
         updated_zone = storage.get_zone(zone_id)
         return jsonify(updated_zone), 200
 
