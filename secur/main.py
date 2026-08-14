@@ -19,6 +19,11 @@ from .config import (
     THUMBNAILS_DIR,
     THUMBNAIL_INTERVAL_SECONDS,
     THUMBNAIL_HISTORY_SIZE,
+    CLIP_PRE_SECONDS,
+    CLIP_POST_SECONDS,
+    CLIP_FPS,
+    CLIPS_DIR,
+    CLIP_HISTORY_SIZE,
 )
 from .camera import CameraStream
 from .detector import ObjectDetector
@@ -73,12 +78,36 @@ class CameraWorker:
         no_motion_alerted = False
         last_alert_time = {}
         last_thumb_time = None
+        frame_buffer = CircularFrameBuffer(maxlen=max(1, int(CLIP_PRE_SECONDS * CLIP_FPS)))
+        clip_writer = None
+        clip_end_time = 0.0
+        clip_event_id = None
+        clip_path = None
 
         while not self.stop_event.is_set():
             frame = camera_stream.read()
             if frame is None:
                 time.sleep(1)
                 continue
+
+            frame_buffer.push(frame)
+
+            # Finalize clip recording after the post-event window
+            if clip_writer is not None:
+                if time.time() < clip_end_time:
+                    clip_writer.write(frame)
+                else:
+                    clip_writer.release()
+                    clip_writer = None
+                    if clip_event_id is not None:
+                        try:
+                            self.storage.update_event_clip_path(clip_event_id, clip_path)
+                        except Exception:
+                            logger.warning("Falha ao linkar clipe ao evento (câmera %s)", self.camera.get("name"))
+                    try:
+                        self.storage.prune_event_clips(self.camera["id"], keep=CLIP_HISTORY_SIZE)
+                    except Exception:
+                        logger.warning("Falha ao podar clipes (câmera %s)", self.camera.get("name"))
 
             # Look up zone classification and schedule (once)
             zone_name = self.camera.get("zone")
@@ -127,6 +156,22 @@ class CameraWorker:
                             self.camera.get("name"),
                         )
                     else:
+                        thumb_path = None
+                        if should_capture_thumbnail(last_thumb_time, time.time(), THUMBNAIL_INTERVAL_SECONDS):
+                            try:
+                                cam_dir = THUMBNAILS_DIR / f"cam{self.camera['id']}"
+                                cam_dir.mkdir(parents=True, exist_ok=True)
+                                filename = f"{int(time.time() * 1000)}.jpg"
+                                path = cam_dir / filename
+                                ok, jpg = cv2.imencode(".jpg", frame)
+                                if ok:
+                                    path.write_bytes(jpg.tobytes())
+                                    self.storage.add_camera_thumbnail(self.camera["id"], str(path), event_type)
+                                    self.storage.prune_camera_thumbnails(self.camera["id"], keep=THUMBNAIL_HISTORY_SIZE)
+                                    last_thumb_time = time.time()
+                                    thumb_path = str(path)
+                            except Exception:
+                                logger.warning("Falha ao capturar thumbnail (câmera %s)", self.camera.get("name"))
                         now = time.time()
                         if not is_within_schedule(zone_schedule, now):
                             logger.debug(
@@ -135,11 +180,31 @@ class CameraWorker:
                             )
                         elif now - last_alert_time.get(event_type, 0.0) >= get_cooldown_for_event(event_type):
                             last_alert_time[event_type] = now
-                            self.alerts.send(
+                            event_id = self.alerts.send(
                                 self.camera["id"], zone_name, event_type, details, zone_classification,
                                 identity=identity_name, known=known, category=category,
                                 recognition_method=identity_info.get("method") if identity_info else None,
+                                thumbnail_path=thumb_path,
                             )
+                            # Start clip recording: pre-event buffer + post-event frames
+                            try:
+                                cam_dir = CLIPS_DIR / f"cam{self.camera['id']}"
+                                cam_dir.mkdir(parents=True, exist_ok=True)
+                                clip_path = cam_dir / f"{int(now * 1000)}.mp4"
+                                writer = cv2.VideoWriter(
+                                    str(clip_path),
+                                    cv2.VideoWriter_fourcc(*"mp4v"),
+                                    CLIP_FPS,
+                                    (frame.shape[1], frame.shape[0]),
+                                )
+                                for buf_frame in frame_buffer.frames():
+                                    writer.write(buf_frame)
+                                clip_writer = writer
+                                clip_end_time = now + CLIP_POST_SECONDS
+                                clip_event_id = event_id
+                                self.storage.add_event_clip(self.camera["id"], event_id, str(clip_path), CLIP_PRE_SECONDS + CLIP_POST_SECONDS)
+                            except Exception:
+                                logger.warning("Falha ao iniciar gravação de clipe (câmera %s)", self.camera.get("name"))
                         else:
                             logger.debug(
                                 "Evento suprimido (cooldown %ss) câmera=%s evento=%s",
@@ -237,6 +302,22 @@ def is_within_schedule(schedule, now=None):
 def get_cooldown_for_event(event_type):
     """Cooldown específico por evento, com fallback para o global."""
     return ALERT_COOLDOWN_BY_EVENT.get(event_type, ALERT_COOLDOWN_SECONDS)
+
+
+class CircularFrameBuffer:
+    """Buffer circular de frames (janela pré-evento). Descarta o mais antigo."""
+
+    def __init__(self, maxlen: int):
+        self.maxlen = maxlen
+        self._items = []
+
+    def push(self, frame):
+        self._items.append(frame)
+        if len(self._items) > self.maxlen:
+            self._items.pop(0)
+
+    def frames(self):
+        return list(self._items)
 
 
 def should_capture_thumbnail(last_thumb_time, now, interval):

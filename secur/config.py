@@ -19,7 +19,7 @@ FRAME_WAIT_SECONDS = float(os.getenv("FRAME_WAIT_SECONDS", "0.1"))
 # Send a "sem movimento" alert after this many seconds without any occurrence (per camera)
 NO_MOTION_ALERT_SECONDS = float(os.getenv("NO_MOTION_ALERT_SECONDS", "60"))
 # Suppress repeated events of the same type within this window (per camera)
-ALERT_COOLDOWN_SECONDS = float(os.getenv("ALERT_COOLDOWN_SECONDS", "60"))
+ALERT_COOLDOWN_SECONDS = float(os.getenv("ALERT_COOLDOWN_SECONDS", "180"))
 # Cooldown específico por tipo de evento (fallback: ALERT_COOLDOWN_SECONDS)
 ALERT_COOLDOWN_BY_EVENT = {
     "intruder_detected": float(os.getenv("ALERT_COOLDOWN_INTRUDER", "30")),
@@ -63,3 +63,10 @@ THUMBNAILS_DIR = DATA_DIR / "thumbnails"
 THUMBNAILS_DIR.mkdir(exist_ok=True)
 THUMBNAIL_INTERVAL_SECONDS = float(os.getenv("THUMBNAIL_INTERVAL_SECONDS", "20"))
 THUMBNAIL_HISTORY_SIZE = int(os.getenv("THUMBNAIL_HISTORY_SIZE", "30"))
+
+CLIP_PRE_SECONDS = float(os.getenv("CLIP_PRE_SECONDS", "10"))
+CLIP_POST_SECONDS = float(os.getenv("CLIP_POST_SECONDS", "10"))
+CLIP_FPS = int(os.getenv("CLIP_FPS", "5"))
+CLIPS_DIR = DATA_DIR / "clips"
+CLIPS_DIR.mkdir(exist_ok=True)
+CLIP_HISTORY_SIZE = int(os.getenv("CLIP_HISTORY_SIZE", "20"))

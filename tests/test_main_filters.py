@@ -55,3 +55,17 @@ def test_get_cooldown_for_event_fallback():
 def test_get_cooldown_for_event_specific():
     from secur.config import ALERT_COOLDOWN_BY_EVENT
     assert get_cooldown_for_event("intruder_detected") == ALERT_COOLDOWN_BY_EVENT["intruder_detected"]
+
+
+def test_circular_frame_buffer_keeps_newest():
+    from secur.main import CircularFrameBuffer
+    buf = CircularFrameBuffer(maxlen=3)
+    for i in range(5):
+        buf.push(i)
+    assert buf.frames() == [2, 3, 4]
+
+
+def test_circular_frame_buffer_empty():
+    from secur.main import CircularFrameBuffer
+    buf = CircularFrameBuffer(maxlen=3)
+    assert buf.frames() == []
