@@ -1,6 +1,7 @@
 import json
 import os
 import pytest
+import requests
 from secur.alerts import AlertService, telegram_handler, mqtt_handler, home_assistant_handler
 from secur.notifications import CHANNELS, EVENT_TYPES, DEFAULT_ROUTING, is_enabled
 
@@ -293,3 +294,94 @@ def test_format_message_minimal():
     assert "Sem detalhes adicionais" in text
     assert "privativa" not in text
     assert "Identidade" not in text
+
+
+def test_telegram_handler_sends_photo(monkeypatch, tmp_path):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token123")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat123")
+    thumb = tmp_path / "thumb.jpg"
+    thumb.write_bytes(b"jpegdata")
+
+    class DummyResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+    called = {}
+
+    def fake_post(url, data=None, files=None, timeout=None):
+        called["url"] = url
+        called["data"] = data
+        called["files"] = files
+        called["timeout"] = timeout
+        return DummyResponse()
+
+    monkeypatch.setattr("secur.alerts.requests.post", fake_post)
+    telegram_handler({
+        "camera_id": "1", "zone": "entrada", "event_type": "motion_detected",
+        "details": "detalhe", "thumbnail_path": str(thumb),
+    })
+
+    assert called["url"].startswith("https://api.telegram.org/bottoken123/sendPhoto")
+    assert called["data"]["chat_id"] == "chat123"
+    assert "photo" in called["files"]
+    assert called["timeout"] == 10
+
+
+def test_telegram_handler_falls_back_to_text_when_thumbnail_missing(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token123")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat123")
+
+    class DummyResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+    called = {}
+
+    def fake_post(url, data=None, files=None, timeout=None):
+        called["url"] = url
+        called["data"] = data
+        called["files"] = files
+        return DummyResponse()
+
+    monkeypatch.setattr("secur.alerts.requests.post", fake_post)
+    telegram_handler({
+        "camera_id": "1", "zone": "entrada", "event_type": "motion_detected",
+        "details": "detalhe", "thumbnail_path": "/tmp/nao-existe.jpg",
+    })
+
+    assert called["url"].startswith("https://api.telegram.org/bottoken123/sendMessage")
+    assert called["files"] is None
+
+
+def test_telegram_handler_photo_failure_falls_back_to_text(monkeypatch, tmp_path):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token123")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat123")
+    thumb = tmp_path / "thumb.jpg"
+    thumb.write_bytes(b"jpegdata")
+
+    class DummyResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+    calls = []
+
+    def fake_post(url, data=None, files=None, timeout=None):
+        calls.append(url)
+        if len(calls) == 1:
+            raise requests.exceptions.ConnectionError("upload failed")
+        return DummyResponse()
+
+    monkeypatch.setattr("secur.alerts.requests.post", fake_post)
+    telegram_handler({
+        "camera_id": "1", "zone": "entrada", "event_type": "motion_detected",
+        "details": "detalhe", "thumbnail_path": str(thumb),
+    })
+
+    assert len(calls) == 2
+    assert calls[1].startswith("https://api.telegram.org/bottoken123/sendMessage")

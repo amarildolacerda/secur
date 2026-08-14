@@ -76,6 +76,19 @@ def telegram_handler(payload: Dict):
         return
 
     text = _format_message(payload)
+    thumbnail_path = payload.get("thumbnail_path")
+    if thumbnail_path and os.path.exists(thumbnail_path):
+        url = f"https://api.telegram.org/bot{api_token}/sendPhoto"
+        data = {"chat_id": chat_id, "caption": text, "parse_mode": "Markdown"}
+        try:
+            with open(thumbnail_path, "rb") as f:
+                response = requests.post(url, data=data, files={"photo": f}, timeout=10)
+            response.raise_for_status()
+            logger.info("Telegram photo sent for camera_id=%s event=%s", payload.get("camera_id"), payload.get("event_type"))
+            return
+        except Exception:
+            logger.exception("Telegram photo failed, falling back to text for camera_id=%s", payload.get("camera_id"))
+
     url = f"https://api.telegram.org/bot{api_token}/sendMessage"
     data = {
         "chat_id": chat_id,
