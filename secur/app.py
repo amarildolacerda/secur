@@ -164,6 +164,39 @@ def create_app(camera_manager=None, db_path=None):
             return jsonify({"error": "Thumbnail não encontrado"}), 404
         return send_file(path, mimetype="image/jpeg")
 
+    @app.route("/camera/<int:camera_id>/clips")
+    def camera_clips(camera_id):
+        camera = storage.get_camera(camera_id)
+        if not camera:
+            return jsonify({"error": "Câmera não encontrada"}), 404
+        items = storage.list_event_clips(camera_id, limit=20)
+        out = []
+        for it in items:
+            out.append({
+                "id": it["id"],
+                "timestamp": it["timestamp"],
+                "duration_s": it["duration_s"],
+                "url": f"/clips/{it['id']}/video",
+            })
+        return jsonify(out)
+
+    @app.route("/clips/<int:clip_id>")
+    def clip_metadata(clip_id):
+        item = storage.get_event_clip(clip_id)
+        if not item:
+            return jsonify({"error": "Clipe não encontrado"}), 404
+        return jsonify(item)
+
+    @app.route("/clips/<int:clip_id>/video")
+    def clip_video(clip_id):
+        item = storage.get_event_clip(clip_id)
+        if not item:
+            return jsonify({"error": "Clipe não encontrado"}), 404
+        path = item["path"]
+        if not os.path.exists(path):
+            return jsonify({"error": "Clipe não encontrado"}), 404
+        return send_file(path, mimetype="video/mp4")
+
     @app.route("/docs")
     def docs():
         api_docs = [
@@ -183,6 +216,9 @@ def create_app(camera_manager=None, db_path=None):
             {"path": "/events", "method": "GET", "description": "Recent event history"},
             {"path": "/camera/<id>/thumbnails", "method": "GET", "description": "Lista os últimos thumbnails da câmera"},
             {"path": "/thumbnails/<id>/image", "method": "GET", "description": "Imagem JPEG de um thumbnail"},
+            {"path": "/camera/<id>/clips", "method": "GET", "description": "Lista os últimos clipes de vídeo da câmera"},
+            {"path": "/clips/<id>", "method": "GET", "description": "Metadados de um clipe de vídeo"},
+            {"path": "/clips/<id>/video", "method": "GET", "description": "Vídeo MP4 de um clipe"},
             {"path": "/api/notifications", "method": "GET", "description": "Canais, eventos e routing de notificações"},
             {"path": "/api/notifications/routing", "method": "PUT", "description": "Atualiza routing de um evento em um canal"},
             {"path": "/api/classes", "method": "GET", "description": "Lista de classes de objetos detectáveis (filtro por câmera)"},

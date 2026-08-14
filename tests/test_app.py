@@ -164,3 +164,29 @@ def test_api_classes(client):
     response = client.get("/api/classes")
     assert response.status_code == 200
     assert "person" in response.json["classes"]
+
+
+def test_camera_clips_route(client, monkeypatch):
+    from secur.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+    resp = client.post("/cameras", json={"name": "Cam", "source": "source://x", "zone": "entrada"})
+    cam_id = resp.json["id"]
+
+    resp = client.get(f"/camera/{cam_id}/clips")
+    assert resp.status_code == 200
+    assert resp.json == []
+
+
+def test_camera_clips_route_404(client):
+    resp = client.get("/camera/999/clips")
+    assert resp.status_code == 404
+
+
+def test_clip_metadata_route_404(client):
+    resp = client.get("/clips/999")
+    assert resp.status_code == 404
+
+
+def test_clip_video_route_404(client):
+    resp = client.get("/clips/999/video")
+    assert resp.status_code == 404
