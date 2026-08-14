@@ -227,11 +227,26 @@ def _format_message(payload: Dict) -> str:
         f"*Evento:* {_escape_markdown(event_type)}\n"
         f"*Descrição:* {_escape_markdown(details)}"
     )
+    zone_classification = payload.get("zone_classification")
+    if zone_classification:
+        message += f"\n*Classificação:* {_escape_markdown(zone_classification)}"
     if identity:
         message += f"\n*Identidade:* {_escape_markdown(identity)}"
+    known = payload.get("known")
+    if known is not None:
+        message += f"\n*Conhecido:* {_escape_markdown('sim' if known else 'não')}"
+    recognition_method = payload.get("recognition_method")
+    if recognition_method:
+        message += f"\n*Método:* {_escape_markdown(recognition_method)}"
     category = payload.get("category")
     if category:
         message += f"\n*Categoria:* {_escape_markdown(category)}"
+    thumbnail_path = payload.get("thumbnail_path")
+    if thumbnail_path:
+        message += f"\n*Snapshot:* {thumbnail_path}"
+    clip_path = payload.get("clip_path")
+    if clip_path:
+        message += f"\n*Clipe:* {clip_path}"
     return message
 
 

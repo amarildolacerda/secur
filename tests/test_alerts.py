@@ -261,3 +261,35 @@ def test_alert_service_returns_none_without_store_handler():
     service = AlertService()
     service.register_handler(lambda payload: None)
     assert service.send("1", "entrada", "motion_detected") is None
+
+
+def test_format_message_full_context():
+    from secur.alerts import _format_message
+    payload = {
+        "camera_id": "1",
+        "zone": "Sala",
+        "event_type": "intruder_detected",
+        "details": "Pessoa detectada",
+        "zone_classification": "privativa",
+        "identity": "João",
+        "known": True,
+        "recognition_method": "face",
+        "category": "person",
+        "thumbnail_path": "/tmp/thumb.jpg",
+        "clip_path": "/tmp/clip.mp4",
+    }
+    text = _format_message(payload)
+    assert "privativa" in text
+    assert "João" in text
+    assert "face" in text
+    assert "person" in text
+    assert "thumb.jpg" in text
+    assert "clip.mp4" in text
+
+
+def test_format_message_minimal():
+    from secur.alerts import _format_message
+    text = _format_message({"camera_id": "1", "zone": "entrada", "event_type": "motion_detected"})
+    assert "Sem detalhes adicionais" in text
+    assert "privativa" not in text
+    assert "Identidade" not in text
