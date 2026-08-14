@@ -23,6 +23,7 @@ from .config import (
 from .camera import CameraStream
 from .detector import ObjectDetector
 from .motion import MotionDetector
+from .geometry import bbox_center_in_polygons
 from .alerts import AlertService, telegram_handler, mqtt_handler, home_assistant_handler, mqtt_register_device
 from .app import create_app
 from .storage import EventStorage
@@ -79,22 +80,29 @@ class CameraWorker:
                 time.sleep(1)
                 continue
 
-            # Look up zone classification (once)
+            # Look up zone classification and schedule (once)
             zone_name = self.camera.get("zone")
             zone_classification = None
+            zone_schedule = None
             if zone_name:
                 zones = self.storage.list_zones()
                 zone_obj = next((z for z in zones if z["name"] == zone_name), None)
                 if zone_obj:
                     zone_classification = zone_obj.get("classification")
+                    zone_schedule = zone_obj.get("schedule")
 
-            motion_detected = motion_detector.detect(frame)
+            exclusion_polygons = self.camera.get("exclusion_zones") or []
+            motion_detected = motion_detector.detect(frame, exclusion_polygons=exclusion_polygons)
             if motion_detected:
                 last_motion_time = time.time()
                 no_motion_alerted = False
 
                 try:
                     detections = self.object_detector.detect(frame)
+                    detections = filter_detections_by_classes(detections, self.camera.get("alert_classes"))
+                    if exclusion_polygons:
+                        detections = [d for d in detections if not bbox_center_in_polygons(d["bbox"], exclusion_polygons)]
+
                     identity_info = None
                     identity_label = None
                     if detections and self.identity_recognizer is not None:
@@ -112,19 +120,31 @@ class CameraWorker:
                         detections, identity_info, zone_classification, self.camera["name"], identity_label
                     )
 
-                    now = time.time()
-                    if now - last_alert_time.get(event_type, 0.0) >= ALERT_COOLDOWN_SECONDS:
-                        last_alert_time[event_type] = now
-                        self.alerts.send(
-                            self.camera["id"], zone_name, event_type, details, zone_classification,
-                            identity=identity_name, known=known, category=category,
-                            recognition_method=identity_info.get("method") if identity_info else None,
+                    alert_classes = self.camera.get("alert_classes")
+                    if alert_classes and not detections:
+                        logger.debug(
+                            "Evento suprimido (filtro de classes) câmera=%s",
+                            self.camera.get("name"),
                         )
                     else:
-                        logger.debug(
-                            "Evento suprimido (cooldown %ss) câmera=%s evento=%s",
-                            ALERT_COOLDOWN_SECONDS, self.camera.get("name"), event_type,
-                        )
+                        now = time.time()
+                        if not is_within_schedule(zone_schedule, now):
+                            logger.debug(
+                                "Evento suprimido (fora do horário) câmera=%s evento=%s",
+                                self.camera.get("name"), event_type,
+                            )
+                        elif now - last_alert_time.get(event_type, 0.0) >= get_cooldown_for_event(event_type):
+                            last_alert_time[event_type] = now
+                            self.alerts.send(
+                                self.camera["id"], zone_name, event_type, details, zone_classification,
+                                identity=identity_name, known=known, category=category,
+                                recognition_method=identity_info.get("method") if identity_info else None,
+                            )
+                        else:
+                            logger.debug(
+                                "Evento suprimido (cooldown %ss) câmera=%s evento=%s",
+                                get_cooldown_for_event(event_type), self.camera.get("name"), event_type,
+                            )
                 except Exception:
                     logger.exception("Erro no processamento do frame (câmera %s)", self.camera.get("name"))
                     time.sleep(1)
