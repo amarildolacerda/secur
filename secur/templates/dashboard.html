@@ -132,6 +132,7 @@
                                 <th>Zona</th>
                                 <th>Classes</th>
                                 <th>Exclusões</th>
+                                <th>Máscara</th>
                                 <th>Ações</th>
                             </tr>
                         </thead>
@@ -168,6 +169,11 @@
                         <div class="form-row">
                             <label for="camera-exclusion-zones">Zonas de exclusão (JSON)</label>
                             <textarea id="camera-exclusion-zones" rows="3" placeholder='[{"x":0,"y":0},{"x":100,"y":0},{"x":100,"y":100}]'></textarea>
+                        </div>
+                        <div class="form-row">
+                            <label for="camera-mask-polygons">Máscara de privacidade (JSON)</label>
+                            <textarea id="camera-mask-polygons" rows="3" placeholder='[{"x":0,"y":0},{"x":100,"y":0},{"x":100,"y":100}]'></textarea>
+                            <small style="color:var(--muted-subtle);">Regiões com blur nos thumbnails, clipes e snapshot. Mesmo formato das zonas de exclusão.</small>
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="button-primary" id="camera-form-submit">Salvar</button>

@@ -266,6 +266,9 @@ function createCameraRow(camera) {
   const exclusionsText = camera.exclusion_zones && camera.exclusion_zones.length
     ? `${camera.exclusion_zones.length} polígono(s)`
     : '—';
+  const maskText = camera.mask_polygons && camera.mask_polygons.length
+    ? `${camera.mask_polygons.length} polígono(s)`
+    : '—';
   return `
     <tr>
       <td>${camera.id}</td>
@@ -274,6 +277,7 @@ function createCameraRow(camera) {
       <td>${camera.zone || '-'}</td>
       <td>${classesText}</td>
       <td>${exclusionsText}</td>
+      <td>${maskText}</td>
       <td class="table-actions">
         <button class="button-secondary button-mini edit-camera" data-camera-id="${camera.id}">Editar</button>
         <button class="button-secondary button-mini delete-camera" data-camera-id="${camera.id}">Excluir</button>
@@ -348,6 +352,10 @@ function setCameraFormMode(mode, camera = null) {
   if (exclusionInput) {
     exclusionInput.value = camera && camera.exclusion_zones ? JSON.stringify(camera.exclusion_zones) : '';
   }
+  const maskInput = document.getElementById('camera-mask-polygons');
+  if (maskInput) {
+    maskInput.value = camera && camera.mask_polygons ? JSON.stringify(camera.mask_polygons) : '';
+  }
 
   if (message) {
     message.textContent = '';
@@ -407,6 +415,19 @@ async function submitCameraForm(event) {
   }
   payload.alert_classes = checkedClasses.length ? checkedClasses : null;
   payload.exclusion_zones = exclusionZones;
+
+  const maskText = document.getElementById('camera-mask-polygons').value.trim();
+  let maskPolygons = null;
+  if (maskText) {
+    try {
+      maskPolygons = JSON.parse(maskText);
+    } catch (e) {
+      message.textContent = 'Máscara de privacidade: JSON inválido.';
+      message.classList.add('error');
+      return;
+    }
+  }
+  payload.mask_polygons = maskPolygons;
 
   if (!payload.name || !payload.source) {
     message.textContent = 'Nome e fonte são obrigatórios.';
