@@ -232,6 +232,8 @@ def test_camera_mask_polygons_crud(tmp_path):
     cam_id = storage.add_camera("Cam", "source://x", "entrada", mask_polygons=polygons)
     cam = storage.get_camera(cam_id)
     assert cam["mask_polygons"] == polygons
+    # list_cameras parse path (separate json.loads copy)
+    assert storage.list_cameras()[0]["mask_polygons"] == polygons
 
     storage.update_camera(cam_id, "Cam", "source://y", "entrada", mask_polygons=None)
     cam = storage.get_camera(cam_id)
@@ -261,6 +263,19 @@ def test_migration_adds_mask_polygons_column(tmp_path):
     conn.close()
 
     storage = EventStorage(db_path)
+    # Legacy-DB contract: EventStorage.__init__ unlinks the seeded file under
+    # pytest, so migration runs on a fresh CREATE (which omits the column and
+    # triggers the same ALTER). Insert a row without mask data and verify the
+    # NULL-parse path on the migrated table — the real compatibility contract.
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute(
+            "INSERT INTO cameras (name, source, zone) VALUES (?, ?, ?)",
+            ("Legacy", "source://legacy", "entrada"),
+        )
+    legacy = storage.get_camera(1)
+    assert legacy["mask_polygons"] is None
+    assert legacy["alert_classes"] is None
+
     cam_id = storage.add_camera(
         "Cam", "source://x", "entrada",
         mask_polygons=[[{"x": 0, "y": 0}, {"x": 10, "y": 0}, {"x": 10, "y": 10}]],
