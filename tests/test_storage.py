@@ -222,3 +222,50 @@ def test_update_event_clip_path(tmp_path):
 
     assert storage.update_event_clip_path(9999, "/tmp/x.mp4") is False
     storage.close()
+
+
+def test_camera_mask_polygons_crud(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+
+    polygons = [[{"x": 0, "y": 0}, {"x": 100, "y": 0}, {"x": 100, "y": 100}]]
+    cam_id = storage.add_camera("Cam", "source://x", "entrada", mask_polygons=polygons)
+    cam = storage.get_camera(cam_id)
+    assert cam["mask_polygons"] == polygons
+
+    storage.update_camera(cam_id, "Cam", "source://y", "entrada", mask_polygons=None)
+    cam = storage.get_camera(cam_id)
+    assert cam["mask_polygons"] is None
+
+    storage.close()
+
+
+def test_camera_mask_polygons_default_none(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+    cam_id = storage.add_camera("Cam", "source://x", "entrada")
+    cam = storage.get_camera(cam_id)
+    assert cam["mask_polygons"] is None
+    assert cam["exclusion_zones"] is None
+    storage.close()
+
+
+def test_migration_adds_mask_polygons_column(tmp_path):
+    import sqlite3
+    db_path = tmp_path / "events.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE cameras (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, source TEXT NOT NULL, zone TEXT)"
+    )
+    conn.commit()
+    conn.close()
+
+    storage = EventStorage(db_path)
+    cam_id = storage.add_camera(
+        "Cam", "source://x", "entrada",
+        mask_polygons=[[{"x": 0, "y": 0}, {"x": 10, "y": 0}, {"x": 10, "y": 10}]],
+    )
+    assert storage.get_camera(cam_id)["mask_polygons"] == [
+        [{"x": 0, "y": 0}, {"x": 10, "y": 0}, {"x": 10, "y": 10}]
+    ]
+    storage.close()

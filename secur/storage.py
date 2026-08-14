@@ -99,6 +99,8 @@ class EventStorage:
                     cursor.execute("ALTER TABLE cameras ADD COLUMN alert_classes TEXT")
                 if 'exclusion_zones' not in cols:
                     cursor.execute("ALTER TABLE cameras ADD COLUMN exclusion_zones TEXT")
+                if 'mask_polygons' not in cols:
+                    cursor.execute("ALTER TABLE cameras ADD COLUMN mask_polygons TEXT")
             except Exception:
                 pass
             # Ensure schedule column exists for older DBs
@@ -172,14 +174,15 @@ class EventStorage:
             )
             return [dict(row) for row in cursor.fetchall()]
 
-    def add_camera(self, name: str, source: str, zone: str = None, alert_classes=None, exclusion_zones=None):
+    def add_camera(self, name: str, source: str, zone: str = None, alert_classes=None, exclusion_zones=None, mask_polygons=None):
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "INSERT INTO cameras (name, source, zone, alert_classes, exclusion_zones) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO cameras (name, source, zone, alert_classes, exclusion_zones, mask_polygons) VALUES (?, ?, ?, ?, ?, ?)",
                 (name, source, zone,
                  json.dumps(alert_classes) if alert_classes else None,
-                 json.dumps(exclusion_zones) if exclusion_zones else None),
+                 json.dumps(exclusion_zones) if exclusion_zones else None,
+                 json.dumps(mask_polygons) if mask_polygons else None),
             )
             self.connection.commit()
             return cursor.lastrowid
@@ -187,33 +190,36 @@ class EventStorage:
     def list_cameras(self):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, source, zone, alert_classes, exclusion_zones FROM cameras ORDER BY id ASC")
+            cursor.execute("SELECT id, name, source, zone, alert_classes, exclusion_zones, mask_polygons FROM cameras ORDER BY id ASC")
             rows = [dict(row) for row in cursor.fetchall()]
         for row in rows:
             row["alert_classes"] = json.loads(row["alert_classes"]) if row.get("alert_classes") else None
             row["exclusion_zones"] = json.loads(row["exclusion_zones"]) if row.get("exclusion_zones") else None
+            row["mask_polygons"] = json.loads(row["mask_polygons"]) if row.get("mask_polygons") else None
         return rows
 
     def get_camera(self, camera_id: int):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, source, zone, alert_classes, exclusion_zones FROM cameras WHERE id = ?", (camera_id,))
+            cursor.execute("SELECT id, name, source, zone, alert_classes, exclusion_zones, mask_polygons FROM cameras WHERE id = ?", (camera_id,))
             row = cursor.fetchone()
             if not row:
                 return None
             camera = dict(row)
         camera["alert_classes"] = json.loads(camera["alert_classes"]) if camera.get("alert_classes") else None
         camera["exclusion_zones"] = json.loads(camera["exclusion_zones"]) if camera.get("exclusion_zones") else None
+        camera["mask_polygons"] = json.loads(camera["mask_polygons"]) if camera.get("mask_polygons") else None
         return camera
 
-    def update_camera(self, camera_id: int, name: str, source: str, zone: str = None, alert_classes=None, exclusion_zones=None):
+    def update_camera(self, camera_id: int, name: str, source: str, zone: str = None, alert_classes=None, exclusion_zones=None, mask_polygons=None):
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "UPDATE cameras SET name = ?, source = ?, zone = ?, alert_classes = ?, exclusion_zones = ? WHERE id = ?",
+                "UPDATE cameras SET name = ?, source = ?, zone = ?, alert_classes = ?, exclusion_zones = ?, mask_polygons = ? WHERE id = ?",
                 (name, source, zone,
                  json.dumps(alert_classes) if alert_classes else None,
                  json.dumps(exclusion_zones) if exclusion_zones else None,
+                 json.dumps(mask_polygons) if mask_polygons else None,
                  camera_id),
             )
             self.connection.commit()
