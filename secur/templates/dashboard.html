@@ -130,6 +130,8 @@
                                 <th>Nome</th>
                                 <th>Fonte</th>
                                 <th>Zona</th>
+                                <th>Classes</th>
+                                <th>Exclusões</th>
                                 <th>Ações</th>
                             </tr>
                         </thead>
@@ -158,6 +160,14 @@
                             <select id="camera-zone">
                                 <option value="">Nenhuma zona</option>
                             </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="camera-alert-classes">Classes de alerta (vazio = todas)</label>
+                            <div id="camera-alert-classes" class="checkbox-group"></div>
+                        </div>
+                        <div class="form-row">
+                            <label for="camera-exclusion-zones">Zonas de exclusão (JSON)</label>
+                            <textarea id="camera-exclusion-zones" rows="3" placeholder='[{"x":0,"y":0},{"x":100,"y":0},{"x":100,"y":100}]'></textarea>
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="button-primary" id="camera-form-submit">Salvar</button>
@@ -209,6 +219,14 @@
                                 <option value="segurança">Segurança</option>
                                 <option value="privativa">Privativa</option>
                             </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="zone-schedule-start">Horário de alerta (início)</label>
+                            <input id="zone-schedule-start" type="time">
+                        </div>
+                        <div class="form-row">
+                            <label for="zone-schedule-end">Horário de alerta (fim)</label>
+                            <input id="zone-schedule-end" type="time">
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="button-primary" id="zone-form-submit">Salvar</button>

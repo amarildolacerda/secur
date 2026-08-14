@@ -220,12 +220,20 @@ function closeThumbHistory() {
 }
 
 function createCameraRow(camera) {
+  const classesText = camera.alert_classes && camera.alert_classes.length
+    ? camera.alert_classes.join(', ')
+    : 'todas';
+  const exclusionsText = camera.exclusion_zones && camera.exclusion_zones.length
+    ? `${camera.exclusion_zones.length} polígono(s)`
+    : '—';
   return `
     <tr>
       <td>${camera.id}</td>
       <td>${camera.name}</td>
       <td>${camera.source}</td>
       <td>${camera.zone || '-'}</td>
+      <td>${classesText}</td>
+      <td>${exclusionsText}</td>
       <td class="table-actions">
         <button class="button-secondary button-mini edit-camera" data-camera-id="${camera.id}">Editar</button>
         <button class="button-secondary button-mini delete-camera" data-camera-id="${camera.id}">Excluir</button>
@@ -294,6 +302,12 @@ function setCameraFormMode(mode, camera = null) {
     form.reset();
   }
 
+  populateAlertClasses(camera ? camera.alert_classes : null);
+  const exclusionInput = document.getElementById('camera-exclusion-zones');
+  if (exclusionInput) {
+    exclusionInput.value = camera && camera.exclusion_zones ? JSON.stringify(camera.exclusion_zones) : '';
+  }
+
   if (message) {
     message.textContent = '';
     message.classList.remove('error');
@@ -337,6 +351,21 @@ async function submitCameraForm(event) {
     source: sourceInput.value.trim(),
     zone: zoneInput.value || null,
   };
+
+  const checkedClasses = Array.from(document.querySelectorAll('#camera-alert-classes input:checked')).map(i => i.value);
+  const exclusionText = document.getElementById('camera-exclusion-zones').value.trim();
+  let exclusionZones = null;
+  if (exclusionText) {
+    try {
+      exclusionZones = JSON.parse(exclusionText);
+    } catch (e) {
+      message.textContent = 'Zonas de exclusão: JSON inválido.';
+      message.classList.add('error');
+      return;
+    }
+  }
+  payload.alert_classes = checkedClasses.length ? checkedClasses : null;
+  payload.exclusion_zones = exclusionZones;
 
   if (!payload.name || !payload.source) {
     message.textContent = 'Nome e fonte são obrigatórios.';
@@ -422,6 +451,16 @@ function setZoneFormMode(mode, zone = null) {
     form.reset();
   }
 
+  const startInput = document.getElementById('zone-schedule-start');
+  const endInput = document.getElementById('zone-schedule-end');
+  if (mode === 'edit' && zone) {
+    startInput.value = (zone.schedule && zone.schedule.start) || '';
+    endInput.value = (zone.schedule && zone.schedule.end) || '';
+  } else {
+    startInput.value = '';
+    endInput.value = '';
+  }
+
   if (message) {
     message.textContent = '';
     message.classList.remove('error');
@@ -456,6 +495,14 @@ async function submitZoneForm(event) {
     name: nameInput.value.trim(),
     classification: classInput.value,
   };
+
+  const startInput = document.getElementById('zone-schedule-start');
+  const endInput = document.getElementById('zone-schedule-end');
+  let schedule = null;
+  if (startInput.value || endInput.value) {
+    schedule = { start: startInput.value || '00:00', end: endInput.value || '23:59' };
+  }
+  payload.schedule = schedule;
 
   if (!payload.name) {
     message.textContent = 'Nome é obrigatório.';
@@ -514,6 +561,22 @@ function populateZoneDropdown(zones, selectedZone) {
     if (zone.name === current) opt.selected = true;
     select.appendChild(opt);
   });
+}
+
+async function populateAlertClasses(selected) {
+  const container = document.getElementById('camera-alert-classes');
+  if (!container) return;
+  let classes = [];
+  try {
+    const data = await fetchData('/api/classes');
+    classes = data.classes || [];
+  } catch (e) { return; }
+  const selectedSet = new Set(selected || []);
+  container.innerHTML = classes.map(cls => `
+    <label class="checkbox-inline">
+      <input type="checkbox" value="${cls}" ${selectedSet.has(cls) ? 'checked' : ''} /> ${cls}
+    </label>
+  `).join('');
 }
 
 /* ========== Messages ========== */

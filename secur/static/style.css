@@ -456,6 +456,39 @@ tbody tr:last-child td {
   box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.12);
 }
 
+.form-row textarea {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  font-family: var(--font-mono, monospace);
+  color: var(--text);
+  background: var(--surface);
+  resize: vertical;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 6px 0;
+}
+
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.85rem;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.checkbox-inline input[type="checkbox"] {
+  accent-color: var(--primary);
+}
+
 .form-actions {
   display: flex;
   gap: 8px;
