@@ -99,3 +99,70 @@ def test_notification_routing_seed_and_update(tmp_path):
     all_routing = storage.get_all_routing()
     assert all_routing["automation"]["no_motion"] is True
     storage.close()
+
+
+def test_camera_alert_classes_and_exclusion_zones(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+
+    cam_id = storage.add_camera(
+        "Cam", "source://x", "entrada",
+        alert_classes=["person", "car"],
+        exclusion_zones=[[{"x": 0, "y": 0}, {"x": 100, "y": 0}, {"x": 100, "y": 100}]],
+    )
+    cam = storage.get_camera(cam_id)
+    assert cam["alert_classes"] == ["person", "car"]
+    assert cam["exclusion_zones"] == [[{"x": 0, "y": 0}, {"x": 100, "y": 0}, {"x": 100, "y": 100}]]
+
+    storage.update_camera(cam_id, "Cam", "source://y", "entrada", alert_classes=["person"])
+    cam = storage.get_camera(cam_id)
+    assert cam["alert_classes"] == ["person"]
+    assert cam["exclusion_zones"] is None
+
+    storage.close()
+
+
+def test_camera_defaults_alert_classes_none(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+    cam_id = storage.add_camera("Cam", "source://x", "entrada")
+    cam = storage.get_camera(cam_id)
+    assert cam["alert_classes"] is None
+    assert cam["exclusion_zones"] is None
+    storage.close()
+
+
+def test_zone_schedule_crud(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+
+    zone_id = storage.add_zone("Sala", "privativa", schedule={"start": "22:00", "end": "06:00"})
+    zone = storage.get_zone(zone_id)
+    assert zone["schedule"] == {"start": "22:00", "end": "06:00"}
+
+    storage.update_zone(zone_id, "Sala", "privativa", schedule=None)
+    zone = storage.get_zone(zone_id)
+    assert zone["schedule"] is None
+
+    storage.close()
+
+
+def test_migration_adds_new_columns(tmp_path):
+    import sqlite3
+    db_path = tmp_path / "events.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE cameras (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, source TEXT NOT NULL, zone TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE zones (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, classification TEXT NOT NULL DEFAULT 'pública')"
+    )
+    conn.commit()
+    conn.close()
+
+    storage = EventStorage(db_path)
+    cam_id = storage.add_camera("Cam", "source://x", "entrada", alert_classes=["person"])
+    assert storage.get_camera(cam_id)["alert_classes"] == ["person"]
+    zone_id = storage.add_zone("Z", "pública", schedule={"start": "08:00", "end": "18:00"})
+    assert storage.get_zone(zone_id)["schedule"] == {"start": "08:00", "end": "18:00"}
+    storage.close()

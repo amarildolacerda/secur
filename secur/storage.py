@@ -1,4 +1,5 @@
 import logging
+import json
 import sqlite3
 import threading
 import time
@@ -54,7 +55,9 @@ class EventStorage:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
                     source TEXT NOT NULL,
-                    zone TEXT
+                    zone TEXT,
+                    alert_classes TEXT,
+                    exclusion_zones TEXT
                 )
                 """
             )
@@ -63,7 +66,8 @@ class EventStorage:
                 CREATE TABLE IF NOT EXISTS zones (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
-                    classification TEXT NOT NULL DEFAULT 'pública'
+                    classification TEXT NOT NULL DEFAULT 'pública',
+                    schedule TEXT
                 )
                 """
             )
@@ -85,6 +89,24 @@ class EventStorage:
                 cols = [r[1] for r in cursor.fetchall()]
                 if 'thumbnail_path' not in cols:
                     cursor.execute("ALTER TABLE known_identities ADD COLUMN thumbnail_path TEXT")
+            except Exception:
+                pass
+            # Ensure new camera columns exist for older DBs
+            try:
+                cursor.execute("PRAGMA table_info(cameras)")
+                cols = [r[1] for r in cursor.fetchall()]
+                if 'alert_classes' not in cols:
+                    cursor.execute("ALTER TABLE cameras ADD COLUMN alert_classes TEXT")
+                if 'exclusion_zones' not in cols:
+                    cursor.execute("ALTER TABLE cameras ADD COLUMN exclusion_zones TEXT")
+            except Exception:
+                pass
+            # Ensure schedule column exists for older DBs
+            try:
+                cursor.execute("PRAGMA table_info(zones)")
+                cols = [r[1] for r in cursor.fetchall()]
+                if 'schedule' not in cols:
+                    cursor.execute("ALTER TABLE zones ADD COLUMN schedule TEXT")
             except Exception:
                 pass
             cursor.execute(
@@ -130,12 +152,14 @@ class EventStorage:
             )
             return [dict(row) for row in cursor.fetchall()]
 
-    def add_camera(self, name: str, source: str, zone: str = None):
+    def add_camera(self, name: str, source: str, zone: str = None, alert_classes=None, exclusion_zones=None):
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "INSERT INTO cameras (name, source, zone) VALUES (?, ?, ?)",
-                (name, source, zone),
+                "INSERT INTO cameras (name, source, zone, alert_classes, exclusion_zones) VALUES (?, ?, ?, ?, ?)",
+                (name, source, zone,
+                 json.dumps(alert_classes) if alert_classes else None,
+                 json.dumps(exclusion_zones) if exclusion_zones else None),
             )
             self.connection.commit()
             return cursor.lastrowid
@@ -143,22 +167,34 @@ class EventStorage:
     def list_cameras(self):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, source, zone FROM cameras ORDER BY id ASC")
-            return [dict(row) for row in cursor.fetchall()]
+            cursor.execute("SELECT id, name, source, zone, alert_classes, exclusion_zones FROM cameras ORDER BY id ASC")
+            rows = [dict(row) for row in cursor.fetchall()]
+        for row in rows:
+            row["alert_classes"] = json.loads(row["alert_classes"]) if row.get("alert_classes") else None
+            row["exclusion_zones"] = json.loads(row["exclusion_zones"]) if row.get("exclusion_zones") else None
+        return rows
 
     def get_camera(self, camera_id: int):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, source, zone FROM cameras WHERE id = ?", (camera_id,))
+            cursor.execute("SELECT id, name, source, zone, alert_classes, exclusion_zones FROM cameras WHERE id = ?", (camera_id,))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            camera = dict(row)
+        camera["alert_classes"] = json.loads(camera["alert_classes"]) if camera.get("alert_classes") else None
+        camera["exclusion_zones"] = json.loads(camera["exclusion_zones"]) if camera.get("exclusion_zones") else None
+        return camera
 
-    def update_camera(self, camera_id: int, name: str, source: str, zone: str = None):
+    def update_camera(self, camera_id: int, name: str, source: str, zone: str = None, alert_classes=None, exclusion_zones=None):
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "UPDATE cameras SET name = ?, source = ?, zone = ? WHERE id = ?",
-                (name, source, zone, camera_id),
+                "UPDATE cameras SET name = ?, source = ?, zone = ?, alert_classes = ?, exclusion_zones = ? WHERE id = ?",
+                (name, source, zone,
+                 json.dumps(alert_classes) if alert_classes else None,
+                 json.dumps(exclusion_zones) if exclusion_zones else None,
+                 camera_id),
             )
             self.connection.commit()
             return cursor.rowcount > 0
@@ -176,12 +212,12 @@ class EventStorage:
         for camera in default_cameras:
             self.add_camera(camera["name"], camera["source"], camera.get("zone"))
 
-    def add_zone(self, name: str, classification: str = 'pública'):
+    def add_zone(self, name: str, classification: str = 'pública', schedule=None):
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "INSERT INTO zones (name, classification) VALUES (?, ?)",
-                (name, classification),
+                "INSERT INTO zones (name, classification, schedule) VALUES (?, ?, ?)",
+                (name, classification, json.dumps(schedule) if schedule else None),
             )
             self.connection.commit()
             return cursor.lastrowid
@@ -189,22 +225,29 @@ class EventStorage:
     def list_zones(self):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, classification FROM zones ORDER BY id ASC")
-            return [dict(row) for row in cursor.fetchall()]
+            cursor.execute("SELECT id, name, classification, schedule FROM zones ORDER BY id ASC")
+            rows = [dict(row) for row in cursor.fetchall()]
+        for row in rows:
+            row["schedule"] = json.loads(row["schedule"]) if row.get("schedule") else None
+        return rows
 
     def get_zone(self, zone_id: int):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, classification FROM zones WHERE id = ?", (zone_id,))
+            cursor.execute("SELECT id, name, classification, schedule FROM zones WHERE id = ?", (zone_id,))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            zone = dict(row)
+        zone["schedule"] = json.loads(zone["schedule"]) if zone.get("schedule") else None
+        return zone
 
-    def update_zone(self, zone_id: int, name: str, classification: str):
+    def update_zone(self, zone_id: int, name: str, classification: str, schedule=None):
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "UPDATE zones SET name = ?, classification = ? WHERE id = ?",
-                (name, classification, zone_id),
+                "UPDATE zones SET name = ?, classification = ?, schedule = ? WHERE id = ?",
+                (name, classification, json.dumps(schedule) if schedule else None, zone_id),
             )
             self.connection.commit()
             return cursor.rowcount > 0
