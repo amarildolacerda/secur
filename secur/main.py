@@ -25,6 +25,8 @@ from .config import (
     CLIP_FPS,
     CLIPS_DIR,
     CLIP_HISTORY_SIZE,
+    PRIVACY_MODE,
+    is_privacy_mode_on,
 )
 from .camera import CameraStream
 from .detector import ObjectDetector
@@ -51,6 +53,8 @@ class CameraWorker:
         self.alerts = alerts
         self.object_detector = object_detector
         self.identity_recognizer = identity_recognizer
+        self._privacy_check_time = 0.0
+        self._privacy_on = False
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
 
@@ -72,6 +76,17 @@ class CameraWorker:
             "source": self.camera.get("source"),
             "running": self.thread.is_alive(),
         }
+
+    def identity_enabled(self):
+        """Reconhecimento de identidade habilitado? (flag de privacidade com cache de 5s)."""
+        now = time.time()
+        if now - self._privacy_check_time >= 5.0:
+            self._privacy_check_time = now
+            try:
+                self._privacy_on = is_privacy_mode_on(self.storage.get_setting("privacy_mode"))
+            except Exception:
+                self._privacy_on = False
+        return self.identity_recognizer is not None and not self._privacy_on
 
     def run(self):
         camera_stream = CameraStream(self.camera["source"])
@@ -190,7 +205,7 @@ class CameraWorker:
 
                     identity_info = None
                     identity_label = None
-                    if detections and self.identity_recognizer is not None:
+                    if detections and self.identity_enabled():
                         for det in detections:
                             if det["label"] in RECOGNITION_LABELS:
                                 bbox = det["bbox"]
@@ -477,7 +492,16 @@ def main():
         classes=DETECTOR_CLASSES,
     )
 
-    identity_recognizer = build_recognizer(storage)
+    if PRIVACY_MODE:
+        storage.set_setting("privacy_mode", "true")
+    elif storage.get_setting("privacy_mode") is None:
+        storage.set_setting("privacy_mode", "false")
+
+    if is_privacy_mode_on(storage.get_setting("privacy_mode")):
+        logger.info("Modo privacidade ativo — reconhecimento de identidade desligado")
+        identity_recognizer = None
+    else:
+        identity_recognizer = build_recognizer(storage)
     camera_manager = CameraManager(storage, alerts, object_detector, identity_recognizer)
     camera_manager.start()
 

@@ -154,6 +154,14 @@ class EventStorage:
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+                """
+            )
             self.connection.commit()
 
     def add_event(self, camera_id: str, zone: str, event_type: str, details: str = None):
@@ -579,6 +587,23 @@ class EventStorage:
                         "INSERT INTO notification_routing (channel, event_type, enabled) VALUES (?, ?, ?)",
                         (channel, event_type, int(enabled)),
                     )
+            self.connection.commit()
+
+    def get_setting(self, key: str, default=None):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
             self.connection.commit()
 
     def close(self):

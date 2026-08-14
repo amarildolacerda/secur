@@ -373,3 +373,18 @@ def test_prune_clips_by_max_age(tmp_path):
     assert clips[0]["path"] == str(new_file)
     assert not Path(old_file).exists()
     storage.close()
+
+
+def test_settings_get_set(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+
+    assert storage.get_setting("privacy_mode") is None
+    assert storage.get_setting("privacy_mode", "false") == "false"
+
+    storage.set_setting("privacy_mode", "true")
+    assert storage.get_setting("privacy_mode") == "true"
+
+    storage.set_setting("privacy_mode", "false")
+    assert storage.get_setting("privacy_mode") == "false"
+    storage.close()

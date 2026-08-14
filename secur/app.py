@@ -5,6 +5,7 @@ from flask import Flask, jsonify, render_template, request, Response, send_file
 from .camera import CameraStream
 from .storage import EventStorage
 from .masking import frame_for_storage
+from .config import is_privacy_mode_on
 from .notifications import CHANNELS, EVENT_TYPES
 import base64
 import numpy as np
@@ -383,6 +384,20 @@ def create_app(camera_manager=None, db_path=None):
     def classes():
         from .config import DETECTOR_CLASSES
         return jsonify({"classes": DETECTOR_CLASSES})
+
+    @app.route("/api/settings")
+    def settings_get():
+        privacy_mode = storage.get_setting("privacy_mode", "false")
+        return jsonify({"privacy_mode": is_privacy_mode_on(privacy_mode)})
+
+    @app.route("/api/settings", methods=["PUT"])
+    def settings_put():
+        payload = request.get_json() or {}
+        privacy_mode = payload.get("privacy_mode")
+        if not isinstance(privacy_mode, bool):
+            return jsonify({"error": "privacy_mode deve ser booleano"}), 400
+        storage.set_setting("privacy_mode", "true" if privacy_mode else "false")
+        return jsonify({"privacy_mode": privacy_mode}), 200
 
 
     # ========== Identity endpoints ==========

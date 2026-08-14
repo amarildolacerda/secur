@@ -93,3 +93,52 @@ def test_resolve_retention_zero_keep_is_respected():
     from secur.main import resolve_retention
     policy = {"thumbnails": 0}
     assert resolve_retention(policy, "thumbnails", 30) == (0, None)
+
+
+def test_is_privacy_mode_on():
+    from secur.config import is_privacy_mode_on
+    assert is_privacy_mode_on("true") is True
+    assert is_privacy_mode_on("True") is True
+    assert is_privacy_mode_on("false") is False
+    assert is_privacy_mode_on(None) is False
+
+
+def test_worker_identity_enabled_respects_privacy_mode():
+    from secur.main import CameraWorker
+
+    class FakeStorage:
+        def __init__(self):
+            self.value = "false"
+
+        def get_setting(self, key, default=None):
+            return self.value
+
+    worker = CameraWorker(
+        camera={"id": 1, "name": "Cam"},
+        storage=FakeStorage(),
+        alerts=None,
+        object_detector=None,
+        identity_recognizer=object(),
+    )
+    assert worker.identity_enabled() is True
+
+    worker.storage.value = "true"
+    worker._privacy_check_time = 0.0  # força recarga do cache
+    assert worker.identity_enabled() is False
+
+
+def test_worker_identity_enabled_without_recognizer():
+    from secur.main import CameraWorker
+
+    class FakeStorage:
+        def get_setting(self, key, default=None):
+            return "false"
+
+    worker = CameraWorker(
+        camera={"id": 1, "name": "Cam"},
+        storage=FakeStorage(),
+        alerts=None,
+        object_detector=None,
+        identity_recognizer=None,
+    )
+    assert worker.identity_enabled() is False

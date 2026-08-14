@@ -48,6 +48,13 @@ IDENTITY_ENABLED = os.getenv("IDENTITY_ENABLED", "false").lower() in ("1", "true
 IDENTITY_FACE_MODEL_PATH = os.getenv("IDENTITY_FACE_MODEL_PATH", "")
 IDENTITY_REID_MODEL_PATH = os.getenv("IDENTITY_REID_MODEL_PATH", "")
 IDENTITY_MATCH_THRESHOLD = float(os.getenv("IDENTITY_MATCH_THRESHOLD", "0.6"))
+
+PRIVACY_MODE = os.getenv("PRIVACY_MODE", "false").lower() in ("1", "true", "yes", "on")
+
+
+def is_privacy_mode_on(value):
+    """True se o valor da settings/environment representa modo privacidade ativo."""
+    return str(value).lower() == "true"
 IDENTITY_EMBEDDINGS_DIR = DATA_DIR / "identities"
 IDENTITY_EMBEDDINGS_DIR.mkdir(exist_ok=True)
 HOME_ASSISTANT_URL = os.getenv("HOME_ASSISTANT_URL", "http://192.168.1.12:8123")

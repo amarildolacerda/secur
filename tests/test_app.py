@@ -438,3 +438,28 @@ def test_update_zone_retention_policy(client):
     )
     assert resp.status_code == 200
     assert resp.json["retention_policy"] == {"thumbnails": 10}
+
+
+def test_settings_get_default(client):
+    resp = client.get("/api/settings")
+    assert resp.status_code == 200
+    assert resp.json == {"privacy_mode": False}
+
+
+def test_settings_put_and_get(client):
+    resp = client.put("/api/settings", json={"privacy_mode": True})
+    assert resp.status_code == 200
+    assert resp.json == {"privacy_mode": True}
+    assert client.get("/api/settings").json["privacy_mode"] is True
+
+
+def test_settings_put_invalid(client):
+    resp = client.put("/api/settings", json={"privacy_mode": "yes"})
+    assert resp.status_code == 400
+
+
+def test_settings_put_turns_off_again(client):
+    client.put("/api/settings", json={"privacy_mode": True})
+    resp = client.put("/api/settings", json={"privacy_mode": False})
+    assert resp.status_code == 200
+    assert client.get("/api/settings").json["privacy_mode"] is False
