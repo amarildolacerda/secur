@@ -19,7 +19,7 @@ FRAME_WAIT_SECONDS = float(os.getenv("FRAME_WAIT_SECONDS", "0.1"))
 # Send a "sem movimento" alert after this many seconds without any occurrence (per camera)
 NO_MOTION_ALERT_SECONDS = float(os.getenv("NO_MOTION_ALERT_SECONDS", "60"))
 # Suppress repeated events of the same type within this window (per camera)
-ALERT_COOLDOWN_SECONDS = float(os.getenv("ALERT_COOLDOWN_SECONDS", "180"))
+ALERT_COOLDOWN_SECONDS = float(os.getenv("ALERT_COOLDOWN_SECONDS", "60"))
 # Cooldown específico por tipo de evento (fallback: ALERT_COOLDOWN_SECONDS)
 ALERT_COOLDOWN_BY_EVENT = {
     "intruder_detected": float(os.getenv("ALERT_COOLDOWN_INTRUDER", "30")),

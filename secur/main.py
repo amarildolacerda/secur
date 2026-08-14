@@ -187,24 +187,33 @@ class CameraWorker:
                                 thumbnail_path=thumb_path,
                             )
                             # Start clip recording: pre-event buffer + post-event frames
-                            try:
-                                cam_dir = CLIPS_DIR / f"cam{self.camera['id']}"
-                                cam_dir.mkdir(parents=True, exist_ok=True)
-                                clip_path = cam_dir / f"{int(now * 1000)}.mp4"
-                                writer = cv2.VideoWriter(
-                                    str(clip_path),
-                                    cv2.VideoWriter_fourcc(*"mp4v"),
-                                    CLIP_FPS,
-                                    (frame.shape[1], frame.shape[0]),
+                            # Guard: only start a new recording if no clip is already active;
+                            # otherwise the active writer/path/event would be overwritten
+                            # without releasing the previous writer.
+                            if clip_writer is not None:
+                                logger.debug(
+                                    "Clipe já ativo (câmera %s) — pulando gravação deste alerta",
+                                    self.camera.get("name"),
                                 )
-                                for buf_frame in frame_buffer.frames():
-                                    writer.write(buf_frame)
-                                clip_writer = writer
-                                clip_end_time = now + CLIP_POST_SECONDS
-                                clip_event_id = event_id
-                                self.storage.add_event_clip(self.camera["id"], event_id, str(clip_path), CLIP_PRE_SECONDS + CLIP_POST_SECONDS)
-                            except Exception:
-                                logger.warning("Falha ao iniciar gravação de clipe (câmera %s)", self.camera.get("name"))
+                            else:
+                                try:
+                                    cam_dir = CLIPS_DIR / f"cam{self.camera['id']}"
+                                    cam_dir.mkdir(parents=True, exist_ok=True)
+                                    clip_path = cam_dir / f"{int(now * 1000)}.mp4"
+                                    writer = cv2.VideoWriter(
+                                        str(clip_path),
+                                        cv2.VideoWriter_fourcc(*"mp4v"),
+                                        CLIP_FPS,
+                                        (frame.shape[1], frame.shape[0]),
+                                    )
+                                    for buf_frame in frame_buffer.frames():
+                                        writer.write(buf_frame)
+                                    clip_writer = writer
+                                    clip_end_time = now + CLIP_POST_SECONDS
+                                    clip_event_id = event_id
+                                    self.storage.add_event_clip(self.camera["id"], event_id, str(clip_path), CLIP_PRE_SECONDS + CLIP_POST_SECONDS)
+                                except Exception:
+                                    logger.warning("Falha ao iniciar gravação de clipe (câmera %s)", self.camera.get("name"))
                         else:
                             logger.debug(
                                 "Evento suprimido (cooldown %ss) câmera=%s evento=%s",
