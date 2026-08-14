@@ -166,3 +166,59 @@ def test_migration_adds_new_columns(tmp_path):
     zone_id = storage.add_zone("Z", "pública", schedule={"start": "08:00", "end": "18:00"})
     assert storage.get_zone(zone_id)["schedule"] == {"start": "08:00", "end": "18:00"}
     storage.close()
+
+
+def test_event_clips_crud_and_prune(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+    cam_id = storage.add_camera("Cam", "source://x", "entrada")
+
+    files = []
+    for i in range(3):
+        p = tmp_path / f"clip_{i}.mp4"
+        p.write_bytes(b"mp4data")
+        files.append(str(p))
+        storage.add_event_clip(cam_id, None, str(p), 10.0)
+
+    clips = storage.list_event_clips(cam_id)
+    assert len(clips) == 3
+    assert clips[0]["path"] == files[2]
+    assert clips[0]["duration_s"] == 10.0
+
+    storage.prune_event_clips(cam_id, keep=2)
+    clips = storage.list_event_clips(cam_id)
+    assert len(clips) == 2
+    assert not Path(files[0]).exists()
+
+    storage.remove_event_clips(cam_id)
+    assert storage.list_event_clips(cam_id) == []
+    assert not Path(files[1]).exists()
+    storage.close()
+
+
+def test_event_clip_get_and_404(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+    cam_id = storage.add_camera("Cam", "source://x", "entrada")
+    p = tmp_path / "clip.mp4"
+    p.write_bytes(b"mp4data")
+    clip_id = storage.add_event_clip(cam_id, None, str(p), 5.0)
+
+    clip = storage.get_event_clip(clip_id)
+    assert clip["camera_id"] == cam_id
+    assert clip["duration_s"] == 5.0
+    assert storage.get_event_clip(9999) is None
+    storage.close()
+
+
+def test_update_event_clip_path(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+    event_id = storage.add_event("1", "entrada", "motion_detected", "teste")
+
+    assert storage.update_event_clip_path(event_id, "/tmp/clip.mp4") is True
+    events = storage.list_events(limit=10)
+    assert events[0]["clip_path"] == "/tmp/clip.mp4"
+
+    assert storage.update_event_clip_path(9999, "/tmp/x.mp4") is False
+    storage.close()

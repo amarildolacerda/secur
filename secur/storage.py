@@ -109,6 +109,14 @@ class EventStorage:
                     cursor.execute("ALTER TABLE zones ADD COLUMN schedule TEXT")
             except Exception:
                 pass
+            # Ensure clip_path column exists for older DBs
+            try:
+                cursor.execute("PRAGMA table_info(events)")
+                cols = [r[1] for r in cursor.fetchall()]
+                if 'clip_path' not in cols:
+                    cursor.execute("ALTER TABLE events ADD COLUMN clip_path TEXT")
+            except Exception:
+                pass
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS camera_thumbnails (
@@ -117,6 +125,18 @@ class EventStorage:
                     timestamp TEXT NOT NULL,
                     event_type TEXT,
                     path TEXT NOT NULL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS event_clips (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    camera_id INTEGER NOT NULL,
+                    event_id INTEGER,
+                    timestamp TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    duration_s REAL
                 )
                 """
             )
@@ -147,7 +167,7 @@ class EventStorage:
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "SELECT id, timestamp, camera_id, zone, event_type, details FROM events ORDER BY id DESC LIMIT ?",
+                "SELECT id, timestamp, camera_id, zone, event_type, details, clip_path FROM events ORDER BY id DESC LIMIT ?",
                 (limit,),
             )
             return [dict(row) for row in cursor.fetchall()]
@@ -412,6 +432,76 @@ class EventStorage:
             )
             row = cursor.fetchone()
             return dict(row) if row else None
+
+    def add_event_clip(self, camera_id: int, event_id, path: str, duration_s: float) -> int:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO event_clips (camera_id, event_id, timestamp, path, duration_s) VALUES (?, ?, ?, ?, ?)",
+                (camera_id, event_id, timestamp, path, duration_s),
+            )
+            self.connection.commit()
+            return cursor.lastrowid
+
+    def list_event_clips(self, camera_id: int, limit: int = 20):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, camera_id, event_id, timestamp, path, duration_s FROM event_clips "
+                "WHERE camera_id = ? ORDER BY id DESC LIMIT ?",
+                (camera_id, limit),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_event_clip(self, clip_id: int):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, camera_id, event_id, timestamp, path, duration_s FROM event_clips WHERE id = ?",
+                (clip_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def prune_event_clips(self, camera_id: int, keep: int = 20):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, path FROM event_clips WHERE camera_id = ? ORDER BY id DESC LIMIT -1 OFFSET ?",
+                (camera_id, keep),
+            )
+            excess = [dict(row) for row in cursor.fetchall()]
+            for item in excess:
+                try:
+                    Path(item["path"]).unlink(missing_ok=True)
+                except Exception:
+                    logger.warning("Falha ao remover clipe %s", item["path"])
+                cursor.execute("DELETE FROM event_clips WHERE id = ?", (item["id"],))
+            self.connection.commit()
+
+    def remove_event_clips(self, camera_id: int):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT path FROM event_clips WHERE camera_id = ?", (camera_id,))
+            rows = cursor.fetchall()
+            for row in rows:
+                try:
+                    Path(row["path"]).unlink(missing_ok=True)
+                except Exception:
+                    logger.warning("Falha ao remover clipe %s", row["path"])
+            cursor.execute("DELETE FROM event_clips WHERE camera_id = ?", (camera_id,))
+            self.connection.commit()
+
+    def update_event_clip_path(self, event_id: int, clip_path: str) -> bool:
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "UPDATE events SET clip_path = ? WHERE id = ?",
+                (clip_path, event_id),
+            )
+            self.connection.commit()
+            return cursor.rowcount > 0
 
     def get_routing(self, channel: str) -> dict:
         with self.lock:
