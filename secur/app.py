@@ -4,6 +4,7 @@ import time
 from flask import Flask, jsonify, render_template, request, Response, send_file
 from .camera import CameraStream
 from .storage import EventStorage
+from .masking import frame_for_storage
 from .notifications import CHANNELS, EVENT_TYPES
 import base64
 import numpy as np
@@ -131,7 +132,9 @@ def create_app(camera_manager=None, db_path=None):
             log.warning("Snapshot failed for camera %s: %s", camera_id, result["error"])
             return jsonify({"error": result["error"]}), 502
 
-        success, jpg = cv2.imencode(".jpg", result["frame"])
+        frame = result["frame"]
+        frame = frame_for_storage(frame, camera.get("mask_polygons"))
+        success, jpg = cv2.imencode(".jpg", frame)
         if not success:
             return jsonify({"error": "Falha ao codificar imagem"}), 500
 
@@ -237,6 +240,7 @@ def create_app(camera_manager=None, db_path=None):
         zone = payload.get("zone")
         alert_classes = payload.get("alert_classes")
         exclusion_zones = payload.get("exclusion_zones")
+        mask_polygons = payload.get("mask_polygons")
 
         if not name or not source:
             return jsonify({"error": "name and source são obrigatórios"}), 400
@@ -245,14 +249,17 @@ def create_app(camera_manager=None, db_path=None):
             return jsonify({"error": "alert_classes deve ser uma lista"}), 400
         if exclusion_zones is not None and not isinstance(exclusion_zones, list):
             return jsonify({"error": "exclusion_zones deve ser uma lista de polígonos"}), 400
+        if mask_polygons is not None and not isinstance(mask_polygons, list):
+            return jsonify({"error": "mask_polygons deve ser uma lista de polígonos"}), 400
 
         if not CameraStream.validate_source(source):
             return jsonify({"error": "source inválido ou stream inacessível"}), 400
 
-        camera_id = storage.add_camera(name, source, zone, alert_classes=alert_classes, exclusion_zones=exclusion_zones)
+        camera_id = storage.add_camera(name, source, zone, alert_classes=alert_classes, exclusion_zones=exclusion_zones, mask_polygons=mask_polygons)
         return jsonify({
             "id": camera_id, "name": name, "source": source, "zone": zone,
             "alert_classes": alert_classes, "exclusion_zones": exclusion_zones,
+            "mask_polygons": mask_polygons,
         }), 201
 
     @app.route("/cameras/<int:camera_id>", methods=["PUT"])
@@ -267,6 +274,7 @@ def create_app(camera_manager=None, db_path=None):
         zone = payload.get("zone")
         alert_classes = payload.get("alert_classes")
         exclusion_zones = payload.get("exclusion_zones")
+        mask_polygons = payload.get("mask_polygons")
 
         if not name or not source:
             return jsonify({"error": "name and source são obrigatórios"}), 400
@@ -275,11 +283,13 @@ def create_app(camera_manager=None, db_path=None):
             return jsonify({"error": "alert_classes deve ser uma lista"}), 400
         if exclusion_zones is not None and not isinstance(exclusion_zones, list):
             return jsonify({"error": "exclusion_zones deve ser uma lista de polígonos"}), 400
+        if mask_polygons is not None and not isinstance(mask_polygons, list):
+            return jsonify({"error": "mask_polygons deve ser uma lista de polígonos"}), 400
 
         if not CameraStream.validate_source(source):
             return jsonify({"error": "source inválido ou stream inacessível"}), 400
 
-        storage.update_camera(camera_id, name, source, zone, alert_classes=alert_classes, exclusion_zones=exclusion_zones)
+        storage.update_camera(camera_id, name, source, zone, alert_classes=alert_classes, exclusion_zones=exclusion_zones, mask_polygons=mask_polygons)
         updated_camera = storage.get_camera(camera_id)
         return jsonify(updated_camera), 200
 

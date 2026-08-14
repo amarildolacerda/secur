@@ -256,3 +256,123 @@ def test_delete_camera_removes_clips_and_thumbnails(clip_env, tmp_path, monkeypa
     assert storage.list_event_clips(cam_id) == []
     assert not thumb.exists()
     assert not clip.exists()
+
+
+def test_add_camera_with_mask_polygons(client, monkeypatch):
+    from secur.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+    polygons = [[{"x": 0, "y": 0}, {"x": 100, "y": 0}, {"x": 100, "y": 100}]]
+    response = client.post(
+        "/cameras",
+        data=json.dumps({"name": "Cam", "source": "valid-source", "zone": "entrada", "mask_polygons": polygons}),
+        content_type="application/json",
+    )
+    assert response.status_code == 201
+    assert response.json["mask_polygons"] == polygons
+
+
+def test_add_camera_rejects_invalid_mask_polygons(client, monkeypatch):
+    from secur.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+    response = client.post(
+        "/cameras",
+        data=json.dumps({"name": "Cam", "source": "valid-source", "mask_polygons": "not-a-list"}),
+        content_type="application/json",
+    )
+    assert response.status_code == 400
+
+
+def test_update_camera_mask_polygons(client, monkeypatch):
+    from secur.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+    resp = client.post("/cameras", json={"name": "Cam", "source": "valid-source", "zone": "entrada"})
+    cam_id = resp.json["id"]
+
+    polygons = [[{"x": 0, "y": 0}, {"x": 50, "y": 0}, {"x": 50, "y": 50}]]
+    resp = client.put(
+        f"/cameras/{cam_id}",
+        data=json.dumps({"name": "Cam", "source": "valid-source", "zone": "entrada", "mask_polygons": polygons}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 200
+    assert resp.json["mask_polygons"] == polygons
+
+
+def test_snapshot_route_applies_mask_polygons(client, monkeypatch):
+    import cv2
+    import numpy as np
+    from secur.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+
+    class FakeCapture:
+        def __init__(self, source):
+            pass
+
+        def isOpened(self):
+            return True
+
+        def set(self, *args, **kwargs):
+            return True
+
+        def read(self):
+            frame = np.zeros((100, 100, 3), dtype=np.uint8)
+            frame[45:55, 45:55] = 255  # quadrado branco no centro
+            return True, frame
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr("secur.app.cv2.VideoCapture", FakeCapture)
+
+    resp = client.post(
+        "/cameras",
+        data=json.dumps({
+            "name": "Cam", "source": "source://x", "zone": "entrada",
+            "mask_polygons": [[{"x": 40, "y": 40}, {"x": 60, "y": 40}, {"x": 60, "y": 60}, {"x": 40, "y": 60}]],
+        }),
+        content_type="application/json",
+    )
+    cam_id = resp.json["id"]
+
+    resp = client.get(f"/camera/{cam_id}/snapshot")
+    assert resp.status_code == 200
+    arr = cv2.imdecode(np.frombuffer(resp.data, np.uint8), cv2.IMREAD_COLOR)
+    # dentro do polígono o blur espalhou o branco com o fundo preto
+    assert int(arr[50, 50, 0]) < 200
+    # fora do polígono permanece preto (JPEG pode variar ~poucos níveis)
+    assert int(arr[10, 10, 0]) < 10
+
+
+def test_snapshot_route_without_mask_keeps_frame(client, monkeypatch):
+    import cv2
+    import numpy as np
+    from secur.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+
+    class FakeCapture:
+        def __init__(self, source):
+            pass
+
+        def isOpened(self):
+            return True
+
+        def set(self, *args, **kwargs):
+            return True
+
+        def read(self):
+            frame = np.zeros((100, 100, 3), dtype=np.uint8)
+            frame[45:55, 45:55] = 255
+            return True, frame
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr("secur.app.cv2.VideoCapture", FakeCapture)
+
+    resp = client.post("/cameras", json={"name": "Cam", "source": "source://x", "zone": "entrada"})
+    cam_id = resp.json["id"]
+
+    resp = client.get(f"/camera/{cam_id}/snapshot")
+    assert resp.status_code == 200
+    arr = cv2.imdecode(np.frombuffer(resp.data, np.uint8), cv2.IMREAD_COLOR)
+    assert int(arr[50, 50, 0]) > 200  # branco puro preservado
