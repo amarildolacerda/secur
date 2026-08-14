@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 import threading
 import cv2
@@ -83,6 +84,9 @@ class CameraWorker:
         clip_end_time = 0.0
         clip_event_id = None
         clip_path = None
+        clip_frames_written = 0
+        last_buffer_push = time.time()
+        last_clip_write = 0.0
 
         while not self.stop_event.is_set():
             frame = camera_stream.read()
@@ -90,24 +94,66 @@ class CameraWorker:
                 time.sleep(1)
                 continue
 
-            frame_buffer.push(frame)
+            now = time.time()
 
-            # Finalize clip recording after the post-event window
+            # Sample the pre-event buffer at CLIP_FPS cadence so the window
+            # spans CLIP_PRE_SECONDS and playback runs at real-time speed.
+            # Frames are stored JPEG-encoded (~50-150KB) instead of raw BGR
+            # (~46MB at 640x480 per camera) to keep the worker footprint low.
+            if now - last_buffer_push >= 1.0 / CLIP_FPS:
+                last_buffer_push = now
+                ok, jpg = cv2.imencode(".jpg", frame)
+                if ok:
+                    frame_buffer.push(jpg)
+
+            # Finalize clip recording after the post-event window.
+            # The whole write/release block is guarded so a failing writer
+            # (disk full, corrupted codec) cannot kill the worker thread.
             if clip_writer is not None:
-                if time.time() < clip_end_time:
-                    clip_writer.write(frame)
-                else:
-                    clip_writer.release()
-                    clip_writer = None
-                    if clip_event_id is not None:
+                try:
+                    if now < clip_end_time:
+                        # Post-event frames are written at CLIP_FPS cadence,
+                        # matching the pre-event buffer sampling.
+                        if now - last_clip_write >= 1.0 / CLIP_FPS:
+                            last_clip_write = now
+                            clip_writer.write(frame)
+                            clip_frames_written += 1
+                    else:
+                        clip_writer.release()
+                        clip_writer = None
+                        if clip_frames_written > 0:
+                            try:
+                                self.storage.add_event_clip(
+                                    self.camera["id"],
+                                    clip_event_id,
+                                    clip_path,
+                                    clip_frames_written / CLIP_FPS,
+                                )
+                            except Exception:
+                                logger.warning("Falha ao registrar clipe (câmera %s)", self.camera.get("name"))
+                            if clip_event_id is not None:
+                                try:
+                                    self.storage.update_event_clip_path(clip_event_id, clip_path)
+                                except Exception:
+                                    logger.warning("Falha ao linkar clipe ao evento (câmera %s)", self.camera.get("name"))
+                        else:
+                            # No frames written (e.g. failed encoder): drop the
+                            # empty file instead of registering a broken clip.
+                            try:
+                                os.remove(clip_path)
+                            except Exception:
+                                pass
                         try:
-                            self.storage.update_event_clip_path(clip_event_id, clip_path)
+                            self.storage.prune_event_clips(self.camera["id"], keep=CLIP_HISTORY_SIZE)
                         except Exception:
-                            logger.warning("Falha ao linkar clipe ao evento (câmera %s)", self.camera.get("name"))
+                            logger.warning("Falha ao podar clipes (câmera %s)", self.camera.get("name"))
+                except Exception:
+                    logger.exception("Falha na gravação do clipe (câmera %s)", self.camera.get("name"))
                     try:
-                        self.storage.prune_event_clips(self.camera["id"], keep=CLIP_HISTORY_SIZE)
+                        clip_writer.release()
                     except Exception:
-                        logger.warning("Falha ao podar clipes (câmera %s)", self.camera.get("name"))
+                        pass
+                    clip_writer = None
 
             # Look up zone classification and schedule (once)
             zone_name = self.camera.get("zone")
@@ -199,19 +245,35 @@ class CameraWorker:
                                 try:
                                     cam_dir = CLIPS_DIR / f"cam{self.camera['id']}"
                                     cam_dir.mkdir(parents=True, exist_ok=True)
-                                    clip_path = cam_dir / f"{int(now * 1000)}.mp4"
+                                    clip_path = str(cam_dir / f"{int(now * 1000)}.mp4")
                                     writer = cv2.VideoWriter(
-                                        str(clip_path),
+                                        clip_path,
                                         cv2.VideoWriter_fourcc(*"mp4v"),
                                         CLIP_FPS,
                                         (frame.shape[1], frame.shape[0]),
                                     )
-                                    for buf_frame in frame_buffer.frames():
-                                        writer.write(buf_frame)
-                                    clip_writer = writer
-                                    clip_end_time = now + CLIP_POST_SECONDS
-                                    clip_event_id = event_id
-                                    self.storage.add_event_clip(self.camera["id"], event_id, str(clip_path), CLIP_PRE_SECONDS + CLIP_POST_SECONDS)
+                                    if not writer.isOpened():
+                                        writer.release()
+                                        logger.warning(
+                                            "Falha ao abrir VideoWriter (codec indisponível?) para clipe (câmera %s)",
+                                            self.camera.get("name"),
+                                        )
+                                    else:
+                                        # Write the pre-event window (stored
+                                        # JPEG-encoded) into the new clip.
+                                        frames_written = 0
+                                        for buf_frame in frame_buffer.frames():
+                                            decoded = cv2.imdecode(buf_frame, cv2.IMREAD_COLOR)
+                                            if decoded is not None:
+                                                writer.write(decoded)
+                                                frames_written += 1
+                                        clip_writer = writer
+                                        clip_frames_written = frames_written
+                                        clip_end_time = now + CLIP_POST_SECONDS
+                                        clip_event_id = event_id
+                                        # Write the first post-event frame
+                                        # immediately, then at CLIP_FPS cadence.
+                                        last_clip_write = now - 1.0 / CLIP_FPS
                                 except Exception:
                                     logger.warning("Falha ao iniciar gravação de clipe (câmera %s)", self.camera.get("name"))
                         else:

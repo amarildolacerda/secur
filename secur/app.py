@@ -289,6 +289,7 @@ def create_app(camera_manager=None, db_path=None):
         if not removed:
             return jsonify({"error": "Câmera não encontrada"}), 404
         storage.remove_camera_thumbnails(camera_id)
+        storage.remove_event_clips(camera_id)
         return jsonify({"status": "removido"}), 200
 
     @app.route("/events")

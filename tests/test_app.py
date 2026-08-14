@@ -190,3 +190,69 @@ def test_clip_metadata_route_404(client):
 def test_clip_video_route_404(client):
     resp = client.get("/clips/999/video")
     assert resp.status_code == 404
+
+
+@pytest.fixture
+def clip_env(tmp_path, monkeypatch):
+    """Client + storage pair sharing ONE EventStorage instance.
+
+    EventStorage deletes the DB file on init when running under pytest, so a
+    second instance would orphan the app's sqlite connection (writes would go
+    to a fresh file the app never sees). To seed clips the app must serve, the
+    app is built around the same storage instance the test mutates.
+    """
+    from secur.app import create_app
+    from secur.storage import EventStorage
+
+    db_path = tmp_path / "test.db"
+    storage = EventStorage(db_path)
+
+    def _shared_event_storage(db_path=None):
+        return storage
+
+    monkeypatch.setattr("secur.app.EventStorage", _shared_event_storage)
+    app = create_app(db_path=db_path)
+    app.config.update({"TESTING": True})
+    return app.test_client(), storage
+
+
+def test_clip_video_route_200(clip_env, tmp_path, monkeypatch):
+    from secur.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+    client, storage = clip_env
+    resp = client.post("/cameras", json={"name": "Cam", "source": "source://x", "zone": "entrada"})
+    assert resp.status_code == 201
+    cam_id = resp.json["id"]
+
+    clip_file = tmp_path / "clip.mp4"
+    clip_file.write_bytes(b"mp4data")
+    clip_id = storage.add_event_clip(cam_id, None, str(clip_file), 5.0)
+
+    resp = client.get(f"/clips/{clip_id}/video")
+    assert resp.status_code == 200
+    assert resp.mimetype == "video/mp4"
+    assert resp.data == b"mp4data"
+
+
+def test_delete_camera_removes_clips_and_thumbnails(clip_env, tmp_path, monkeypatch):
+    from secur.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+    client, storage = clip_env
+    resp = client.post("/cameras", json={"name": "Cam", "source": "source://x", "zone": "entrada"})
+    assert resp.status_code == 201
+    cam_id = resp.json["id"]
+
+    thumb = tmp_path / "thumb.jpg"
+    thumb.write_bytes(b"jpegdata")
+    storage.add_camera_thumbnail(cam_id, str(thumb), "motion_detected")
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"mp4data")
+    storage.add_event_clip(cam_id, None, str(clip), 5.0)
+
+    resp = client.delete(f"/cameras/{cam_id}")
+    assert resp.status_code == 200
+    assert resp.json == {"status": "removido"}
+    assert storage.list_camera_thumbnails(cam_id) == []
+    assert storage.list_event_clips(cam_id) == []
+    assert not thumb.exists()
+    assert not clip.exists()

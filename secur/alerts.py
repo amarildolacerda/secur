@@ -256,6 +256,9 @@ def _format_message(payload: Dict) -> str:
         message += f"\n*Categoria:* {_escape_markdown(category)}"
     thumbnail_path = payload.get("thumbnail_path")
     if thumbnail_path:
+        # Paths are intentionally NOT passed through _escape_markdown: generated
+        # paths are digit-only, and escaping would break "." (e.g. "thumb.jpg")
+        # and the test_format_message_full_context assertion.
         message += f"\n*Snapshot:* {thumbnail_path}"
     clip_path = payload.get("clip_path")
     if clip_path:
