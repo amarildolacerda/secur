@@ -185,6 +185,7 @@ def create_app(camera_manager=None, db_path=None):
             {"path": "/thumbnails/<id>/image", "method": "GET", "description": "Imagem JPEG de um thumbnail"},
             {"path": "/api/notifications", "method": "GET", "description": "Canais, eventos e routing de notificações"},
             {"path": "/api/notifications/routing", "method": "PUT", "description": "Atualiza routing de um evento em um canal"},
+            {"path": "/api/classes", "method": "GET", "description": "Lista de classes de objetos detectáveis (filtro por câmera)"},
         ]
         return render_template("docs.html", api_docs=api_docs)
 
