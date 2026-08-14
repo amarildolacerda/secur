@@ -219,6 +219,46 @@ function closeThumbHistory() {
   if (overlay) overlay.classList.add('hidden-panel');
 }
 
+/* ========== Clip History ========== */
+
+function openClipHistory(cameraId, cameraName) {
+  const overlay = document.getElementById('clip-history-overlay');
+  const title = document.getElementById('clip-history-title');
+  const grid = document.getElementById('clip-history-grid');
+  const empty = document.getElementById('clip-history-empty');
+
+  title.textContent = `Clipes — ${cameraName}`;
+  grid.innerHTML = '';
+  empty.style.display = 'none';
+  overlay.classList.remove('hidden-panel');
+
+  fetch(`/camera/${cameraId}/clips`)
+    .then(r => r.json())
+    .then(items => {
+      if (!items || items.length === 0) {
+        empty.style.display = '';
+        return;
+      }
+      grid.innerHTML = items.map(item => `
+        <div class="clip-history-item">
+          <video src="${item.url}" controls preload="metadata" style="width:100%;border-radius:var(--radius-sm);"></video>
+          <span style="font-size:0.8rem;color:var(--muted-subtle);">
+            ${new Date(item.timestamp).toLocaleString()} — ${item.duration_s ? item.duration_s.toFixed(0) + 's' : ''}
+          </span>
+        </div>
+      `).join('');
+    })
+    .catch(() => {
+      empty.textContent = 'Falha ao carregar clipes.';
+      empty.style.display = '';
+    });
+}
+
+function closeClipHistory() {
+  const overlay = document.getElementById('clip-history-overlay');
+  if (overlay) overlay.classList.add('hidden-panel');
+}
+
 function createCameraRow(camera) {
   const classesText = camera.alert_classes && camera.alert_classes.length
     ? camera.alert_classes.join(', ')
@@ -237,6 +277,7 @@ function createCameraRow(camera) {
       <td class="table-actions">
         <button class="button-secondary button-mini edit-camera" data-camera-id="${camera.id}">Editar</button>
         <button class="button-secondary button-mini delete-camera" data-camera-id="${camera.id}">Excluir</button>
+        <button class="button-secondary button-mini clips-camera" data-camera-id="${camera.id}">Clipes</button>
       </td>
     </tr>
   `;
@@ -972,6 +1013,14 @@ async function renderDashboard() {
     });
   });
 
+  document.querySelectorAll('.clips-camera').forEach(button => {
+    button.addEventListener('click', () => {
+      const cameraId = button.dataset.cameraId;
+      const camera = cameras.find(c => String(c.id) === String(cameraId));
+      openClipHistory(cameraId, camera ? camera.name : 'Câmera');
+    });
+  });
+
   document.querySelectorAll('.delete-zone').forEach(button => {
     button.addEventListener('click', () => {
       deleteZone(button.dataset.zoneId);
@@ -1054,6 +1103,7 @@ renderDashboard();
 setupCameraForm();
 setupZoneForm();
   setupIdentityForm();
+document.getElementById('clip-history-close').addEventListener('click', closeClipHistory);
 setInterval(() => {
   renderDashboard();
   renderStatusFooter();
