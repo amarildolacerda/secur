@@ -399,3 +399,42 @@ def test_snapshot_route_without_mask_keeps_frame(client, monkeypatch):
     assert resp.status_code == 200
     arr = cv2.imdecode(np.frombuffer(resp.data, np.uint8), cv2.IMREAD_COLOR)
     assert int(arr[50, 50, 0]) > 200  # branco puro preservado
+
+
+def test_add_zone_with_retention_policy(client):
+    resp = client.post(
+        "/zones",
+        data=json.dumps({"name": "Entrada", "classification": "pública",
+                         "retention_policy": {"thumbnails": 5, "clips": 3, "days": 7}}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 201
+    assert resp.json["retention_policy"] == {"thumbnails": 5, "clips": 3, "days": 7}
+
+
+def test_add_zone_rejects_invalid_retention_policy(client):
+    resp = client.post(
+        "/zones",
+        data=json.dumps({"name": "Entrada", "classification": "pública", "retention_policy": "5"}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 400
+    resp = client.post(
+        "/zones",
+        data=json.dumps({"name": "Entrada", "classification": "pública", "retention_policy": {"days": -1}}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 400
+
+
+def test_update_zone_retention_policy(client):
+    resp = client.post("/zones", json={"name": "Entrada", "classification": "pública"})
+    zone_id = resp.json["id"]
+    resp = client.put(
+        f"/zones/{zone_id}",
+        data=json.dumps({"name": "Entrada", "classification": "pública",
+                         "retention_policy": {"thumbnails": 10}}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 200
+    assert resp.json["retention_policy"] == {"thumbnails": 10}

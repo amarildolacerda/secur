@@ -86,6 +86,8 @@ class CameraWorker:
         clip_event_id = None
         clip_path = None
         clip_frames_written = 0
+        thumb_keep, thumb_days = THUMBNAIL_HISTORY_SIZE, None
+        clip_keep, clip_days = CLIP_HISTORY_SIZE, None
         last_buffer_push = time.time()
         last_clip_write = 0.0
 
@@ -149,7 +151,7 @@ class CameraWorker:
                             except Exception:
                                 pass
                         try:
-                            self.storage.prune_event_clips(self.camera["id"], keep=CLIP_HISTORY_SIZE)
+                            self.storage.prune_event_clips(self.camera["id"], keep=clip_keep, max_age_days=clip_days)
                         except Exception:
                             logger.warning("Falha ao podar clipes (câmera %s)", self.camera.get("name"))
                 except Exception:
@@ -170,6 +172,9 @@ class CameraWorker:
                 if zone_obj:
                     zone_classification = zone_obj.get("classification")
                     zone_schedule = zone_obj.get("schedule")
+                    zone_retention = zone_obj.get("retention_policy")
+                    thumb_keep, thumb_days = resolve_retention(zone_retention, "thumbnails", THUMBNAIL_HISTORY_SIZE)
+                    clip_keep, clip_days = resolve_retention(zone_retention, "clips", CLIP_HISTORY_SIZE)
 
             exclusion_polygons = self.camera.get("exclusion_zones") or []
             motion_detected = motion_detector.detect(frame, exclusion_polygons=exclusion_polygons)
@@ -218,7 +223,7 @@ class CameraWorker:
                                 if ok:
                                     path.write_bytes(jpg.tobytes())
                                     self.storage.add_camera_thumbnail(self.camera["id"], str(path), event_type)
-                                    self.storage.prune_camera_thumbnails(self.camera["id"], keep=THUMBNAIL_HISTORY_SIZE)
+                                    self.storage.prune_camera_thumbnails(self.camera["id"], keep=thumb_keep, max_age_days=thumb_days)
                                     last_thumb_time = time.time()
                                     thumb_path = str(path)
                             except Exception:
@@ -303,7 +308,7 @@ class CameraWorker:
                         if ok:
                             path.write_bytes(jpg.tobytes())
                             self.storage.add_camera_thumbnail(self.camera["id"], str(path), event_type)
-                            self.storage.prune_camera_thumbnails(self.camera["id"], keep=THUMBNAIL_HISTORY_SIZE)
+                            self.storage.prune_camera_thumbnails(self.camera["id"], keep=thumb_keep, max_age_days=thumb_days)
                             last_thumb_time = now_thumb
                     except Exception:
                         logger.warning("Falha ao capturar thumbnail (câmera %s)", self.camera.get("name"))
@@ -378,6 +383,21 @@ def is_within_schedule(schedule, now=None):
 def get_cooldown_for_event(event_type):
     """Cooldown específico por evento, com fallback para o global."""
     return ALERT_COOLDOWN_BY_EVENT.get(event_type, ALERT_COOLDOWN_SECONDS)
+
+
+def resolve_retention(policy, kind, default):
+    """Resolve (keep, max_age_days) da política de retenção da zona para um tipo.
+
+    policy: dict {"thumbnails": N, "clips": N, "days": N} (campos opcionais).
+    kind: "thumbnails" ou "clips".
+    Sem política → (default, None). keep=0 é respeitado (apaga tudo).
+    """
+    if not policy:
+        return default, None
+    keep = policy.get(kind)
+    days = policy.get("days")
+    return (int(keep) if keep is not None else default,
+            int(days) if days is not None else None)
 
 
 class CircularFrameBuffer:

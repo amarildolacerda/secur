@@ -69,3 +69,27 @@ def test_circular_frame_buffer_empty():
     from secur.main import CircularFrameBuffer
     buf = CircularFrameBuffer(maxlen=3)
     assert buf.frames() == []
+
+def test_resolve_retention_default_when_no_policy():
+    from secur.main import resolve_retention
+    assert resolve_retention(None, "thumbnails", 30) == (30, None)
+    assert resolve_retention({}, "thumbnails", 30) == (30, None)
+
+
+def test_resolve_retention_policy_values():
+    from secur.main import resolve_retention
+    policy = {"thumbnails": 5, "clips": 3, "days": 7}
+    assert resolve_retention(policy, "thumbnails", 30) == (5, 7)
+    assert resolve_retention(policy, "clips", 20) == (3, 7)
+
+
+def test_resolve_retention_partial_policy():
+    from secur.main import resolve_retention
+    policy = {"days": 2}
+    assert resolve_retention(policy, "thumbnails", 30) == (30, 2)
+
+
+def test_resolve_retention_zero_keep_is_respected():
+    from secur.main import resolve_retention
+    policy = {"thumbnails": 0}
+    assert resolve_retention(policy, "thumbnails", 30) == (0, None)

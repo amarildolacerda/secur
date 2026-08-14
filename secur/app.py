@@ -29,6 +29,20 @@ def _is_valid_schedule(schedule):
     return True
 
 
+def _is_valid_retention_policy(policy):
+    """True se policy é None ou dict com chaves opcionais thumbnails/clips/days (ints >= 0)."""
+    if policy is None:
+        return True
+    if not isinstance(policy, dict):
+        return False
+    for key in ("thumbnails", "clips", "days"):
+        if key in policy:
+            value = policy[key]
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                return False
+    return True
+
+
 def _validate_mask_polygons(mask_polygons):
     """Valida mask_polygons (mesmo formato de exclusion_zones).
 
@@ -531,6 +545,7 @@ def create_app(camera_manager=None, db_path=None):
         name = payload.get("name")
         classification = payload.get("classification", "pública")
         schedule = payload.get("schedule")
+        retention_policy = payload.get("retention_policy")
 
         if not name:
             return jsonify({"error": "name é obrigatório"}), 400
@@ -541,12 +556,15 @@ def create_app(camera_manager=None, db_path=None):
         if schedule is not None and not _is_valid_schedule(schedule):
             return jsonify({"error": "schedule deve ser {\"start\": \"HH:MM\", \"end\": \"HH:MM\"}"}), 400
 
+        if not _is_valid_retention_policy(retention_policy):
+            return jsonify({"error": "retention_policy deve ser {\"thumbnails\": N, \"clips\": N, \"days\": N}"}), 400
+
         existing = storage.list_zones()
         if any(z["name"] == name for z in existing):
             return jsonify({"error": "Zona com esse nome já existe"}), 400
 
-        zone_id = storage.add_zone(name, classification, schedule=schedule)
-        return jsonify({"id": zone_id, "name": name, "classification": classification, "schedule": schedule}), 201
+        zone_id = storage.add_zone(name, classification, schedule=schedule, retention_policy=retention_policy)
+        return jsonify({"id": zone_id, "name": name, "classification": classification, "schedule": schedule, "retention_policy": retention_policy}), 201
 
     @app.route("/zones/<int:zone_id>", methods=["PUT"])
     def update_zone(zone_id):
@@ -558,6 +576,7 @@ def create_app(camera_manager=None, db_path=None):
         name = payload.get("name")
         classification = payload.get("classification")
         schedule = payload.get("schedule")
+        retention_policy = payload.get("retention_policy")
 
         if not name or not classification:
             return jsonify({"error": "name e classification são obrigatórios"}), 400
@@ -568,7 +587,10 @@ def create_app(camera_manager=None, db_path=None):
         if schedule is not None and not _is_valid_schedule(schedule):
             return jsonify({"error": "schedule deve ser {\"start\": \"HH:MM\", \"end\": \"HH:MM\"}"}), 400
 
-        storage.update_zone(zone_id, name, classification, schedule=schedule)
+        if not _is_valid_retention_policy(retention_policy):
+            return jsonify({"error": "retention_policy deve ser {\"thumbnails\": N, \"clips\": N, \"days\": N}"}), 400
+
+        storage.update_zone(zone_id, name, classification, schedule=schedule, retention_policy=retention_policy)
         updated_zone = storage.get_zone(zone_id)
         return jsonify(updated_zone), 200
 
