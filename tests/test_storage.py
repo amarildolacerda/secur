@@ -284,3 +284,92 @@ def test_migration_adds_mask_polygons_column(tmp_path):
         [{"x": 0, "y": 0}, {"x": 10, "y": 0}, {"x": 10, "y": 10}]
     ]
     storage.close()
+
+
+def test_zone_retention_policy_crud(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+
+    policy = {"thumbnails": 5, "clips": 3, "days": 7}
+    zone_id = storage.add_zone("Sala", "privativa", retention_policy=policy)
+    assert storage.get_zone(zone_id)["retention_policy"] == policy
+
+    storage.update_zone(zone_id, "Sala", "privativa", retention_policy=None)
+    assert storage.get_zone(zone_id)["retention_policy"] is None
+    storage.close()
+
+
+def test_zone_retention_policy_default_none(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+    zone_id = storage.add_zone("Sala", "privativa")
+    assert storage.get_zone(zone_id)["retention_policy"] is None
+    storage.close()
+
+
+def test_migration_adds_retention_policy_column(tmp_path):
+    import sqlite3
+    db_path = tmp_path / "events.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE zones (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, classification TEXT NOT NULL DEFAULT 'pública')"
+    )
+    conn.commit()
+    conn.close()
+
+    storage = EventStorage(db_path)
+    zone_id = storage.add_zone("Z", "pública", retention_policy={"days": 30})
+    assert storage.get_zone(zone_id)["retention_policy"] == {"days": 30}
+    storage.close()
+
+
+def test_prune_thumbnails_by_max_age(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+    cam_id = storage.add_camera("Cam", "source://x", "entrada")
+
+    old_file = tmp_path / "old.jpg"
+    old_file.write_bytes(b"jpegdata")
+    old_id = storage.add_camera_thumbnail(cam_id, str(old_file), "motion_detected")
+    storage.connection.execute(
+        "UPDATE camera_thumbnails SET timestamp = '2020-01-01T00:00:00+00:00' WHERE id = ?",
+        (old_id,),
+    )
+    storage.connection.commit()
+
+    new_file = tmp_path / "new.jpg"
+    new_file.write_bytes(b"jpegdata")
+    storage.add_camera_thumbnail(cam_id, str(new_file), "motion_detected")
+
+    storage.prune_camera_thumbnails(cam_id, keep=10, max_age_days=7)
+    thumbs = storage.list_camera_thumbnails(cam_id)
+    assert len(thumbs) == 1
+    assert thumbs[0]["path"] == str(new_file)
+    assert not Path(old_file).exists()
+    storage.close()
+
+
+def test_prune_clips_by_max_age(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+    cam_id = storage.add_camera("Cam", "source://x", "entrada")
+
+    old_file = tmp_path / "old.mp4"
+    old_file.write_bytes(b"mp4data")
+    old_id = storage.add_event_clip(cam_id, None, str(old_file), 10.0)
+    storage.connection.execute(
+        "UPDATE event_clips SET timestamp = '2020-01-01T00:00:00+00:00' WHERE id = ?",
+        (old_id,),
+    )
+    storage.connection.commit()
+
+    new_file = tmp_path / "new.mp4"
+    new_file.write_bytes(b"mp4data")
+    storage.add_event_clip(cam_id, None, str(new_file), 10.0)
+
+    storage.prune_event_clips(cam_id, keep=10, max_age_days=7)
+    clips = storage.list_event_clips(cam_id)
+    assert len(clips) == 1
+    assert clips[0]["path"] == str(new_file)
+    assert not Path(old_file).exists()
+    storage.close()
