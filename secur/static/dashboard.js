@@ -259,6 +259,33 @@ function closeClipHistory() {
   if (overlay) overlay.classList.add('hidden-panel');
 }
 
+/* ========== Settings ========== */
+
+async function renderSettings() {
+  const toggle = document.getElementById('privacy-mode-toggle');
+  if (!toggle) return;
+  try {
+    const data = await fetchData('/api/settings');
+    toggle.checked = !!data.privacy_mode;
+  } catch (e) { /* offline: mantém estado atual */ }
+}
+
+function setupSettings() {
+  const toggle = document.getElementById('privacy-mode-toggle');
+  if (!toggle) return;
+  toggle.addEventListener('change', async () => {
+    const res = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ privacy_mode: toggle.checked }),
+    });
+    if (!res.ok) {
+      toggle.checked = !toggle.checked;
+      showMenuMessage('Falha ao salvar configuração.', 'camera-form-message');
+    }
+  });
+}
+
 function createCameraRow(camera) {
   const classesText = camera.alert_classes && camera.alert_classes.length
     ? camera.alert_classes.join(', ')
@@ -1016,6 +1043,7 @@ async function renderDashboard() {
   renderZoneManagement(zones);
   renderNotifications();
   populateZoneDropdown(zones);
+  renderSettings();
 
   document.querySelectorAll('.delete-camera').forEach(button => {
     button.addEventListener('click', () => {
@@ -1123,6 +1151,7 @@ setupSidebarNavigation();
 renderDashboard();
 setupCameraForm();
 setupZoneForm();
+setupSettings();
   setupIdentityForm();
 document.getElementById('clip-history-close').addEventListener('click', closeClipHistory);
 setInterval(() => {

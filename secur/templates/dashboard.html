@@ -33,6 +33,10 @@
                 <span class="icon">&#x1F514;</span>
                 <span>Notificações</span>
             </button>
+            <button type="button" class="nav-link" data-section="settings" id="nav-settings">
+                <span class="icon">&#x1F512;</span>
+                <span>Configurações</span>
+            </button>
             <div class="nav-divider"></div>
             <div class="nav-group collapsed">
                 <button type="button" class="nav-group-head"  onclick="toggleCrudNav()">
@@ -286,6 +290,25 @@
                 </div>
             </section>
 
+            <section class="panel hidden-panel" id="settings">
+                <h2>Configurações</h2>
+                <div class="card">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                        <div>
+                            <strong>Modo privacidade</strong>
+                            <p style="color:var(--muted-subtle);font-size:0.85rem;margin:4px 0 0;">
+                                Desliga o reconhecimento de identidade (faces/ReID). Movimento e
+                                detecção de objetos continuam ativos. Tudo permanece 100% local.
+                            </p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="privacy-mode-toggle" />
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </section>
+
             <section class="panel hidden-panel" id="identities-management">
                 <div class="panel-header">
                     <div>
@@ -311,6 +334,7 @@
             <span id="status-health">Status: carregando...</span>
             <span id="status-cameras">Câmeras: —</span>
             <span id="status-workers">Workers: —</span>
+            <span class="local-badge" title="Todo o processamento acontece no dispositivo. Nada sai dele, exceto pelos canais que você configurar (Telegram, MQTT, Home Assistant).">100% local</span>
         </div>
         <div class="footer-right">
             <span id="status-uptime">Uptime: —</span>

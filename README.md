@@ -184,6 +184,13 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - Visualização de câmeras ao vivo e histórico de eventos.
 - Exportação básica de logs e imagens de evidência.
 
+## Privacidade
+
+- **100% local**: todo o processamento (detecção, reconhecimento, gravação) roda no dispositivo; nada sai dele, exceto pelos canais que você configurar explicitamente (Telegram, MQTT, Home Assistant).
+- **Mascaramento de regiões**: configure polígonos de máscara por câmera (formato JSON igual ao das zonas de exclusão) no dashboard; o blur é aplicado antes de salvar thumbnail, clipe e snapshot — a detecção usa sempre o frame original.
+- **Modo privacidade**: desliga o reconhecimento de identidade (movimento e objetos continuam ativos). Ative via env `PRIVACY_MODE=true`, pela API `PUT /api/settings` ou pelo toggle no dashboard (Configurações).
+- **Retenção seletiva**: política por zona (`retention_policy` JSON com `thumbnails`, `clips` e `days`) controla o prune de thumbnails e clipes.
+
 ## Casos de perigo
 
 - Pessoa em área restrita.

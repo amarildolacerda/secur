@@ -918,3 +918,12 @@ tr.event-info td {
   padding: 2px 8px;
   font-size: 0.7rem;
 }
+
+.local-badge {
+  background: #1f8a4c;
+  color: #fff;
+  border-radius: var(--radius-pill, 999px);
+  padding: 2px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
