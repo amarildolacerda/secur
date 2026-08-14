@@ -228,3 +228,36 @@ def test_alert_service_with_storage_registers_store_handler(monkeypatch):
     assert len(recorded) == 1
     assert recorded[0][0] == "1"
     assert recorded[0][2] == "no_motion"
+
+
+def test_alert_service_payload_includes_optional_paths(monkeypatch):
+    called = []
+
+    def handler(payload):
+        called.append(payload)
+
+    service = AlertService()
+    service.register_handler(handler)
+    service.send(
+        "1", "entrada", "motion_detected", "teste",
+        thumbnail_path="/tmp/thumb.jpg", clip_path="/tmp/clip.mp4",
+    )
+
+    assert called[0]["thumbnail_path"] == "/tmp/thumb.jpg"
+    assert called[0]["clip_path"] == "/tmp/clip.mp4"
+
+
+def test_alert_service_returns_event_id(monkeypatch):
+    class FakeStorage:
+        def add_event(self, camera_id, zone, event_type, details=None):
+            return 42
+
+    service = AlertService(storage=FakeStorage())
+    event_id = service.send("1", "entrada", "motion_detected", "teste")
+    assert event_id == 42
+
+
+def test_alert_service_returns_none_without_store_handler():
+    service = AlertService()
+    service.register_handler(lambda payload: None)
+    assert service.send("1", "entrada", "motion_detected") is None

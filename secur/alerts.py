@@ -20,7 +20,8 @@ class AlertService:
         self.handlers.append(handler)
 
     def send(self, camera_id, zone, event_type, details=None, zone_classification=None,
-             identity=None, known=None, recognition_method=None, category=None, routing=None):
+             identity=None, known=None, recognition_method=None, category=None, routing=None,
+             thumbnail_path=None, clip_path=None):
         payload = {
             "camera_id": camera_id,
             "zone": zone,
@@ -31,24 +32,30 @@ class AlertService:
             "known": known,
             "recognition_method": recognition_method,
             "category": category,
+            "thumbnail_path": thumbnail_path,
+            "clip_path": clip_path,
         }
         if routing is None:
             routing = getattr(self, "routing", None)
+        event_id = None
         for handler in self.handlers:
             channel = getattr(handler, "channel", None)
             if channel is not None and routing is not None and not is_enabled(routing, channel, event_type):
                 continue
             try:
-                handler(payload)
+                result = handler(payload)
+                if result is not None and event_id is None:
+                    event_id = result
             except Exception:
                 logger.exception("Alert handler failed: %s", handler.__name__)
+        return event_id
 
 
 def event_store_handler(storage):
     """Handler que grava o evento na tabela interna (dashboard). Nunca filtrado por routing."""
     def handler(payload: Dict):
         try:
-            storage.add_event(
+            return storage.add_event(
                 payload.get("camera_id"),
                 payload.get("zone"),
                 payload.get("event_type"),
@@ -56,6 +63,7 @@ def event_store_handler(storage):
             )
         except Exception:
             logger.exception("Falha ao gravar evento na tabela interna")
+            return None
     return handler
 
 
