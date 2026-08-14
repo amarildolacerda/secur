@@ -15,6 +15,7 @@ from .config import (
     MOTION_MIN_AREA,
     NO_MOTION_ALERT_SECONDS,
     ALERT_COOLDOWN_SECONDS,
+    ALERT_COOLDOWN_BY_EVENT,
     THUMBNAILS_DIR,
     THUMBNAIL_INTERVAL_SECONDS,
     THUMBNAIL_HISTORY_SIZE,
@@ -186,6 +187,36 @@ def format_detections(detections):
         ]
     )
     return f"Objetos detectados: {', '.join(labels)} | detalhes: {details}"
+
+
+def filter_detections_by_classes(detections, alert_classes):
+    """Mantém apenas detecções cujo label está em alert_classes.
+    alert_classes None/vazio = todas as classes."""
+    if not alert_classes:
+        return detections
+    allowed = set(alert_classes)
+    return [d for d in detections if d["label"] in allowed]
+
+
+def is_within_schedule(schedule, now=None):
+    """True se `now` (epoch) está dentro do schedule {"start": "HH:MM", "end": "HH:MM"}.
+    Sem schedule → sempre True. Suporta virada de meia-noite (start > end)."""
+    if not schedule:
+        return True
+    start = schedule.get("start")
+    end = schedule.get("end")
+    if not start or not end:
+        return True
+    now = now if now is not None else time.time()
+    current = time.strftime("%H:%M", time.localtime(now))
+    if start <= end:
+        return start <= current <= end
+    return current >= start or current <= end
+
+
+def get_cooldown_for_event(event_type):
+    """Cooldown específico por evento, com fallback para o global."""
+    return ALERT_COOLDOWN_BY_EVENT.get(event_type, ALERT_COOLDOWN_SECONDS)
 
 
 def should_capture_thumbnail(last_thumb_time, now, interval):

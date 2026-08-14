@@ -20,6 +20,11 @@ FRAME_WAIT_SECONDS = float(os.getenv("FRAME_WAIT_SECONDS", "0.1"))
 NO_MOTION_ALERT_SECONDS = float(os.getenv("NO_MOTION_ALERT_SECONDS", "60"))
 # Suppress repeated events of the same type within this window (per camera)
 ALERT_COOLDOWN_SECONDS = float(os.getenv("ALERT_COOLDOWN_SECONDS", "60"))
+# Cooldown específico por tipo de evento (fallback: ALERT_COOLDOWN_SECONDS)
+ALERT_COOLDOWN_BY_EVENT = {
+    "intruder_detected": float(os.getenv("ALERT_COOLDOWN_INTRUDER", "30")),
+    "unknown_detected": float(os.getenv("ALERT_COOLDOWN_UNKNOWN", "30")),
+}
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
 DETECTOR_MODEL_PATH = os.getenv("DETECTOR_MODEL_PATH", "")
@@ -56,5 +61,5 @@ MQTT_TOPIC = os.getenv("MQTT_TOPIC", "homeassistant/secur/alert")
 
 THUMBNAILS_DIR = DATA_DIR / "thumbnails"
 THUMBNAILS_DIR.mkdir(exist_ok=True)
-THUMBNAIL_INTERVAL_SECONDS = float(os.getenv("THUMBNAIL_INTERVAL_SECONDS", "10"))
-THUMBNAIL_HISTORY_SIZE = int(os.getenv("THUMBNAIL_HISTORY_SIZE", "20"))
+THUMBNAIL_INTERVAL_SECONDS = float(os.getenv("THUMBNAIL_INTERVAL_SECONDS", "20"))
+THUMBNAIL_HISTORY_SIZE = int(os.getenv("THUMBNAIL_HISTORY_SIZE", "30"))
