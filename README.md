@@ -281,19 +281,20 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 ### 7. Escala 80 câmeras (condomínio — fibra óptica)
 > Projeto real: condomínio com 80 câmeras IP em rede de fibra óptica.
 > **A gravação 24/7 fica nos NVRs; a borda só faz triagem leve (movimento); a central de análise decide a providência (informar/alertar/perigo eminente).**
+> Triagem em níveis (funil N0-N4): borda separa candidatos (movimento + heurísticas); central decide.
 > Proposta completa em [docs/architecture-80-cameras.md](docs/architecture-80-cameras.md).
 
-#### Fase A — Nó de borda (triagem leve)
-- [ ] Worker de borda: movimento + captura seletiva de frames candidatos (ROI), sem IA pesada
-- [ ] Envio de candidatos via MQTT/HTTPS; fila offline; registro de nós com heartbeat
+#### Fase A — Nó de borda (triagem leve N0-N1)
+- [ ] N0: movimento (OpenCV) + N1: pré-seleção heurística (área/posição/duração/exclusões)
+- [ ] Captura seletiva de frames/ROI candidatos; envio MQTT/HTTPS; fila offline; heartbeat
 
 #### Fase B — Transporte de candidatos
 - [ ] Eventos com UUID (MQTT) + upload de frame/ROI via HTTPS multipart
-- [ ] Consumidor central deduplica por event_id
+- [ ] Consumidor central deduplica por event_id; prioridade na fila p/ zonas críticas
 
-#### Fase C — Central de análise e decisão
-- [ ] Fila de análise + IA centralizada (detecção/tracking/identidade/regras)
-- [ ] Classificação de providência: informar / alertar / perigo eminente (novo nível crítico)
+#### Fase C — Central de análise e decisão (N2-N4)
+- [ ] N2: detecção rápida (YOLO-tiny/ONNX no ROI) → N3: tracking/comportamento/identidade/regras
+- [ ] N4: classificação de providência: informar / alertar / perigo eminente (novo nível crítico)
 - [ ] PostgreSQL central (particionamento mensal); storage plugável (SQLite p/ single-node)
 
 #### Fase D — Integração com NVR e evidência

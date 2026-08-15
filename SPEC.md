@@ -116,7 +116,8 @@ Construir um sistema de vigilância inteligente inicialmente desenvolvido em PC/
    - Proposta de dimensionamento em docs/architecture-80-cameras.md; validar com o projeto real antes de implementar.
    - **Gravação 24/7 e retenção ficam nos NVRs existentes. A borda só faz triagem leve (movimento + candidatos). A central de análise decide a providência: informar / alertar / perigo eminente.**
    - Arquitetura distribuída: nós de borda (triagem leve) + central de análise (IA, tracking, identidade, regras, decisão) + PostgreSQL + MQTT como backbone + integração ONVIF/RTSP com NVRs.
-   - Fases: A) nó de borda (triagem); B) transporte de candidatos; C) central de análise e decisão; D) integração com NVR e evidência; E) resiliência/HA.
+   - **Triagem em níveis (funil N0-N4):** N0 movimento e N1 pré-seleção na borda; N2 detecção rápida, N3 análise completa e N4 decisão de providência (informar/alertar/perigo eminente) na central.
+   - Fases: A) nó de borda (triagem N0-N1); B) transporte de candidatos; C) central de análise e decisão (N2-N4); D) integração com NVR e evidência; E) resiliência/HA.
 
 
 

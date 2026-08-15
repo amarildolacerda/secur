@@ -59,6 +59,32 @@
 
 **O ponto-chave:** movimento + ROI (região de interesse) é barato (OpenCV, µs-ms por frame). IA pesada (detecção, identidade, tracking) roda **uma vez**, na central, só quando há candidato — e o volume de candidatos é uma fração do tempo total (motion-gating).
 
+### 1.1 Triagem em níveis (funil de filtragem) — separar situações em potencial
+
+O pipeline separa situações em potencial em **5 níveis de triagem**, do mais barato ao mais caro. Cada nível filtra o volume antes do próximo — quanto mais fundo, mais preciso e mais caro:
+
+| Nível | Onde roda | O que faz | Custo | Taxa de passagem (aprox.) |
+|---|---|---|---|---|
+| **N0 — Captura e movimento** | borda | sub-stream + motion-gating OpenCV | µs-ms/frame | 100% frames → ~5-15% com movimento |
+| **N1 — Pré-seleção** | borda | heurísticas leves: área do blob, posição (ROI/zonas), duração mínima, exclusões/máscaras | ~ms | → ~1-5% candidatos reais |
+| **N2 — Detecção rápida** | central | YOLO-tiny/ONNX no ROI; só classifica (pessoa/veículo/animal/etc.), sem tracking | ~5-20 ms/frame | → ~0,5-2% detecções de interesse |
+| **N3 — Análise completa** | central | tracking, comportamento (loitering/direção/queda), identidade, regras de zona/schedule | ~20-100 ms/evento | → situações confirmadas |
+| **N4 — Decisão** | central | classifica providência (informar/alertar/perigo eminente) + roteia notificação + evidência | ~ms | → poucos eventos/min |
+
+**Exemplo com 80 câmeras a 5 fps:**
+- N0 processa ~400 fps de movimento (trivial para a borda);
+- N1 reduz para ~20-60 fps de candidatos;
+- N2 analisa ~2-8 fps de ROIs (folga enorme — GPU nem é obrigatória);
+- N3/N4 tratam poucos eventos por minuto.
+
+**Regras do funil:**
+- **Sem falso negativo crítico:** N1 é propositalmente permissivo (deixa passar falso positivo para não perder evento real); N2/N3 refinam. Thresholds configuráveis por câmera/zona.
+- **Backpressure:** se a central saturar, a borda reduz fps de candidato ou marca/descarta com prioridade (nunca bloqueia a captura).
+- **Prioridade na fila:** candidatos de zonas críticas (portaria, garagem, áreas privativas) sobem na frente — relevante para "perigo eminente".
+- **Evidência acompanha o nível:** a borda anexa ROI/frame + metadados (bbox de movimento, timestamp, câmera) a cada candidato; a central anexa o resultado de cada nível ao evento — dá rastreabilidade ("por que este evento?").
+
+> Isso é o padrão Frigate (motion → detection → tracking) formalizado, e casa com o que o Secur já tem (motion-gating + detecção ONNX + tracking).
+
 ---
 
 ## 2. Dimensionamento do tráfego de candidatos (central)
@@ -151,8 +177,8 @@ Exports/permanentes em diretório separado, fora da retenção.
 
 > Estratégia strangler: extrair, não reescrever. Cada fase mantém o sistema funcionando.
 
-### Fase A — Worker de borda (triagem leve)
-- Extrair `CameraWorker` para `secur/worker.py` executável em **modo borda**: movimento + exclusões + captura seletiva de frames candidatos (ROI), **sem detecção IA**.
+### Fase A — Worker de borda (triagem leve: N0-N1)
+- Extrair `CameraWorker` para `secur/worker.py` executável em **modo borda**: movimento (N0) + pré-seleção heurística (N1: área do blob, posição, duração, exclusões/máscaras) + captura seletiva de frames candidatos (ROI), **sem detecção IA**.
 - Envia candidatos via MQTT/HTTPS para a central (ou enfileira local se offline).
 - Config via API central (`GET /api/cameras` por node); registro de nós com heartbeat.
 
@@ -160,8 +186,8 @@ Exports/permanentes em diretório separado, fora da retenção.
 - Formato de evento com **UUID** (`secur/event/<camera_id>` MQTT) + upload de frame/ROI via HTTPS multipart.
 - Fila offline local (arquivo/SQLite) + reenvio; central deduplica por `event_id`.
 
-### Fase C — Central de análise e decisão
-- **Fila de análise** (Redis ou bounded) + consumidor que roda: detecção IA → tracking → comportamento → identidade → regras → **classificação de providência (informar/alertar/perigo eminente)**.
+### Fase C — Central de análise e decisão (N2-N4)
+- **Fila de análise** (Redis ou bounded) + consumidor que roda: detecção rápida (N2) → tracking/comportamento/identidade/regras (N3) → **classificação de providência (informar/alertar/perigo eminente)** (N4).
 - **PostgreSQL** (particionamento mensal, índices `(camera_id, timestamp)`); camada de storage plugável (SQLite para single-node/Pi).
 - Categorias de notificação ganham o nível **crítico/perigo eminente**.
 
