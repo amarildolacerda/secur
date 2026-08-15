@@ -306,7 +306,7 @@ def mqtt_register_device(cameras):
                 "name": f"Secur - {cam_name}",
                 "model": "Secur Camera",
                 "manufacturer": "Secur",
-                "sw_version": "0.1.0",
+                "sw_version": "0.2.0",
                 "suggested_area": zone,
             }
 
