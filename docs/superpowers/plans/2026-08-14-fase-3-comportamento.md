@@ -228,7 +228,7 @@ TRACK_MAX_AGE_SECONDS = float(os.getenv("TRACK_MAX_AGE_SECONDS", "2.0"))
 - [ ] **Step 4: Rodar e verificar que passa**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_tracking.py -q`
-Expected: 8 passed
+Expected: 7 passed
 
 - [ ] **Step 5: Commit**
 
