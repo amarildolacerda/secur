@@ -601,5 +601,5 @@ def main():
         {"name": "Recepção", "classification": "segurança"},
     ])
 
-    app = create_app(camera_manager=camera_manager)
+    app = create_app(camera_manager=camera_manager, alerts=alerts)
     app.run(host=SERVER_HOST, port=SERVER_PORT)

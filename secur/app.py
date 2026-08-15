@@ -91,7 +91,7 @@ except Exception:
     IdentityRecognizer = None
 
 
-def create_app(camera_manager=None, db_path=None):
+def create_app(camera_manager=None, db_path=None, alerts=None):
     app = Flask(__name__, template_folder="templates", static_folder="static")
     storage = EventStorage(db_path) if db_path is not None else EventStorage()
     # recognizer_factory hook: tests or callers may set app.recognizer_factory = lambda storage: recognizer
@@ -395,6 +395,12 @@ def create_app(camera_manager=None, db_path=None):
         if event_type not in valid_events:
             return jsonify({"error": "evento inválido"}), 400
         storage.set_routing(channel, event_type, bool(enabled))
+        # Regressão: desabilitar um evento no dashboard precisa valer na hora no
+        # envio real. O AlertService decide usando `routing` em memória (snapshot
+        # do boot, main.py) — sem recarregar, mensagens continuam saindo até o
+        # restart, mesmo com o toggle desligado. Recarrega do storage após o PUT.
+        if alerts is not None:
+            alerts.routing = storage.get_all_routing()
         return jsonify({"status": "ok"}), 200
 
     @app.route("/api/classes")

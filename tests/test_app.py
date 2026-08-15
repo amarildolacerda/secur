@@ -132,6 +132,48 @@ def test_notifications_put_invalid(client):
     assert resp.status_code == 400
 
 
+def test_put_routing_refreshes_in_memory_alert_service(tmp_path):
+    """Regressão: desabilitar um evento no dashboard (PUT /api/notifications/routing)
+    deve valer imediatamente no envio real. O AlertService decide o envio usando o
+    routing em memória (snapshot do boot, main.py) — o PUT precisa recarregá-lo,
+    senão as mensagens continuam chegando até o restart do servidor."""
+    from secur.alerts import AlertService
+
+    sent = []
+    handler = lambda payload: sent.append(payload)
+    handler.channel = "telegram"
+    service = AlertService()
+    service.register_handler(handler)
+    service.routing = {"telegram": {"motion_detected": True}}
+
+    db_path = tmp_path / "routing.db"
+    app = create_app(db_path=db_path, alerts=service)
+    app.config.update({"TESTING": True})
+    client = app.test_client()
+
+    # Desabilita motion_detected no Telegram (o que o toggle do dashboard faz).
+    resp = client.put("/api/notifications/routing", json={
+        "channel": "telegram", "event_type": "motion_detected", "enabled": False,
+    })
+    assert resp.status_code == 200
+
+    # Sem restart, o serviço em memória já reflete o novo valor.
+    assert service.routing["telegram"]["motion_detected"] is False
+
+    # Envio real NÃO passa pelo handler telegram para o evento desabilitado.
+    service.send("1", "entrada", "motion_detected", "teste")
+    assert sent == []
+
+    # Reabilita → volta a enviar imediatamente (sem restart).
+    resp = client.put("/api/notifications/routing", json={
+        "channel": "telegram", "event_type": "motion_detected", "enabled": True,
+    })
+    assert resp.status_code == 200
+    assert service.routing["telegram"]["motion_detected"] is True
+    service.send("1", "entrada", "motion_detected", "teste")
+    assert [p["event_type"] for p in sent] == ["motion_detected"]
+
+
 def test_add_camera_with_alert_classes(client, monkeypatch):
     from secur.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
