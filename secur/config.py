@@ -85,3 +85,5 @@ TRACK_MAX_AGE_SECONDS = float(os.getenv("TRACK_MAX_AGE_SECONDS", "2.0"))
 LOITERING_SECONDS = float(os.getenv("LOITERING_SECONDS", "30"))
 LOITERING_MAX_DISTANCE = float(os.getenv("LOITERING_MAX_DISTANCE", "80"))
 LOITERING_LABELS = ["person", "car", "truck", "bus", "motorcycle", "bicycle"]
+
+FALL_ASPECT_RATIO = float(os.getenv("FALL_ASPECT_RATIO", "1.2"))

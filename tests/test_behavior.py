@@ -70,3 +70,25 @@ def test_direction_crossing_no_cross():
 def test_direction_crossing_no_prev_centroid():
     line = {"axis": "vertical", "x": 100.0}
     assert check_direction_crossing(None, (150.0, 60.0), line) is None
+
+from secur.behavior import check_fall
+
+
+def test_check_fall_lying_person():
+    det = {"label": "person", "bbox": {"x": 0, "y": 0, "w": 200, "h": 100}}
+    assert check_fall(det, 1.2) is True
+
+
+def test_check_fall_standing_person():
+    det = {"label": "person", "bbox": {"x": 0, "y": 0, "w": 100, "h": 200}}
+    assert check_fall(det, 1.2) is False
+
+
+def test_check_fall_ignores_non_person():
+    det = {"label": "car", "bbox": {"x": 0, "y": 0, "w": 200, "h": 100}}
+    assert check_fall(det, 1.2) is False
+
+
+def test_check_fall_zero_height():
+    det = {"label": "person", "bbox": {"x": 0, "y": 0, "w": 200, "h": 0}}
+    assert check_fall(det, 1.2) is False

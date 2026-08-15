@@ -53,3 +53,20 @@ def check_direction_crossing(prev_centroid, curr_centroid, line):
         if prev_centroid[1] > y >= curr_centroid[1]:
             return "saindo"
     return None
+
+
+def check_fall(detection, aspect_ratio):
+    """Heurística de queda: pessoa com bbox deitada (w/h >= aspect_ratio).
+
+    Subset viável do spec 3.4: ângulo do torso exigiria modelo de pose
+    local (YOLO-pose) com custo de inferência proibitivo no hardware alvo
+    — mantido como backlog (ver README).
+    """
+    if detection.get("label") != "person":
+        return False
+    bbox = detection.get("bbox") or {}
+    h = bbox.get("h", 0)
+    w = bbox.get("w", 0)
+    if h <= 0:
+        return False
+    return (w / h) >= aspect_ratio
