@@ -20,6 +20,7 @@ from .config import (
     ALERT_COOLDOWN_BY_EVENT,
     THUMBNAILS_DIR,
     THUMBNAIL_INTERVAL_SECONDS,
+    THUMBNAIL_DIFF_THRESHOLD,
     THUMBNAIL_HISTORY_SIZE,
     CLIP_PRE_SECONDS,
     CLIP_POST_SECONDS,
@@ -75,6 +76,8 @@ class CameraWorker:
         self._privacy_check_time = 0.0
         self._privacy_on = False
         self.last_frame_time = None
+        self._last_thumb_time = None
+        self._last_saved_thumb = None
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
 
@@ -98,6 +101,44 @@ class CameraWorker:
             "healthy": _worker_healthy(self.last_frame_time, time.time(), WORKER_HEALTHY_TIMEOUT_SECONDS),
         }
 
+    def _should_save_thumbnail(self, frame, now):
+        """Decisão única de captura de thumbnail (evento e history):
+        intervalo mínimo entre capturas + dedup por similaridade com o
+        último thumbnail salvo (cena estática não gera duplicatas)."""
+        if not should_capture_thumbnail(self._last_thumb_time, now, THUMBNAIL_INTERVAL_SECONDS):
+            return False
+        if self._last_saved_thumb is not None and frames_similar(self._last_saved_thumb, frame, THUMBNAIL_DIFF_THRESHOLD):
+            return False
+        return True
+
+    def _capture_thumbnail(self, storage_frame, event_type, now, keep=THUMBNAIL_HISTORY_SIZE, days=None):
+        """Salva um thumbnail com dedup por similaridade.
+
+        Retorna o path (str) se gravou, ou None se pulado (intervalo não
+        cumprido, frame similar ao último salvo ou falha de escrita).
+        Usado pelo thumbnail do evento e pelo history — mantém o estado
+        `_last_thumb_time`/`_last_saved_thumb` sempre que grava.
+        """
+        if not self._should_save_thumbnail(storage_frame, now):
+            return None
+        try:
+            cam_dir = THUMBNAILS_DIR / f"cam{self.camera['id']}"
+            cam_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"{int(now * 1000)}.jpg"
+            path = cam_dir / filename
+            ok, jpg = cv2.imencode(".jpg", storage_frame)
+            if not ok:
+                return None
+            path.write_bytes(jpg.tobytes())
+            self.storage.add_camera_thumbnail(self.camera["id"], str(path), event_type)
+            self.storage.prune_camera_thumbnails(self.camera["id"], keep=keep, max_age_days=days)
+        except Exception:
+            logger.warning("Falha ao capturar thumbnail (câmera %s)", self.camera.get("name"))
+            return None
+        self._last_thumb_time = now
+        self._last_saved_thumb = _thumbnail_mini(storage_frame)
+        return str(path)
+
     def identity_enabled(self):
         """Reconhecimento de identidade habilitado? (flag de privacidade com cache de 5s)."""
         now = time.time()
@@ -116,7 +157,6 @@ class CameraWorker:
         last_motion_time = None
         no_motion_alerted = False
         last_alert_time = {}
-        last_thumb_time = None
         frame_buffer = CircularFrameBuffer(maxlen=max(1, int(CLIP_PRE_SECONDS * CLIP_FPS)))
         clip_writer = None
         clip_end_time = 0.0
@@ -275,22 +315,7 @@ class CameraWorker:
                             self.camera.get("name"),
                         )
                     else:
-                        thumb_path = None
-                        if should_capture_thumbnail(last_thumb_time, time.time(), THUMBNAIL_INTERVAL_SECONDS):
-                            try:
-                                cam_dir = THUMBNAILS_DIR / f"cam{self.camera['id']}"
-                                cam_dir.mkdir(parents=True, exist_ok=True)
-                                filename = f"{int(time.time() * 1000)}.jpg"
-                                path = cam_dir / filename
-                                ok, jpg = cv2.imencode(".jpg", storage_frame)
-                                if ok:
-                                    path.write_bytes(jpg.tobytes())
-                                    self.storage.add_camera_thumbnail(self.camera["id"], str(path), event_type)
-                                    self.storage.prune_camera_thumbnails(self.camera["id"], keep=thumb_keep, max_age_days=thumb_days)
-                                    last_thumb_time = time.time()
-                                    thumb_path = str(path)
-                            except Exception:
-                                logger.warning("Falha ao capturar thumbnail (câmera %s)", self.camera.get("name"))
+                        thumb_path = self._capture_thumbnail(storage_frame, event_type, time.time(), thumb_keep, thumb_days)
                         now = time.time()
                         if event_type is None:
                             logger.debug(
@@ -359,22 +384,9 @@ class CameraWorker:
                     time.sleep(1)
                     continue
 
-                # Thumbnail history: capture at most 1 per interval during continuous motion
+                # Thumbnail history: captura com dedup durante movimento contínuo
                 now_thumb = time.time()
-                if should_capture_thumbnail(last_thumb_time, now_thumb, THUMBNAIL_INTERVAL_SECONDS):
-                    try:
-                        cam_dir = THUMBNAILS_DIR / f"cam{self.camera['id']}"
-                        cam_dir.mkdir(parents=True, exist_ok=True)
-                        filename = f"{int(now_thumb * 1000)}.jpg"
-                        path = cam_dir / filename
-                        ok, jpg = cv2.imencode(".jpg", storage_frame)
-                        if ok:
-                            path.write_bytes(jpg.tobytes())
-                            self.storage.add_camera_thumbnail(self.camera["id"], str(path), event_type)
-                            self.storage.prune_camera_thumbnails(self.camera["id"], keep=thumb_keep, max_age_days=thumb_days)
-                            last_thumb_time = now_thumb
-                    except Exception:
-                        logger.warning("Falha ao capturar thumbnail (câmera %s)", self.camera.get("name"))
+                self._capture_thumbnail(storage_frame, event_type, now_thumb, thumb_keep, thumb_days)
             else:
                 # No motion: after NO_MOTION_ALERT_SECONDS without any occurrence, send "sem movimento"
                 if (last_motion_time is not None
@@ -519,6 +531,42 @@ def should_capture_thumbnail(last_thumb_time, now, interval):
     if last_thumb_time is None:
         return True
     return (now - last_thumb_time) >= interval
+
+
+_THUMBNAIL_MINI_SIZE = 64
+
+
+def _thumbnail_mini(frame, size=_THUMBNAIL_MINI_SIZE):
+    """Miniatura para o estado de dedup (memória baixa por câmera)."""
+    if frame is None:
+        return None
+    try:
+        return cv2.resize(frame, (size, size), interpolation=cv2.INTER_AREA)
+    except Exception:
+        return None
+
+
+def frames_similar(a, b, threshold):
+    """True se os frames são visualmente similares (NÃO salvar duplicata).
+
+    Redimensiona ambos para 64x64 grayscale, absdiff e média da diferença.
+    threshold = diferença média por pixel tolerável (ruído de sensor).
+    Calibração (480x640 sintética): idêntico=0.0, jpeg roundtrip=0.0,
+    ruído sigma3=~0.97, objeto forte 2.5% do frame=~9.1. Limiar 3.0 cobre
+    ruído leve e separa mudança real de cena. None/erro -> False (nunca
+    bloquear: se não der para comparar, salvar).
+    """
+    if a is None or b is None:
+        return False
+    try:
+        mini_a = cv2.resize(a, (_THUMBNAIL_MINI_SIZE, _THUMBNAIL_MINI_SIZE))
+        mini_b = cv2.resize(b, (_THUMBNAIL_MINI_SIZE, _THUMBNAIL_MINI_SIZE))
+        gray_a = cv2.cvtColor(mini_a, cv2.COLOR_BGR2GRAY)
+        gray_b = cv2.cvtColor(mini_b, cv2.COLOR_BGR2GRAY)
+        diff = cv2.absdiff(gray_a, gray_b)
+        return cv2.mean(diff)[0] <= threshold
+    except Exception:
+        return False
 
 
 class CameraManager:

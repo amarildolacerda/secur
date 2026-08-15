@@ -75,6 +75,11 @@ MQTT_TOPIC = os.getenv("MQTT_TOPIC", "homeassistant/secur/alert")
 THUMBNAILS_DIR = DATA_DIR / "thumbnails"
 THUMBNAILS_DIR.mkdir(exist_ok=True)
 THUMBNAIL_INTERVAL_SECONDS = float(os.getenv("THUMBNAIL_INTERVAL_SECONDS", "20"))
+# Dedup de thumbnails: diferença média por pixel (grayscale 64x64) acima deste
+# limiar = frame diferente do último salvo -> gravar. Calibrado (480x640):
+# idêntico/jpeg roundtrip = 0.0, ruído de sensor sigma3 = ~0.97, objeto forte
+# 2.5% do frame = ~9.1. 3.0 cobre ruído leve e separa mudança real de cena.
+THUMBNAIL_DIFF_THRESHOLD = float(os.getenv("THUMBNAIL_DIFF_THRESHOLD", "3.0"))
 THUMBNAIL_HISTORY_SIZE = int(os.getenv("THUMBNAIL_HISTORY_SIZE", "30"))
 
 CLIP_PRE_SECONDS = float(os.getenv("CLIP_PRE_SECONDS", "10"))
