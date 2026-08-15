@@ -244,3 +244,29 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - [ ] Detecção de comportamentos e anomalias
 - [ ] Módulo móvel para notificações e controle remoto
 - [ ] Validação completa de performance em Raspberry Pi
+### 6. Recursos candidatos (inspirados no Frigate NVR)
+> Backlog avaliado a partir do [Frigate](https://github.com/amarildolacerda/frigate).
+> Marque os que deseja implementar em uma próxima fase. CPU-leve = adequado ao Raspberry Pi.
+
+#### Alta prioridade (CPU-leve, encaixe direto no pipeline atual)
+- [ ] Filtros de objeto por score (min_score/threshold com mediana) — suprime falsos positivos
+- [ ] Máscaras de movimento vs. máscaras de filtro de objeto por classe (bottom-center)
+- [ ] Objetos estacionários — pausar detecção em objeto parado (~10s) para economizar CPU
+- [ ] Re-streaming RTSP — reduz número de conexões à câmera (importante com 4-8 câmeras)
+- [ ] Exportação de clipes permanentes (fora da retenção)
+
+#### Média prioridade (bom valor, custo moderado)
+- [ ] Gravação contínua 24/7 com retenção em camadas (ex.: tudo 3d, movimento 7d, alertas 30d)
+- [ ] PWA — dashboard instalável como app (manifest + service worker)
+- [ ] Timeline de revisão agrupando eventos sobrepostos (review items)
+- [ ] Birdseye — visão geral que mostra apenas câmeras com atividade
+- [ ] Detecção de áudio (sirene, alarme, vidro quebrando) — leve na CPU
+
+#### Backlog (dependem de hardware/infra)
+- [ ] Autotracking PTZ via ONVIF
+- [ ] Reconhecimento de placas (LPR) — OCR local
+- [ ] Face recognition dedicada (sub_label em pessoa conhecida)
+- [ ] WebRTC/MSE live view de baixa latência (via go2rtc)
+- [ ] Semantic search (embeddings locais) — requer 8GB+ RAM e AVX2; não roda no Pi
+
+
