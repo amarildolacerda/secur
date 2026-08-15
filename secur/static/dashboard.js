@@ -550,6 +550,13 @@ function setZoneFormMode(mode, zone = null) {
     endInput.value = '';
   }
 
+  const directionInput = document.getElementById('zone-direction-line');
+  if (mode === 'edit' && zone) {
+    directionInput.value = zone.direction_line ? JSON.stringify(zone.direction_line) : '';
+  } else {
+    directionInput.value = '';
+  }
+
   if (message) {
     message.textContent = '';
     message.classList.remove('error');
@@ -592,6 +599,19 @@ async function submitZoneForm(event) {
     schedule = { start: startInput.value || '00:00', end: endInput.value || '23:59' };
   }
   payload.schedule = schedule;
+
+  const directionText = document.getElementById('zone-direction-line').value.trim();
+  let directionLine = null;
+  if (directionText) {
+    try {
+      directionLine = JSON.parse(directionText);
+    } catch (e) {
+      message.textContent = 'Linha de direção: JSON inválido.';
+      message.classList.add('error');
+      return;
+    }
+  }
+  payload.direction_line = directionLine;
 
   if (!payload.name) {
     message.textContent = 'Nome é obrigatório.';
