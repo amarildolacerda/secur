@@ -135,9 +135,20 @@ def test_notifications_registry():
     keys = [e["key"] for e in EVENT_TYPES]
     assert "motion_detected" in keys
     assert "no_motion" in keys
+    assert "intruder_detected" in keys
+    assert "loitering" in keys
+    assert "direction_change" in keys
+    assert "fall_detected" in keys
     assert "object_detected" in keys
     legacy = [e for e in EVENT_TYPES if e.get("legacy")]
     assert [e["key"] for e in legacy] == ["object_detected"]
+
+
+def test_behavior_events_are_alerts():
+    categories = {e["key"]: e["category"] for e in EVENT_TYPES}
+    assert categories["loitering"] == "alerta"
+    assert categories["direction_change"] == "alerta"
+    assert categories["fall_detected"] == "alerta"
 
 
 def test_default_routing_no_motion_off_telegram():
@@ -145,6 +156,17 @@ def test_default_routing_no_motion_off_telegram():
     assert DEFAULT_ROUTING["telegram"]["motion_detected"] is True
     assert DEFAULT_ROUTING["automation"]["no_motion"] is True
     assert DEFAULT_ROUTING["automation"]["snapshot_info"] is False
+
+
+def test_default_routing_behavior_events():
+    # Telegram: loitering/direction off (verboso), queda on (emergência)
+    assert DEFAULT_ROUTING["telegram"]["loitering"] is False
+    assert DEFAULT_ROUTING["telegram"]["direction_change"] is False
+    assert DEFAULT_ROUTING["telegram"]["fall_detected"] is True
+    # Automation: todos os eventos de comportamento on
+    assert DEFAULT_ROUTING["automation"]["loitering"] is True
+    assert DEFAULT_ROUTING["automation"]["direction_change"] is True
+    assert DEFAULT_ROUTING["automation"]["fall_detected"] is True
 
 
 def test_is_enabled_defaults_true():
