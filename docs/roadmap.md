@@ -166,3 +166,15 @@
 3. **Objetos estacionários** — multiplicador: desbloqueia carrinho abandonado, veículo obstruindo, bagagem, vandalismo
 4. **Loitering contextual (portaria/garagem)** — furto é a dor nº1 em condomínio BR; `check_loitering` já existe no código
 5. Aglomeração/footfall/filas — só quando entrar em shopping/terminal (outro público)
+## 9. Portaria inteligente — notificação de visita/entrega
+
+> Detecção automática por visão: alguém chega à portaria → notifica o morador → registra entrada e saída do domínio.
+> Avaliação completa em [feature-portaria-visitante.md](feature-portaria-visitante.md).
+
+- [ ] Cadastro morador ↔ unidade ↔ canal de notificação (app/Telegram)
+- [ ] Zona "portaria" + linha de entrada/saída (direction_line) — já suportado
+- [ ] Evento `visitor_arrived` (chegada + snapshot) — começar com notificação geral (Opção C)
+- [ ] Vínculo visitante → unidade por tracking (Opção A — automática)
+- [ ] Evento `visitor_departed` (saída do domínio) + notificação de fechamento
+- [ ] Alerta de desconhecido persistente na portaria (já coberto por intruder/unknown)
+

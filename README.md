@@ -53,6 +53,7 @@ O que está planejado — detalhes técnicos completos em [docs/roadmap.md](docs
 - **Alta prioridade:** fogo/fumaça, alagamento via sensores, objetos estacionários, filtros anti-falso-alarme
 - **Escala:** arquitetura para 80 câmeras em condomínio (borda leve + central de análise)
 - **Plataforma:** PWA, exportação de evidência, integração com NVR/ONVIF
+- **Portaria inteligente:** notificação automática ao morador quando chega visita/entrega, com registro de entrada e saída
 
 ## Documentação
 
