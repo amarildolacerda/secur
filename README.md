@@ -245,7 +245,8 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - [ ] Módulo móvel para notificações e controle remoto
 - [ ] Validação completa de performance em Raspberry Pi
 ### 6. Recursos candidatos (inspirados no Frigate NVR)
-> Backlog avaliado a partir do [Frigate](https://github.com/amarildolacerda/frigate).
+> Backlog avaliado a partir do [Frigate](https://github.com/amarildolacerda/frigate)
+> e da [pesquisa de desejos de usuários](docs/research-user-wants.md).
 > Marque os que deseja implementar em uma próxima fase. CPU-leve = adequado ao Raspberry Pi.
 
 #### Alta prioridade (CPU-leve, encaixe direto no pipeline atual)
@@ -255,10 +256,17 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - [ ] Re-streaming RTSP — reduz número de conexões à câmera (importante com 4-8 câmeras)
 - [ ] Exportação de clipes permanentes (fora da retenção)
 
-#### Média prioridade (bom valor, custo moderado)
+#### Alta prioridade — promovidos pela pesquisa de usuários
 - [ ] Gravação contínua 24/7 com retenção em camadas (ex.: tudo 3d, movimento 7d, alertas 30d)
-- [ ] PWA — dashboard instalável como app (manifest + service worker)
+- [ ] Pré-gravação (pre-roll) — contexto antes do evento (ex.: 10s antes da detecção)
+- [ ] PWA — dashboard instalável como app + notificações push (manifest + service worker)
+- [ ] Retenção por espaço em disco (ex.: "use até 3TB") + múltiplos locais de armazenamento
+
+#### Média prioridade (bom valor, custo moderado)
 - [ ] Timeline de revisão agrupando eventos sobrepostos (review items)
+- [ ] UI de revisão simplificada ("por que este evento?") + ações em lote (multiselect/delete)
+- [ ] Armar/desarmar câmera/zona por horário (ex.: desarmar quando estou em casa)
+- [ ] Permissões/roles — modo visualização (view-only) para não-admin
 - [ ] Birdseye — visão geral que mostra apenas câmeras com atividade
 - [ ] Detecção de áudio (sirene, alarme, vidro quebrando) — leve na CPU
 
@@ -267,6 +275,8 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - [ ] Reconhecimento de placas (LPR) — OCR local
 - [ ] Face recognition dedicada (sub_label em pessoa conhecida)
 - [ ] WebRTC/MSE live view de baixa latência (via go2rtc)
+- [ ] Áudio bidirecional (two-way) em doorbell
+- [ ] Integração com portaria remota / app do morador (contexto Brasil)
 - [ ] Semantic search (embeddings locais) — requer 8GB+ RAM e AVX2; não roda no Pi
 
 

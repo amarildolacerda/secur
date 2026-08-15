@@ -108,9 +108,10 @@ Construir um sistema de vigilância inteligente inicialmente desenvolvido em PC/
    - Suportar até 8 câmeras.
    - Adicionar treinamentos customizados e integração com automação residencial.
 6. Recursos candidatos (inspirados no Frigate NVR)
-   - Backlog avaliado no README (seção Roadmap); marcar os pertinentes antes de planejar a próxima fase.
-   - CPU-leve: filtros de score, máscaras por classe, objetos estacionários, re-streaming RTSP, exports.
-   - Backlog: autotracking PTZ, LPR, face dedicada, WebRTC/go2rtc, semantic search (não roda no Pi).
+   - Backlog avaliado no README (seção Roadmap) e em docs/research-user-wants.md; marcar os pertinentes antes de planejar a próxima fase.
+   - CPU-leve (alta prioridade): filtros de score, máscaras por classe, objetos estacionários, re-streaming RTSP, exports, gravação 24/7 com retenção em camadas, pre-roll, PWA/push, retenção por espaço em disco.
+   - Média prioridade: review items, UI de revisão simplificada + ações em lote, armar/desarmar por horário, permissões/view-only, birdseye, detecção de áudio.
+   - Backlog: autotracking PTZ, LPR, face dedicada, WebRTC/go2rtc, two-way audio, portaria remota/app do morador, semantic search (não roda no Pi).
 
 
 ---
