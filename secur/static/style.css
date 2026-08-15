@@ -302,10 +302,15 @@ body {
   color: var(--muted);
 }
 
-/* Visão geral — summary cards: linha única compacta ocupando a largura */
+/* Visão geral — summary cards: linha única compacta ocupando a largura.
+   minmax(0, 1fr) permite as colunas encolherem abaixo do min-content
+   (sem isso os cards estouram o container em telas médias); overflow-x é
+   rede de segurança para scroll horizontal se algo ainda não couber. */
 #summary-cards {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 #summary-cards .card {
@@ -316,6 +321,9 @@ body {
   font-size: 0.65rem;
   letter-spacing: 0.5px;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #summary-cards .summary-value {
@@ -326,6 +334,9 @@ body {
   background: var(--surface);
   border-radius: var(--radius-sm);
   padding: 5px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #summary-cards .card p:last-child {
@@ -796,6 +807,14 @@ tr.event-info td {
 }
 
 /* ---------- Responsive ---------- */
+/* Visão geral — com a sidebar de 200px, abaixo de ~1024px as 4 colunas
+   ficam espremidas; reduz para 2x2 antes disso. */
+@media (max-width: 1024px) {
+  #summary-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 700px) {
   .sidebar {
     width: 60px;
@@ -848,10 +867,6 @@ tr.event-info td {
   .main {
     margin-left: 60px;
     padding: 16px;
-  }
-
-  #summary-cards {
-    grid-template-columns: repeat(2, 1fr);
   }
 
   #camera-tiles,
