@@ -403,19 +403,259 @@ function createZoneRow(zone) {
   `;
 }
 
-function createEventRow(event) {
-  const isInfo = event.event_type === 'snapshot_info';
-  const badge = isInfo ? '<span class="badge-info">info</span>' : '';
+/* ========== Event cards ========== */
+
+function timeAgo(ts) {
+  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 60) return 'agora';
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
+const thumbCache = {};
+
+function getCameraThumb(cameraId, eventTs) {
+  if (!cameraId) return Promise.resolve(null);
+  if (thumbCache[cameraId] === undefined) {
+    thumbCache[cameraId] = fetch(`/camera/${cameraId}/thumbnails`)
+      .then(r => r.ok ? r.json() : [])
+      .catch(() => []);
+  }
+  return thumbCache[cameraId].then(items => {
+    if (!items || !items.length) return null;
+    let best = null;
+    let bestDiff = Infinity;
+    items.forEach(item => {
+      const diff = Math.abs(new Date(item.timestamp).getTime() - new Date(eventTs).getTime());
+      if (diff < bestDiff) { bestDiff = diff; best = item; }
+    });
+    return best ? best.url : null;
+  });
+}
+
+function createEventCard(event, thumbUrl) {
+  const isAlert = event.event_type !== 'snapshot_info';
+  const badge = isAlert
+    ? '<span class="badge badge-alert">alerta</span>'
+    : '<span class="badge badge-info">info</span>';
+  const thumbHtml = thumbUrl
+    ? `<img class="event-thumb" src="${thumbUrl}" alt="thumbnail" loading="lazy" />`
+    : '<div class="event-thumb event-thumb-empty">&#x1F4F7;</div>';
   return `
-    <tr class="${isInfo ? 'event-info' : ''}">
-      <td>${event.id}</td>
-      <td>${new Date(event.timestamp).toLocaleString()}</td>
-      <td>${event.camera_id}</td>
-      <td>${event.zone || "-"}</td>
-      <td>${event.event_type} ${badge}</td>
-      <td>${event.details || "-"}</td>
-    </tr>
+    <div class="card event-card">
+      ${thumbHtml}
+      <div class="event-card-body">
+        <div class="event-card-header">
+          <span class="event-type">${event.event_type} ${badge}</span>
+          <span class="event-time" data-ts="${new Date(event.timestamp).toISOString()}">${timeAgo(event.timestamp)}</span>
+        </div>
+        <p class="event-meta">Câmera ${event.camera_id || '-'}${event.zone ? ' · ' + event.zone : ''}</p>
+        ${event.details ? `<p class="event-details">${event.details}</p>` : ''}
+      </div>
+    </div>
   `;
+}
+
+/* ========== Event filters ========== */
+
+const EVENT_FILTERS_KEY = 'secur.eventFilters';
+
+function readFilterState() {
+  const url = new URLSearchParams(window.location.search);
+  const state = {
+    camera: url.get('camera') || '',
+    zone: url.get('zone') || '',
+    type: url.get('type') || '',
+    since: url.get('since') || '',
+    alerts: url.get('alerts') === '1',
+  };
+  if (Object.values(state).some(v => v !== '' && v !== false)) return state;
+  try {
+    const saved = JSON.parse(localStorage.getItem(EVENT_FILTERS_KEY) || 'null');
+    if (saved) return { camera: '', zone: '', type: '', since: '', alerts: false, ...saved };
+  } catch (e) { /* ignore */ }
+  return state;
+}
+
+function saveFilterState(state) {
+  try {
+    localStorage.setItem(EVENT_FILTERS_KEY, JSON.stringify(state));
+  } catch (e) { /* ignore */ }
+}
+
+function syncUrl(state) {
+  const url = new URLSearchParams();
+  if (state.camera) url.set('camera', state.camera);
+  if (state.zone) url.set('zone', state.zone);
+  if (state.type) url.set('type', state.type);
+  if (state.since) url.set('since', state.since);
+  if (state.alerts) url.set('alerts', '1');
+  const qs = url.toString();
+  history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+}
+
+function applyEventFilters(events, alertTypes) {
+  const state = readFilterState();
+  const sinceHours = Number(state.since) || 0;
+  const cutoff = sinceHours ? Date.now() - sinceHours * 3600 * 1000 : null;
+  return events.filter(e => {
+    if (state.camera && String(e.camera_id) !== state.camera) return false;
+    if (state.zone && (e.zone || '') !== state.zone) return false;
+    if (state.type && e.event_type !== state.type) return false;
+    if (cutoff && new Date(e.timestamp).getTime() < cutoff) return false;
+    if (state.alerts && !alertTypes.has(e.event_type)) return false;
+    return true;
+  });
+}
+
+function populateFilterOptions(events) {
+  const cameraSelect = document.getElementById('filter-camera');
+  const zoneSelect = document.getElementById('filter-zone');
+  const typeSelect = document.getElementById('filter-type');
+  const cameras = [...new Set(events.map(e => String(e.camera_id)))].sort();
+  const zones = [...new Set(events.map(e => e.zone).filter(Boolean))].sort();
+  const types = [...new Set(events.map(e => e.event_type))].sort();
+  const state = readFilterState();
+
+  if (cameraSelect && !cameraSelect.dataset.populated) {
+    cameraSelect.dataset.populated = '1';
+    cameras.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = `Câmera ${c}`;
+      if (c === state.camera) opt.selected = true;
+      cameraSelect.appendChild(opt);
+    });
+    zones.forEach(z => {
+      const opt = document.createElement('option');
+      opt.value = z;
+      opt.textContent = z;
+      if (z === state.zone) opt.selected = true;
+      zoneSelect.appendChild(opt);
+    });
+    types.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      if (t === state.type) opt.selected = true;
+      typeSelect.appendChild(opt);
+    });
+  }
+  const sinceSelect = document.getElementById('filter-since');
+  if (sinceSelect) sinceSelect.value = state.since;
+  const alertsCheck = document.getElementById('filter-alerts');
+  if (alertsCheck) alertsCheck.checked = state.alerts;
+}
+
+function renderEventCards(events, alertTypes) {
+  const grid = document.getElementById('events-grid');
+  const empty = document.getElementById('events-empty');
+  if (!grid) return;
+
+  const filtered = applyEventFilters(events, alertTypes);
+  if (!filtered.length) {
+    grid.innerHTML = '';
+    if (empty) empty.classList.remove('hidden-panel');
+    return;
+  }
+  if (empty) empty.classList.add('hidden-panel');
+
+  let pending = filtered.length;
+  const cards = filtered.map((event, idx) => {
+    const card = document.createElement('div');
+    card.className = 'card event-card';
+    const thumb = document.createElement('div');
+    thumb.className = 'event-thumb event-thumb-empty';
+    thumb.innerHTML = '&#x1F4F7;';
+    card.appendChild(thumb);
+    const body = document.createElement('div');
+    body.className = 'event-card-body';
+    body.innerHTML = `
+      <div class="event-card-header">
+        <span class="event-type">${event.event_type} ${event.event_type !== 'snapshot_info' ? '<span class="badge badge-alert">alerta</span>' : '<span class="badge badge-info">info</span>'}</span>
+        <span class="event-time" data-ts="${new Date(event.timestamp).toISOString()}">${timeAgo(event.timestamp)}</span>
+      </div>
+      <p class="event-meta">Câmera ${event.camera_id || '-'}${event.zone ? ' · ' + event.zone : ''}</p>
+      ${event.details ? `<p class="event-details">${event.details}</p>` : ''}
+    `;
+    card.appendChild(body);
+    grid.appendChild(card);
+    getCameraThumb(event.camera_id, event.timestamp).then(url => {
+      if (url) {
+        const img = document.createElement('img');
+        img.className = 'event-thumb';
+        img.src = url;
+        img.alt = 'thumbnail';
+        img.loading = 'lazy';
+        thumb.replaceWith(img);
+      }
+    });
+    return card;
+  });
+
+  // re-render relógio a cada 30s
+  if (!window._eventTimeTimer) {
+    window._eventTimeTimer = setInterval(() => {
+      document.querySelectorAll('#events-grid .event-time[data-ts]').forEach(el => {
+        el.textContent = timeAgo(el.dataset.ts);
+      });
+    }, 30000);
+  }
+}
+
+async function renderEvents(events) {
+  let alertTypes = new Set();
+  try {
+    const notif = await fetchData('/api/notifications');
+    alertTypes = new Set((notif.events || [])
+      .filter(e => e.category === 'alerta')
+      .map(e => e.key));
+  } catch (e) { /* sem categorias: "só alertas" vira no-op */ }
+  populateFilterOptions(events);
+  renderEventCards(events, alertTypes);
+  return alertTypes;
+}
+
+let lastEvents = [];
+let lastAlertTypes = new Set();
+
+function setupEventFilters() {
+  const ids = ['filter-camera', 'filter-zone', 'filter-type', 'filter-since', 'filter-alerts'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => {
+      const state = readFilterState();
+      state.camera = document.getElementById('filter-camera').value;
+      state.zone = document.getElementById('filter-zone').value;
+      state.type = document.getElementById('filter-type').value;
+      state.since = document.getElementById('filter-since').value;
+      state.alerts = document.getElementById('filter-alerts').checked;
+      saveFilterState(state);
+      syncUrl(state);
+      renderEventCards(lastEvents, lastAlertTypes);
+    });
+  });
+
+  const clearButtons = ['filter-clear', 'events-clear-filters'];
+  clearButtons.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', () => {
+      const camera = document.getElementById('filter-camera');
+      const zone = document.getElementById('filter-zone');
+      const type = document.getElementById('filter-type');
+      const since = document.getElementById('filter-since');
+      const alerts = document.getElementById('filter-alerts');
+      if (camera) camera.value = '';
+      if (zone) zone.value = '';
+      if (type) type.value = '';
+      if (since) since.value = '';
+      if (alerts) alerts.checked = false;
+      saveFilterState({ camera: '', zone: '', type: '', since: '', alerts: false });
+      syncUrl({ camera: '', zone: '', type: '', since: '', alerts: false });
+      renderEventCards(lastEvents, lastAlertTypes);
+    });
+  });
 }
 
 /* ========== Camera form ========== */
@@ -477,8 +717,8 @@ function hideCameraForm() {
 }
 
 function resetCameraList() {
-  const cameraList = document.getElementById('camera-list');
-  if (cameraList) delete cameraList.dataset.rendered;
+  const cameraTiles = document.getElementById('camera-tiles');
+  if (cameraTiles) delete cameraTiles.dataset.rendered;
 }
 
 async function submitCameraForm(event) {
@@ -1125,8 +1365,8 @@ async function renderDashboard() {
   }
   updateVisibleSnapshots(cameras);
 
-  const eventsTable = document.getElementById('events-table');
-  eventsTable.innerHTML = events.map(createEventRow).join('');
+  lastEvents = events;
+  lastAlertTypes = await renderEvents(events);
 
   renderCameraManagement(cameras);
   renderZoneManagement(zones);
@@ -1241,6 +1481,7 @@ renderDashboard();
 setupCameraForm();
 setupZoneForm();
 setupSettings();
+setupEventFilters();
   setupIdentityForm();
 const emptyAddCamera = document.getElementById('empty-add-camera');
 if (emptyAddCamera) {

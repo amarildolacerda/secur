@@ -259,20 +259,34 @@
             </div>
 
             <section class="panel hidden-panel" id="recent-events">
-                <h2>Eventos recentes</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Timestamp</th>
-                            <th>Câmera</th>
-                            <th>Zona</th>
-                            <th>Evento</th>
-                            <th>Detalhes</th>
-                        </tr>
-                    </thead>
-                    <tbody id="events-table"></tbody>
-                </table>
+                <div class="panel-header">
+                    <div>
+                        <h2>Eventos recentes</h2>
+                        <p>Últimos 100 eventos carregados.</p>
+                    </div>
+                </div>
+                <div class="chips-bar" id="event-filters">
+                    <select id="filter-camera" class="chip-select"><option value="">Todas as câmeras</option></select>
+                    <select id="filter-zone" class="chip-select"><option value="">Todas as zonas</option></select>
+                    <select id="filter-type" class="chip-select"><option value="">Todos os tipos</option></select>
+                    <select id="filter-since" class="chip-select">
+                        <option value="">Todo o período</option>
+                        <option value="1">Última hora</option>
+                        <option value="24">Últimas 24h</option>
+                        <option value="168">Últimos 7 dias</option>
+                    </select>
+                    <label class="checkbox-inline" title="Mostrar apenas eventos de alerta">
+                        <input type="checkbox" id="filter-alerts" /> Só alertas
+                    </label>
+                    <button type="button" class="button-secondary button-mini" id="filter-clear">Limpar</button>
+                </div>
+                <div id="events-grid" class="grid"></div>
+                <div id="events-empty" class="empty-state hidden-panel">
+                    <div class="empty-icon">&#x1F50D;</div>
+                    <h3>Nenhum evento encontrado</h3>
+                    <p id="events-empty-text">Ajuste os filtros para ver resultados.</p>
+                    <button type="button" class="button-primary" id="events-clear-filters">Limpar filtros</button>
+                </div>
             </section>
 
             <section class="panel hidden-panel" id="notifications">
