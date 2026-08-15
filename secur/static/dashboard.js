@@ -434,8 +434,8 @@ function getCameraThumb(cameraId, eventTs) {
   });
 }
 
-function createEventCard(event, thumbUrl) {
-  const isAlert = event.event_type !== 'snapshot_info';
+function createEventCard(event, thumbUrl, alertTypes = new Set()) {
+  const isAlert = alertTypes.has(event.event_type);
   const badge = isAlert
     ? '<span class="badge badge-alert">alerta</span>'
     : '<span class="badge badge-info">info</span>';
@@ -577,7 +577,7 @@ function renderEventCards(events, alertTypes) {
     body.className = 'event-card-body';
     body.innerHTML = `
       <div class="event-card-header">
-        <span class="event-type">${event.event_type} ${event.event_type !== 'snapshot_info' ? '<span class="badge badge-alert">alerta</span>' : '<span class="badge badge-info">info</span>'}</span>
+        <span class="event-type">${event.event_type} ${alertTypes.has(event.event_type) ? '<span class="badge badge-alert">alerta</span>' : '<span class="badge badge-info">info</span>'}</span>
         <span class="event-time" data-ts="${new Date(event.timestamp).toISOString()}">${timeAgo(event.timestamp)}</span>
       </div>
       <p class="event-meta">Câmera ${event.camera_id || '-'}${event.zone ? ' · ' + event.zone : ''}</p>
