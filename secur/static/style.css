@@ -225,8 +225,7 @@ body {
 .main {
   margin-left: 200px;
   flex: 1;
-  padding: 24px;
-  max-width: 960px;
+  padding: 20px;
   padding-bottom: 60px;
 }
 
@@ -625,6 +624,8 @@ tbody tr:last-child td {
 /* ---------- Camera Cards ---------- */
 .camera-card {
   position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
 }
 
 .camera-card-header {
