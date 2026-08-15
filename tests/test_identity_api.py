@@ -32,9 +32,10 @@ def app(tmp_path, monkeypatch):
     emb_dir.mkdir(exist_ok=True)
     monkeypatch.setattr(cfg, "IDENTITY_EMBEDDINGS_DIR", emb_dir)
     monkeypatch.setattr(storage_mod, "IDENTITY_EMBEDDINGS_DIR", emb_dir)
-    monkeypatch.setattr(cfg, "DB_PATH", tmp_path / "events.db")
-    monkeypatch.setattr(storage_mod, "DB_PATH", tmp_path / "events.db")
-    app = create_app()
+    db_path = tmp_path / "events.db"
+    monkeypatch.setattr(cfg, "DB_PATH", db_path)
+    monkeypatch.setattr(storage_mod, "DB_PATH", db_path)
+    app = create_app(db_path=db_path)
     app.config.update({"TESTING": True})
     app.recognizer_factory = lambda storage: IdentityRecognizer(
         storage,

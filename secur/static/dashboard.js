@@ -3,6 +3,9 @@ let zoneEditId = null;
 const appStartTime = Date.now();
 // local thumbnails for recently captured images (id -> base64)
 const localThumbnails = {};
+// Toggle "Ver offline" da overview: preferência da sessão (não resetada a
+// cada render/poll — a visibilidade da seção offline é derivada dela).
+let showOfflineCameras = false;
 
 function formatUptime(ms) {
   const s = Math.floor(ms / 1000);
@@ -29,7 +32,16 @@ function createSummaryCard(title, value, subtitle = "") {
   `;
 }
 
+// Seção ativa do sidebar (determina quais URLs o polling busca).
+let currentSection = 'overview';
+// True após o render inicial do boot; a partir daí, troca de seção
+// renderiza imediatamente (polling scoped à seção ativa).
+let dashboardReady = false;
+
 function setActiveSection(sectionId) {
+  const sectionChanged = sectionId !== currentSection;
+  currentSection = sectionId;
+
   const panels = document.querySelectorAll('#page .panel, #page .dialog-overlay');
   panels.forEach(panel => {
     if (panel.id === 'camera-dialog' || panel.id === 'zone-dialog') return;
@@ -41,6 +53,12 @@ function setActiveSection(sectionId) {
       link.classList.toggle('active', link.dataset.section === sectionId);
     }
   });
+
+  // Troca de seção renderiza imediatamente (sem esperar o próximo poll de 5s).
+  // Cobre nav links E botões de "Adicionar câmera/zona" (que chamam setActiveSection).
+  if (sectionChanged && dashboardReady) {
+    renderDashboard();
+  }
 }
 
 function toggleCrudNav() {
@@ -60,23 +78,34 @@ function setupSidebarNavigation() {
   });
 }
 
-function createCameraCard(camera) {
+function createCameraCard(camera, offline = false, lastEventTs = null) {
   const zoneLabel = camera.zone || '-';
   const imgId = `snapshot-${camera.id}`;
+  const offlineBadge = offline
+    ? '<span class="badge-offline">Offline</span>'
+    : '';
+  const lastEventLabel = lastEventTs
+    ? new Date(lastEventTs).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : 'Sem eventos';
 
   return `
-    <div class="card camera-card">
+    <div class="card camera-card${offline ? ' camera-card-offline' : ''}">
       <div class="camera-card-header">
         <strong>${camera.name}</strong>
         <span class="camera-badge">ID ${camera.id}</span>
       </div>
-      <p>Zona: ${zoneLabel}</p>
+      <p>Zona: ${zoneLabel} ${offlineBadge}</p>
       <p class="camera-source">Fonte: ${camera.source}</p>
-      <div class="camera-preview-wrapper" onclick="openLivePlayer(${camera.id}, '${camera.name}', '${camera.source}')" style="cursor:pointer;">
+      <p class="camera-card-time">Último evento: ${lastEventLabel}</p>
+      <div
+        class="camera-preview-wrapper"
+        data-camera-id="${camera.id}"
+        onclick="openThumbHistory(${camera.id}, '${camera.name}')"
+        style="cursor:pointer;"
+      >
         <img
           id="${imgId}"
           class="camera-preview"
-          src="/camera/${camera.id}/snapshot?ts=${Date.now()}"
           alt="Preview da câmera"
           onload="this.parentElement.classList.remove('loading'); this.parentElement.classList.remove('error');"
           onerror="this.parentElement.classList.remove('loading'); this.parentElement.classList.add('error'); this.style.display='none'; this.nextElementSibling.style.display='flex';"
@@ -85,6 +114,9 @@ function createCameraCard(camera) {
           <span>Falha ao carregar preview</span>
           <button class="button-mini" onclick="event.stopPropagation(); retrySnapshot(${camera.id})">Tentar novamente</button>
         </div>
+      </div>
+      <div class="camera-card-actions">
+        <button class="button-secondary button-mini" onclick="event.stopPropagation(); openLivePlayer(${camera.id}, '${camera.name}', '${camera.source}')">Ao vivo</button>
       </div>
     </div>
   `;
@@ -100,6 +132,119 @@ function retrySnapshot(cameraId) {
     img.nextElementSibling.style.display = 'none';
     img.src = `/camera/${cameraId}/snapshot?ts=${Date.now()}`;
   }
+}
+
+/* ========== Camera tiles (lazy-load) ========== */
+
+const snapshotObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const wrapper = entry.target;
+    const img = wrapper.querySelector('.camera-preview');
+    if (entry.isIntersecting) {
+      wrapper.classList.add('in-viewport');
+      if (img && !img.dataset.loaded) {
+        img.dataset.loaded = '1';
+        img.src = `/camera/${wrapper.dataset.cameraId}/snapshot?ts=${Date.now()}`;
+      }
+    } else {
+      wrapper.classList.remove('in-viewport');
+    }
+  });
+}, { rootMargin: '100px' });
+
+function observeSnapshots() {
+  document.querySelectorAll('.camera-preview-wrapper').forEach(wrapper => {
+    snapshotObserver.observe(wrapper);
+  });
+}
+
+function updateVisibleSnapshots(cameras) {
+  cameras.forEach(camera => {
+    const img = document.getElementById(`snapshot-${camera.id}`);
+    if (img && img.dataset.loaded && img.parentElement.classList.contains('in-viewport') && !img.parentElement.classList.contains('error')) {
+      img.src = `/camera/${camera.id}/snapshot?ts=${Date.now()}`;
+    }
+  });
+}
+
+/* ========== Ordenação por último evento ========== */
+
+// Monta Map<camera_id, último timestamp de evento>. /events vem em ordem desc,
+// mas o máximo (em vez do primeiro match) garante o mais recente mesmo se a
+// ordem do endpoint mudar.
+function buildLastEventMap(events) {
+  const map = new Map();
+  events.forEach(e => {
+    if (e.camera_id == null) return;
+    const ts = new Date(e.timestamp).getTime();
+    if (!map.has(e.camera_id) || ts > map.get(e.camera_id)) map.set(e.camera_id, ts);
+  });
+  return map;
+}
+
+// Ordena câmeras por último evento desc (mais recentes primeiro). Câmeras sem
+// evento vão para o fim, preservando a ordem original entre elas (sort estável).
+function sortCamerasByLastEvent(cameras, lastEventMap) {
+  return [...cameras].sort((a, b) => (lastEventMap.get(b.id) || 0) - (lastEventMap.get(a.id) || 0));
+}
+
+function renderCameraTiles(cameras, workerStatus, lastEventMap = new Map()) {
+  const tilesContainer = document.getElementById('camera-tiles');
+  const emptyState = document.getElementById('camera-empty-state');
+  if (!tilesContainer) return;
+
+  if (!cameras.length) {
+    tilesContainer.innerHTML = '';
+    updateOfflineSection([], null, lastEventMap);
+    if (emptyState) emptyState.classList.remove('hidden-panel');
+    return;
+  }
+  if (emptyState) emptyState.classList.add('hidden-panel');
+
+  const activeIds = new Set((workerStatus || []).filter(w => w.healthy !== false).map(w => w.camera_id));
+  const offlineCameras = workerStatus ? cameras.filter(c => !activeIds.has(c.id)) : [];
+  const onlineCameras = workerStatus ? cameras.filter(c => activeIds.has(c.id)) : cameras;
+
+  tilesContainer.innerHTML = onlineCameras.map(c => createCameraCard(c, false, lastEventMap.get(c.id))).join('');
+  updateOfflineSection(cameras, workerStatus, lastEventMap);
+  observeSnapshots();
+}
+
+// Câmeras offline ocultas por padrão (otimização de espaço): aparece apenas o
+// bar "Ver offline (N)" com switch quando há offline; o switch revela a lista
+// em #camera-offline-section. Chamada a cada poll da overview (sem re-renderizar
+// a grade, que tem guard de lazy-load) mantém contador e visibilidade em dia.
+// A preferência do usuário (showOfflineCameras) é preservada na sessão.
+function updateOfflineSection(cameras, workerStatus, lastEventMap = new Map()) {
+  const offlineBar = document.getElementById('camera-offline-bar');
+  const offlineSection = document.getElementById('camera-offline-section');
+  const offlineList = document.getElementById('camera-offline-list');
+  const offlineLabel = document.getElementById('camera-offline-toggle-label');
+  if (!offlineBar || !offlineSection) return;
+
+  const activeIds = new Set((workerStatus || []).filter(w => w.healthy !== false).map(w => w.camera_id));
+  const offlineCameras = workerStatus ? cameras.filter(c => !activeIds.has(c.id)) : [];
+
+  if (offlineCameras.length) {
+    if (offlineList) offlineList.innerHTML = offlineCameras.map(c => createCameraCard(c, true, lastEventMap.get(c.id))).join('');
+    if (offlineLabel) offlineLabel.textContent = `Ver offline (${offlineCameras.length})`;
+    offlineBar.classList.remove('hidden-panel');
+    offlineSection.classList.toggle('hidden-panel', !showOfflineCameras);
+  } else {
+    if (offlineList) offlineList.innerHTML = '';
+    offlineBar.classList.add('hidden-panel');
+    offlineSection.classList.add('hidden-panel');
+  }
+}
+
+function setupOfflineToggle() {
+  const toggle = document.getElementById('show-offline-cameras');
+  if (!toggle) return;
+  toggle.addEventListener('change', () => {
+    showOfflineCameras = toggle.checked;
+    const offlineSection = document.getElementById('camera-offline-section');
+    if (offlineSection) offlineSection.classList.toggle('hidden-panel', !showOfflineCameras);
+  });
 }
 
 /* ========== Live Player ========== */
@@ -177,16 +322,135 @@ function closeLivePlayer() {
   }
 }
 
+/* ========== Thumbnail History ========== */
+
+function openThumbHistory(cameraId, cameraName) {
+  const overlay = document.getElementById('thumb-history-overlay');
+  const title = document.getElementById('thumb-history-title');
+  const grid = document.getElementById('thumb-history-grid');
+  const empty = document.getElementById('thumb-history-empty');
+
+  title.textContent = `Histórico — ${cameraName}`;
+  grid.innerHTML = '';
+  empty.style.display = 'none';
+  overlay.classList.remove('hidden-panel');
+
+  fetch(`/camera/${cameraId}/thumbnails`)
+    .then(r => r.json())
+    .then(items => {
+      if (!items || items.length === 0) {
+        empty.style.display = '';
+        return;
+      }
+      grid.innerHTML = items.map(item => `
+        <div class="thumb-history-item">
+          <img src="${item.url}" alt="thumbnail" loading="lazy" />
+          <span class="thumb-history-time">${new Date(item.timestamp).toLocaleString()}</span>
+          <span class="thumb-history-event">${item.event_type}</span>
+        </div>
+      `).join('');
+    })
+    .catch(() => {
+      empty.textContent = 'Falha ao carregar histórico.';
+      empty.style.display = '';
+    });
+}
+
+function closeThumbHistory() {
+  const overlay = document.getElementById('thumb-history-overlay');
+  if (overlay) overlay.classList.add('hidden-panel');
+}
+
+/* ========== Clip History ========== */
+
+function openClipHistory(cameraId, cameraName) {
+  const overlay = document.getElementById('clip-history-overlay');
+  const title = document.getElementById('clip-history-title');
+  const grid = document.getElementById('clip-history-grid');
+  const empty = document.getElementById('clip-history-empty');
+
+  title.textContent = `Clipes — ${cameraName}`;
+  grid.innerHTML = '';
+  empty.style.display = 'none';
+  overlay.classList.remove('hidden-panel');
+
+  fetch(`/camera/${cameraId}/clips`)
+    .then(r => r.json())
+    .then(items => {
+      if (!items || items.length === 0) {
+        empty.style.display = '';
+        return;
+      }
+      grid.innerHTML = items.map(item => `
+        <div class="clip-history-item">
+          <video src="${item.url}" controls preload="metadata" style="width:100%;border-radius:var(--radius-sm);"></video>
+          <span style="font-size:0.8rem;color:var(--muted-subtle);">
+            ${new Date(item.timestamp).toLocaleString()} — ${item.duration_s ? item.duration_s.toFixed(0) + 's' : ''}
+          </span>
+        </div>
+      `).join('');
+    })
+    .catch(() => {
+      empty.textContent = 'Falha ao carregar clipes.';
+      empty.style.display = '';
+    });
+}
+
+function closeClipHistory() {
+  const overlay = document.getElementById('clip-history-overlay');
+  if (overlay) overlay.classList.add('hidden-panel');
+}
+
+/* ========== Settings ========== */
+
+async function renderSettings() {
+  const toggle = document.getElementById('privacy-mode-toggle');
+  if (!toggle) return;
+  try {
+    const data = await fetchData('/api/settings');
+    toggle.checked = !!data.privacy_mode;
+  } catch (e) { /* offline: mantém estado atual */ }
+}
+
+function setupSettings() {
+  const toggle = document.getElementById('privacy-mode-toggle');
+  if (!toggle) return;
+  toggle.addEventListener('change', async () => {
+    const res = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ privacy_mode: toggle.checked }),
+    });
+    if (!res.ok) {
+      toggle.checked = !toggle.checked;
+      showMenuMessage('Falha ao salvar configuração.', 'camera-form-message');
+    }
+  });
+}
+
 function createCameraRow(camera) {
+  const classesText = camera.alert_classes && camera.alert_classes.length
+    ? camera.alert_classes.join(', ')
+    : 'todas';
+  const exclusionsText = camera.exclusion_zones && camera.exclusion_zones.length
+    ? `${camera.exclusion_zones.length} polígono(s)`
+    : '—';
+  const maskText = camera.mask_polygons && camera.mask_polygons.length
+    ? `${camera.mask_polygons.length} polígono(s)`
+    : '—';
   return `
     <tr>
       <td>${camera.id}</td>
       <td>${camera.name}</td>
       <td>${camera.source}</td>
       <td>${camera.zone || '-'}</td>
+      <td>${classesText}</td>
+      <td>${exclusionsText}</td>
+      <td>${maskText}</td>
       <td class="table-actions">
         <button class="button-secondary button-mini edit-camera" data-camera-id="${camera.id}">Editar</button>
         <button class="button-secondary button-mini delete-camera" data-camera-id="${camera.id}">Excluir</button>
+        <button class="button-secondary button-mini clips-camera" data-camera-id="${camera.id}">Clipes</button>
       </td>
     </tr>
   `;
@@ -212,19 +476,262 @@ function createZoneRow(zone) {
   `;
 }
 
-function createEventRow(event) {
-  const isInfo = event.event_type === 'snapshot_info';
-  const badge = isInfo ? '<span class="badge-info">info</span>' : '';
+/* ========== Event cards ========== */
+
+function timeAgo(ts) {
+  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 60) return 'agora';
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
+const thumbCache = {};
+
+function getCameraThumb(cameraId, eventTs) {
+  if (!cameraId) return Promise.resolve(null);
+  if (thumbCache[cameraId] === undefined) {
+    thumbCache[cameraId] = fetch(`/camera/${cameraId}/thumbnails`)
+      .then(r => r.ok ? r.json() : [])
+      .catch(() => []);
+  }
+  return thumbCache[cameraId].then(items => {
+    if (!items || !items.length) return null;
+    let best = null;
+    let bestDiff = Infinity;
+    items.forEach(item => {
+      const diff = Math.abs(new Date(item.timestamp).getTime() - new Date(eventTs).getTime());
+      if (diff < bestDiff) { bestDiff = diff; best = item; }
+    });
+    return best ? best.url : null;
+  });
+}
+
+function createEventCard(event, thumbUrl, alertTypes = new Set()) {
+  const isAlert = alertTypes.has(event.event_type);
+  const badge = isAlert
+    ? '<span class="badge badge-alert">alerta</span>'
+    : '<span class="badge badge-info">info</span>';
+  const thumbHtml = thumbUrl
+    ? `<img class="event-thumb" src="${thumbUrl}" alt="thumbnail" loading="lazy" />`
+    : '<div class="event-thumb event-thumb-empty">&#x1F4F7;</div>';
   return `
-    <tr class="${isInfo ? 'event-info' : ''}">
-      <td>${event.id}</td>
-      <td>${new Date(event.timestamp).toLocaleString()}</td>
-      <td>${event.camera_id}</td>
-      <td>${event.zone || "-"}</td>
-      <td>${event.event_type} ${badge}</td>
-      <td>${event.details || "-"}</td>
-    </tr>
+    <div class="card event-card">
+      ${thumbHtml}
+      <div class="event-card-body">
+        <div class="event-card-header">
+          <span class="event-type">${event.event_type} ${badge}</span>
+          <span class="event-time" data-ts="${new Date(event.timestamp).toISOString()}">${timeAgo(event.timestamp)}</span>
+        </div>
+        <p class="event-meta">Câmera ${event.camera_id || '-'}${event.zone ? ' · ' + event.zone : ''}</p>
+        ${event.details ? `<p class="event-details">${event.details}</p>` : ''}
+      </div>
+    </div>
   `;
+}
+
+/* ========== Event filters ========== */
+
+const EVENT_FILTERS_KEY = 'secur.eventFilters';
+
+function readFilterState() {
+  const url = new URLSearchParams(window.location.search);
+  const state = {
+    camera: url.get('camera') || '',
+    zone: url.get('zone') || '',
+    type: url.get('type') || '',
+    since: url.get('since') || '',
+    alerts: url.get('alerts') === '1',
+  };
+  if (Object.values(state).some(v => v !== '' && v !== false)) return state;
+  try {
+    const saved = JSON.parse(localStorage.getItem(EVENT_FILTERS_KEY) || 'null');
+    if (saved) return { camera: '', zone: '', type: '', since: '', alerts: false, ...saved };
+  } catch (e) { /* ignore */ }
+  return state;
+}
+
+function saveFilterState(state) {
+  try {
+    localStorage.setItem(EVENT_FILTERS_KEY, JSON.stringify(state));
+  } catch (e) { /* ignore */ }
+}
+
+function syncUrl(state) {
+  const url = new URLSearchParams();
+  if (state.camera) url.set('camera', state.camera);
+  if (state.zone) url.set('zone', state.zone);
+  if (state.type) url.set('type', state.type);
+  if (state.since) url.set('since', state.since);
+  if (state.alerts) url.set('alerts', '1');
+  const qs = url.toString();
+  history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+}
+
+function applyEventFilters(events, alertTypes) {
+  const state = readFilterState();
+  const sinceHours = Number(state.since) || 0;
+  const cutoff = sinceHours ? Date.now() - sinceHours * 3600 * 1000 : null;
+  return events.filter(e => {
+    if (state.camera && String(e.camera_id) !== state.camera) return false;
+    if (state.zone && (e.zone || '') !== state.zone) return false;
+    if (state.type && e.event_type !== state.type) return false;
+    if (cutoff && new Date(e.timestamp).getTime() < cutoff) return false;
+    if (state.alerts && !alertTypes.has(e.event_type)) return false;
+    return true;
+  });
+}
+
+function populateFilterOptions(events) {
+  const cameraSelect = document.getElementById('filter-camera');
+  const zoneSelect = document.getElementById('filter-zone');
+  const typeSelect = document.getElementById('filter-type');
+  const cameras = [...new Set(events.map(e => String(e.camera_id)))].sort();
+  const zones = [...new Set(events.map(e => e.zone).filter(Boolean))].sort();
+  const types = [...new Set(events.map(e => e.event_type))].sort();
+  const state = readFilterState();
+
+  if (cameraSelect && !cameraSelect.dataset.populated) {
+    cameraSelect.dataset.populated = '1';
+    cameras.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = `Câmera ${c}`;
+      if (c === state.camera) opt.selected = true;
+      cameraSelect.appendChild(opt);
+    });
+    zones.forEach(z => {
+      const opt = document.createElement('option');
+      opt.value = z;
+      opt.textContent = z;
+      if (z === state.zone) opt.selected = true;
+      zoneSelect.appendChild(opt);
+    });
+    types.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      if (t === state.type) opt.selected = true;
+      typeSelect.appendChild(opt);
+    });
+  }
+  const sinceSelect = document.getElementById('filter-since');
+  if (sinceSelect) sinceSelect.value = state.since;
+  const alertsCheck = document.getElementById('filter-alerts');
+  if (alertsCheck) alertsCheck.checked = state.alerts;
+}
+
+function renderEventCards(events, alertTypes) {
+  const grid = document.getElementById('events-grid');
+  const empty = document.getElementById('events-empty');
+  if (!grid) return;
+
+  const filtered = applyEventFilters(events, alertTypes);
+  if (!filtered.length) {
+    grid.innerHTML = '';
+    if (empty) empty.classList.remove('hidden-panel');
+    return;
+  }
+  if (empty) empty.classList.add('hidden-panel');
+
+  // NOTA (fix Critical do review da Task 2): o grid DEVE ser limpo antes do
+  // append — renderDashboard roda a cada 5s e sem isso os cards duplicariam
+  // a cada poll (o brief original omitia a limpeza).
+  grid.innerHTML = '';
+
+  filtered.forEach((event) => {
+    const card = document.createElement('div');
+    card.className = 'card event-card';
+    const thumb = document.createElement('div');
+    thumb.className = 'event-thumb event-thumb-empty';
+    thumb.innerHTML = '&#x1F4F7;';
+    card.appendChild(thumb);
+    const body = document.createElement('div');
+    body.className = 'event-card-body';
+    body.innerHTML = `
+      <div class="event-card-header">
+        <span class="event-type">${event.event_type} ${alertTypes.has(event.event_type) ? '<span class="badge badge-alert">alerta</span>' : '<span class="badge badge-info">info</span>'}</span>
+        <span class="event-time" data-ts="${new Date(event.timestamp).toISOString()}">${timeAgo(event.timestamp)}</span>
+      </div>
+      <p class="event-meta">Câmera ${event.camera_id || '-'}${event.zone ? ' · ' + event.zone : ''}</p>
+      ${event.details ? `<p class="event-details">${event.details}</p>` : ''}
+    `;
+    card.appendChild(body);
+    grid.appendChild(card);
+    getCameraThumb(event.camera_id, event.timestamp).then(url => {
+      if (url) {
+        const img = document.createElement('img');
+        img.className = 'event-thumb';
+        img.src = url;
+        img.alt = 'thumbnail';
+        img.loading = 'lazy';
+        thumb.replaceWith(img);
+      }
+    });
+  });
+
+  // re-render relógio a cada 30s
+  if (!window._eventTimeTimer) {
+    window._eventTimeTimer = setInterval(() => {
+      document.querySelectorAll('#events-grid .event-time[data-ts]').forEach(el => {
+        el.textContent = timeAgo(el.dataset.ts);
+      });
+    }, 30000);
+  }
+}
+
+async function renderEvents(events) {
+  let alertTypes = new Set();
+  try {
+    const notif = await fetchData('/api/notifications');
+    alertTypes = new Set((notif.events || [])
+      .filter(e => e.category === 'alerta')
+      .map(e => e.key));
+  } catch (e) { /* sem categorias: "só alertas" vira no-op */ }
+  populateFilterOptions(events);
+  renderEventCards(events, alertTypes);
+  return alertTypes;
+}
+
+let lastEvents = [];
+let lastAlertTypes = new Set();
+
+function setupEventFilters() {
+  const ids = ['filter-camera', 'filter-zone', 'filter-type', 'filter-since', 'filter-alerts'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => {
+      const state = readFilterState();
+      state.camera = document.getElementById('filter-camera').value;
+      state.zone = document.getElementById('filter-zone').value;
+      state.type = document.getElementById('filter-type').value;
+      state.since = document.getElementById('filter-since').value;
+      state.alerts = document.getElementById('filter-alerts').checked;
+      saveFilterState(state);
+      syncUrl(state);
+      renderEventCards(lastEvents, lastAlertTypes);
+    });
+  });
+
+  const clearButtons = ['filter-clear', 'events-clear-filters'];
+  clearButtons.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', () => {
+      const camera = document.getElementById('filter-camera');
+      const zone = document.getElementById('filter-zone');
+      const type = document.getElementById('filter-type');
+      const since = document.getElementById('filter-since');
+      const alerts = document.getElementById('filter-alerts');
+      if (camera) camera.value = '';
+      if (zone) zone.value = '';
+      if (type) type.value = '';
+      if (since) since.value = '';
+      if (alerts) alerts.checked = false;
+      saveFilterState({ camera: '', zone: '', type: '', since: '', alerts: false });
+      syncUrl({ camera: '', zone: '', type: '', since: '', alerts: false });
+      renderEventCards(lastEvents, lastAlertTypes);
+    });
+  });
 }
 
 /* ========== Camera form ========== */
@@ -252,6 +759,16 @@ function setCameraFormMode(mode, camera = null) {
     form.reset();
   }
 
+  populateAlertClasses(camera ? camera.alert_classes : null);
+  const exclusionInput = document.getElementById('camera-exclusion-zones');
+  if (exclusionInput) {
+    exclusionInput.value = camera && camera.exclusion_zones ? JSON.stringify(camera.exclusion_zones) : '';
+  }
+  const maskInput = document.getElementById('camera-mask-polygons');
+  if (maskInput) {
+    maskInput.value = camera && camera.mask_polygons ? JSON.stringify(camera.mask_polygons) : '';
+  }
+
   if (message) {
     message.textContent = '';
     message.classList.remove('error');
@@ -276,8 +793,8 @@ function hideCameraForm() {
 }
 
 function resetCameraList() {
-  const cameraList = document.getElementById('camera-list');
-  if (cameraList) delete cameraList.dataset.rendered;
+  const cameraTiles = document.getElementById('camera-tiles');
+  if (cameraTiles) delete cameraTiles.dataset.rendered;
 }
 
 async function submitCameraForm(event) {
@@ -295,6 +812,34 @@ async function submitCameraForm(event) {
     source: sourceInput.value.trim(),
     zone: zoneInput.value || null,
   };
+
+  const checkedClasses = Array.from(document.querySelectorAll('#camera-alert-classes input:checked')).map(i => i.value);
+  const exclusionText = document.getElementById('camera-exclusion-zones').value.trim();
+  let exclusionZones = null;
+  if (exclusionText) {
+    try {
+      exclusionZones = JSON.parse(exclusionText);
+    } catch (e) {
+      message.textContent = 'Zonas de exclusão: JSON inválido.';
+      message.classList.add('error');
+      return;
+    }
+  }
+  payload.alert_classes = checkedClasses.length ? checkedClasses : null;
+  payload.exclusion_zones = exclusionZones;
+
+  const maskText = document.getElementById('camera-mask-polygons').value.trim();
+  let maskPolygons = null;
+  if (maskText) {
+    try {
+      maskPolygons = JSON.parse(maskText);
+    } catch (e) {
+      message.textContent = 'Máscara de privacidade: JSON inválido.';
+      message.classList.add('error');
+      return;
+    }
+  }
+  payload.mask_polygons = maskPolygons;
 
   if (!payload.name || !payload.source) {
     message.textContent = 'Nome e fonte são obrigatórios.';
@@ -380,6 +925,23 @@ function setZoneFormMode(mode, zone = null) {
     form.reset();
   }
 
+  const startInput = document.getElementById('zone-schedule-start');
+  const endInput = document.getElementById('zone-schedule-end');
+  if (mode === 'edit' && zone) {
+    startInput.value = (zone.schedule && zone.schedule.start) || '';
+    endInput.value = (zone.schedule && zone.schedule.end) || '';
+  } else {
+    startInput.value = '';
+    endInput.value = '';
+  }
+
+  const directionInput = document.getElementById('zone-direction-line');
+  if (mode === 'edit' && zone) {
+    directionInput.value = zone.direction_line ? JSON.stringify(zone.direction_line) : '';
+  } else {
+    directionInput.value = '';
+  }
+
   if (message) {
     message.textContent = '';
     message.classList.remove('error');
@@ -414,6 +976,27 @@ async function submitZoneForm(event) {
     name: nameInput.value.trim(),
     classification: classInput.value,
   };
+
+  const startInput = document.getElementById('zone-schedule-start');
+  const endInput = document.getElementById('zone-schedule-end');
+  let schedule = null;
+  if (startInput.value || endInput.value) {
+    schedule = { start: startInput.value || '00:00', end: endInput.value || '23:59' };
+  }
+  payload.schedule = schedule;
+
+  const directionText = document.getElementById('zone-direction-line').value.trim();
+  let directionLine = null;
+  if (directionText) {
+    try {
+      directionLine = JSON.parse(directionText);
+    } catch (e) {
+      message.textContent = 'Linha de direção: JSON inválido.';
+      message.classList.add('error');
+      return;
+    }
+  }
+  payload.direction_line = directionLine;
 
   if (!payload.name) {
     message.textContent = 'Nome é obrigatório.';
@@ -472,6 +1055,22 @@ function populateZoneDropdown(zones, selectedZone) {
     if (zone.name === current) opt.selected = true;
     select.appendChild(opt);
   });
+}
+
+async function populateAlertClasses(selected) {
+  const container = document.getElementById('camera-alert-classes');
+  if (!container) return;
+  let classes = [];
+  try {
+    const data = await fetchData('/api/classes');
+    classes = data.classes || [];
+  } catch (e) { return; }
+  const selectedSet = new Set(selected || []);
+  container.innerHTML = classes.map(cls => `
+    <label class="checkbox-inline">
+      <input type="checkbox" value="${cls}" ${selectedSet.has(cls) ? 'checked' : ''} /> ${cls}
+    </label>
+  `).join('');
 }
 
 /* ========== Messages ========== */
@@ -547,6 +1146,67 @@ function renderZoneManagement(zones) {
   if (body) {
     body.innerHTML = zones.map(createZoneRow).join('');
   }
+}
+
+/* ========== Notifications config ========== */
+
+async function renderNotifications() {
+  const body = document.getElementById('notifications-table-body');
+  if (!body) return;
+  let data;
+  try {
+    data = await fetchData('/api/notifications');
+  } catch (e) {
+    body.innerHTML = '<tr><td colspan="3">Falha ao carregar configuração.</td></tr>';
+    return;
+  }
+
+  const headerRow = document.getElementById('notif-channel-headers');
+  if (headerRow) {
+    headerRow.innerHTML = data.channels.map(c => `<th>${c.label}</th>`).join('');
+  }
+
+  const events = data.events.filter(e => !e.legacy);
+  body.innerHTML = events.map(event => {
+    const cells = data.channels.map(channel => {
+      const enabled = !!(data.routing[channel.key] && data.routing[channel.key][event.key]);
+      return `
+        <td class="notif-toggle-cell">
+          <label class="switch">
+            <input type="checkbox" data-channel="${channel.key}" data-event="${event.key}" ${enabled ? 'checked' : ''} />
+            <span class="slider"></span>
+          </label>
+        </td>
+      `;
+    }).join('');
+    const categoryLabel = event.category === 'alerta' ? 'Alerta' : 'Info';
+    return `
+      <tr>
+        <td>${escapeHtml(event.label)}</td>
+        <td><span class="badge ${event.category === 'alerta' ? 'badge-alert' : 'badge-info'}">${categoryLabel}</span></td>
+        ${cells}
+      </tr>
+    `;
+  }).join('');
+
+  body.querySelectorAll('input[type="checkbox"]').forEach(input => {
+    input.addEventListener('change', async () => {
+      const payload = {
+        channel: input.dataset.channel,
+        event_type: input.dataset.event,
+        enabled: input.checked,
+      };
+      const res = await fetch('/api/notifications/routing', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        input.checked = !input.checked;
+        showMenuMessage('Falha ao salvar configuração.', 'camera-form-message');
+      }
+    });
+  });
 }
 
 /* ========== Identities management ========== */
@@ -750,7 +1410,37 @@ document.addEventListener('click', function(e){
   }
 });
 
+/* ========== Dashboard dispatcher ========== */
+// Polling scoped à seção ativa: cada render só busca/renderiza os dados que
+// contribuem para a seção em evidência. Mapa seção → URLs:
+//   overview              /cameras /events /zones (+ /status 1x p/ grade offline)
+//   recent-events         /events + /api/notifications (alertTypes p/ filtros)
+//   notifications         /api/notifications
+//   settings              /api/settings
+//   camera-management     /cameras + /zones (dropdown de zona do form)
+//   zones-management      /zones
+//   identities-management /identities
+const SECTION_RENDERERS = {
+  'overview': renderOverviewSection,
+  'recent-events': renderEventsSection,
+  'notifications': renderNotifications,
+  'settings': renderSettings,
+  'camera-management': renderCameraManagementSection,
+  'zones-management': renderZoneManagementSection,
+  'identities-management': loadAndRenderIdentities,
+};
+
 async function renderDashboard() {
+  const renderer = SECTION_RENDERERS[currentSection];
+  if (!renderer) return;
+  try {
+    await renderer();
+  } catch (error) {
+    // Falha de uma seção não pode matar o polling nem as demais seções.
+  }
+}
+
+async function renderOverviewSection() {
   const cameras = await fetchData('/cameras');
   const events = await fetchData('/events');
   const zones = await fetchData('/zones');
@@ -766,28 +1456,53 @@ async function renderDashboard() {
     createSummaryCard('Último evento', lastEvent ? lastEvent.event_type : 'Nenhum', lastEventTime),
   ].join('');
 
-  // Only render camera cards if not already present (avoids snapshot flicker)
-  const cameraList = document.getElementById('camera-list');
-  if (!cameraList.dataset.rendered) {
-    cameraList.innerHTML = cameras.map(createCameraCard).join('');
-    cameraList.dataset.rendered = '1';
+  const lastEventMap = buildLastEventMap(events);
+  const sortedCameras = sortCamerasByLastEvent(cameras, lastEventMap);
+
+  // Camera tiles: lazy-load + offline grouping (status via /status worker_status).
+  // A grade é renderizada UMA vez (guard dataset.rendered) — re-render a cada poll
+  // recriaria os <img> sem src e perderia o estado 'loaded' do lazy-load. O bar
+  // "Ver offline" (contador + visibilidade), porém, é atualizado em todo poll.
+  const cameraTiles = document.getElementById('camera-tiles');
+  let workerStatus = null;
+  try {
+    const status = await fetchData('/status');
+    workerStatus = status.worker_status || null;
+  } catch (e) { /* offline: grade única + bar escondido */ }
+
+  if (!cameraTiles.dataset.rendered) {
+    cameraTiles.dataset.rendered = '1';
+    renderCameraTiles(sortedCameras, workerStatus, lastEventMap);
   } else {
-    // Update only snapshot images with new timestamp
-    cameras.forEach(camera => {
-      const img = document.getElementById(`snapshot-${camera.id}`);
-      if (img && !img.parentElement.classList.contains('error')) {
-        img.src = `/camera/${camera.id}/snapshot?ts=${Date.now()}`;
-      }
-    });
+    updateOfflineSection(sortedCameras, workerStatus, lastEventMap);
   }
+  updateVisibleSnapshots(sortedCameras);
+}
 
-  const eventsTable = document.getElementById('events-table');
-  eventsTable.innerHTML = events.map(createEventRow).join('');
+async function renderEventsSection() {
+  const events = await fetchData('/events');
+  lastEvents = events;
+  lastAlertTypes = await renderEvents(events);
+}
 
+async function renderCameraManagementSection() {
+  const cameras = await fetchData('/cameras');
+  const zones = await fetchData('/zones');
   renderCameraManagement(cameras);
-  renderZoneManagement(zones);
   populateZoneDropdown(zones);
+  bindCameraManagementActions(cameras, zones);
+}
 
+async function renderZoneManagementSection() {
+  const zones = await fetchData('/zones');
+  renderZoneManagement(zones);
+  bindZoneManagementActions(zones);
+}
+
+// Listeners re-bindados apenas na seção renderizada (camera-management):
+// a tabela é recriada a cada render (innerHTML), então os botões novos
+// precisam de bind — sem duplicação porque os nós antigos são descartados.
+function bindCameraManagementActions(cameras, zones) {
   document.querySelectorAll('.delete-camera').forEach(button => {
     button.addEventListener('click', () => {
       deleteCamera(button.dataset.cameraId);
@@ -805,6 +1520,16 @@ async function renderDashboard() {
     });
   });
 
+  document.querySelectorAll('.clips-camera').forEach(button => {
+    button.addEventListener('click', () => {
+      const cameraId = button.dataset.cameraId;
+      const camera = cameras.find(c => String(c.id) === String(cameraId));
+      openClipHistory(cameraId, camera ? camera.name : 'Câmera');
+    });
+  });
+}
+
+function bindZoneManagementActions(zones) {
   document.querySelectorAll('.delete-zone').forEach(button => {
     button.addEventListener('click', () => {
       deleteZone(button.dataset.zoneId);
@@ -820,9 +1545,6 @@ async function renderDashboard() {
       }
     });
   });
-
-  await renderStatusFooter();
-  try { await loadAndRenderIdentities(); } catch (e) { /* ignore */ }
 }
 
 /* ========== Setup ========== */
@@ -884,9 +1606,22 @@ function setupZoneForm() {
 setActiveSection('overview');
 setupSidebarNavigation();
 renderDashboard();
+renderStatusFooter(); // footer fixo global: renderiza no boot (render por seção não busca /status)
+dashboardReady = true;
 setupCameraForm();
 setupZoneForm();
+setupSettings();
+setupEventFilters();
+setupOfflineToggle();
   setupIdentityForm();
+const emptyAddCamera = document.getElementById('empty-add-camera');
+if (emptyAddCamera) {
+  emptyAddCamera.addEventListener('click', () => {
+    setActiveSection('camera-management');
+    showCameraForm('add');
+  });
+}
+document.getElementById('clip-history-close').addEventListener('click', closeClipHistory);
 setInterval(() => {
   renderDashboard();
   renderStatusFooter();

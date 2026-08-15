@@ -1,13 +1,88 @@
 import cv2
-from flask import Flask, jsonify, render_template, request, Response
+import os
+import time
+from flask import Flask, jsonify, render_template, request, Response, send_file
 from .camera import CameraStream
 from .storage import EventStorage
+from .masking import frame_for_storage
+from .config import is_privacy_mode_on
+from .notifications import CHANNELS, EVENT_TYPES
 import base64
 import numpy as np
 from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _is_valid_schedule(schedule):
+    if not isinstance(schedule, dict):
+        return False
+    start = schedule.get("start")
+    end = schedule.get("end")
+    if not isinstance(start, str) or not isinstance(end, str):
+        return False
+    try:
+        time.strptime(start, "%H:%M")
+        time.strptime(end, "%H:%M")
+    except ValueError:
+        return False
+    return True
+
+
+def _is_valid_retention_policy(policy):
+    """True se policy é None ou dict com chaves opcionais thumbnails/clips/days (ints >= 0)."""
+    if policy is None:
+        return True
+    if not isinstance(policy, dict):
+        return False
+    for key in ("thumbnails", "clips", "days"):
+        if key in policy:
+            value = policy[key]
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                return False
+    return True
+
+
+def _is_valid_direction_line(line):
+    """True se None ou dict {"axis": "vertical"|"horizontal", "position": float 0-1}."""
+    if line is None:
+        return True
+    if not isinstance(line, dict):
+        return False
+    axis = line.get("axis")
+    position = line.get("position")
+    if axis not in ("vertical", "horizontal"):
+        return False
+    if isinstance(position, bool) or not isinstance(position, (int, float)):
+        return False
+    return 0.0 <= position <= 1.0
+
+
+def _validate_mask_polygons(mask_polygons):
+    """Valida mask_polygons (mesmo formato de exclusion_zones).
+
+    Retorna None se válido, ou uma mensagem de erro. Polígonos malformados
+    (ponto sem y, ponto não-dict, x/y não numérico) quebrariam
+    apply_mask_blur no worker (frame_for_storage, fora de try/except) —
+    matando a thread da câmera silenciosamente.
+    """
+    if mask_polygons is None:
+        return None
+    if not isinstance(mask_polygons, list):
+        return "mask_polygons deve ser uma lista de polígonos"
+    for poly in mask_polygons:
+        if not isinstance(poly, list) or not poly:
+            return "mask_polygons deve ser uma lista de polígonos (cada polígono é uma lista não vazia de pontos)"
+        for point in poly:
+            if not isinstance(point, dict):
+                return "cada ponto de mask_polygons deve ser um objeto com x e y"
+            x = point.get("x")
+            y = point.get("y")
+            if (not isinstance(x, (int, float)) or isinstance(x, bool)
+                    or not isinstance(y, (int, float)) or isinstance(y, bool)):
+                return "cada ponto de mask_polygons deve ter x e y numéricos"
+    return None
 
 try:
     from .identity import build_recognizer, IdentityRecognizer
@@ -16,9 +91,9 @@ except Exception:
     IdentityRecognizer = None
 
 
-def create_app(camera_manager=None):
+def create_app(camera_manager=None, db_path=None, alerts=None):
     app = Flask(__name__, template_folder="templates", static_folder="static")
-    storage = EventStorage()
+    storage = EventStorage(db_path) if db_path is not None else EventStorage()
     # recognizer_factory hook: tests or callers may set app.recognizer_factory = lambda storage: recognizer
     def _make_recognizer() -> Optional[object]:
         # Prefer the shared recognizer used by the camera workers so cache
@@ -113,12 +188,73 @@ def create_app(camera_manager=None):
             log.warning("Snapshot failed for camera %s: %s", camera_id, result["error"])
             return jsonify({"error": result["error"]}), 502
 
-        success, jpg = cv2.imencode(".jpg", result["frame"])
+        frame = result["frame"]
+        frame = frame_for_storage(frame, camera.get("mask_polygons"))
+        success, jpg = cv2.imencode(".jpg", frame)
         if not success:
             return jsonify({"error": "Falha ao codificar imagem"}), 500
 
         log.info("Snapshot OK for camera %s", camera_id)
         return Response(jpg.tobytes(), mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    @app.route("/camera/<int:camera_id>/thumbnails")
+    def camera_thumbnails(camera_id):
+        camera = storage.get_camera(camera_id)
+        if not camera:
+            return jsonify({"error": "Câmera não encontrada"}), 404
+        items = storage.list_camera_thumbnails(camera_id, limit=20)
+        out = []
+        for it in items:
+            out.append({
+                "id": it["id"],
+                "timestamp": it["timestamp"],
+                "event_type": it["event_type"],
+                "url": f"/thumbnails/{it['id']}/image",
+            })
+        return jsonify(out)
+
+    @app.route("/thumbnails/<int:thumb_id>/image")
+    def thumbnail_image(thumb_id):
+        item = storage.get_camera_thumbnail(thumb_id)
+        if not item:
+            return jsonify({"error": "Thumbnail não encontrado"}), 404
+        path = item["path"]
+        if not os.path.exists(path):
+            return jsonify({"error": "Thumbnail não encontrado"}), 404
+        return send_file(path, mimetype="image/jpeg")
+
+    @app.route("/camera/<int:camera_id>/clips")
+    def camera_clips(camera_id):
+        camera = storage.get_camera(camera_id)
+        if not camera:
+            return jsonify({"error": "Câmera não encontrada"}), 404
+        items = storage.list_event_clips(camera_id, limit=20)
+        out = []
+        for it in items:
+            out.append({
+                "id": it["id"],
+                "timestamp": it["timestamp"],
+                "duration_s": it["duration_s"],
+                "url": f"/clips/{it['id']}/video",
+            })
+        return jsonify(out)
+
+    @app.route("/clips/<int:clip_id>")
+    def clip_metadata(clip_id):
+        item = storage.get_event_clip(clip_id)
+        if not item:
+            return jsonify({"error": "Clipe não encontrado"}), 404
+        return jsonify(item)
+
+    @app.route("/clips/<int:clip_id>/video")
+    def clip_video(clip_id):
+        item = storage.get_event_clip(clip_id)
+        if not item:
+            return jsonify({"error": "Clipe não encontrado"}), 404
+        path = item["path"]
+        if not os.path.exists(path):
+            return jsonify({"error": "Clipe não encontrado"}), 404
+        return send_file(path, mimetype="video/mp4")
 
     @app.route("/docs")
     def docs():
@@ -137,6 +273,16 @@ def create_app(camera_manager=None):
             {"path": "/zones/<id>", "method": "PUT", "description": "Update a zone"},
             {"path": "/zones/<id>", "method": "DELETE", "description": "Remove a zone"},
             {"path": "/events", "method": "GET", "description": "Recent event history"},
+            {"path": "/camera/<id>/thumbnails", "method": "GET", "description": "Lista os últimos thumbnails da câmera"},
+            {"path": "/thumbnails/<id>/image", "method": "GET", "description": "Imagem JPEG de um thumbnail"},
+            {"path": "/camera/<id>/clips", "method": "GET", "description": "Lista os últimos clipes de vídeo da câmera"},
+            {"path": "/clips/<id>", "method": "GET", "description": "Metadados de um clipe"},
+            {"path": "/clips/<id>/video", "method": "GET", "description": "Stream MP4 de um clipe"},
+            {"path": "/api/notifications", "method": "GET", "description": "Canais, eventos e routing de notificações"},
+            {"path": "/api/notifications/routing", "method": "PUT", "description": "Atualiza routing de um evento em um canal"},
+            {"path": "/api/classes", "method": "GET", "description": "Lista de classes de objetos detectáveis (filtro por câmera)"},
+            {"path": "/api/settings", "method": "GET", "description": "Flags globais (modo privacidade)"},
+            {"path": "/api/settings", "method": "PUT", "description": "Atualiza flags globais (privacy_mode)"},
         ]
         return render_template("docs.html", api_docs=api_docs)
 
@@ -150,15 +296,30 @@ def create_app(camera_manager=None):
         name = payload.get("name")
         source = payload.get("source")
         zone = payload.get("zone")
+        alert_classes = payload.get("alert_classes")
+        exclusion_zones = payload.get("exclusion_zones")
+        mask_polygons = payload.get("mask_polygons")
 
         if not name or not source:
             return jsonify({"error": "name and source são obrigatórios"}), 400
 
+        if alert_classes is not None and not isinstance(alert_classes, list):
+            return jsonify({"error": "alert_classes deve ser uma lista"}), 400
+        if exclusion_zones is not None and not isinstance(exclusion_zones, list):
+            return jsonify({"error": "exclusion_zones deve ser uma lista de polígonos"}), 400
+        mask_err = _validate_mask_polygons(mask_polygons)
+        if mask_err:
+            return jsonify({"error": mask_err}), 400
+
         if not CameraStream.validate_source(source):
             return jsonify({"error": "source inválido ou stream inacessível"}), 400
 
-        camera_id = storage.add_camera(name, source, zone)
-        return jsonify({"id": camera_id, "name": name, "source": source, "zone": zone}), 201
+        camera_id = storage.add_camera(name, source, zone, alert_classes=alert_classes, exclusion_zones=exclusion_zones, mask_polygons=mask_polygons)
+        return jsonify({
+            "id": camera_id, "name": name, "source": source, "zone": zone,
+            "alert_classes": alert_classes, "exclusion_zones": exclusion_zones,
+            "mask_polygons": mask_polygons,
+        }), 201
 
     @app.route("/cameras/<int:camera_id>", methods=["PUT"])
     def update_camera(camera_id):
@@ -170,14 +331,25 @@ def create_app(camera_manager=None):
         name = payload.get("name")
         source = payload.get("source")
         zone = payload.get("zone")
+        alert_classes = payload.get("alert_classes")
+        exclusion_zones = payload.get("exclusion_zones")
+        mask_polygons = payload.get("mask_polygons")
 
         if not name or not source:
             return jsonify({"error": "name and source são obrigatórios"}), 400
 
+        if alert_classes is not None and not isinstance(alert_classes, list):
+            return jsonify({"error": "alert_classes deve ser uma lista"}), 400
+        if exclusion_zones is not None and not isinstance(exclusion_zones, list):
+            return jsonify({"error": "exclusion_zones deve ser uma lista de polígonos"}), 400
+        mask_err = _validate_mask_polygons(mask_polygons)
+        if mask_err:
+            return jsonify({"error": mask_err}), 400
+
         if not CameraStream.validate_source(source):
             return jsonify({"error": "source inválido ou stream inacessível"}), 400
 
-        storage.update_camera(camera_id, name, source, zone)
+        storage.update_camera(camera_id, name, source, zone, alert_classes=alert_classes, exclusion_zones=exclusion_zones, mask_polygons=mask_polygons)
         updated_camera = storage.get_camera(camera_id)
         return jsonify(updated_camera), 200
 
@@ -186,6 +358,8 @@ def create_app(camera_manager=None):
         removed = storage.remove_camera(camera_id)
         if not removed:
             return jsonify({"error": "Câmera não encontrada"}), 404
+        storage.remove_camera_thumbnails(camera_id)
+        storage.remove_event_clips(camera_id)
         return jsonify({"status": "removido"}), 200
 
     @app.route("/events")
@@ -196,6 +370,57 @@ def create_app(camera_manager=None):
     @app.route("/zones")
     def zones():
         return jsonify(storage.list_zones())
+
+    @app.route("/api/notifications")
+    def notifications_get():
+        routing = storage.get_all_routing()
+        return jsonify({
+            "channels": CHANNELS,
+            "events": EVENT_TYPES,
+            "routing": routing,
+        })
+
+    @app.route("/api/notifications/routing", methods=["PUT"])
+    def notifications_put():
+        payload = request.get_json() or {}
+        channel = payload.get("channel")
+        event_type = payload.get("event_type")
+        enabled = payload.get("enabled")
+        if enabled is None:
+            return jsonify({"error": "enabled é obrigatório"}), 400
+        valid_channels = {c["key"] for c in CHANNELS}
+        valid_events = {e["key"] for e in EVENT_TYPES}
+        if channel not in valid_channels:
+            return jsonify({"error": "canal inválido"}), 400
+        if event_type not in valid_events:
+            return jsonify({"error": "evento inválido"}), 400
+        storage.set_routing(channel, event_type, bool(enabled))
+        # Regressão: desabilitar um evento no dashboard precisa valer na hora no
+        # envio real. O AlertService decide usando `routing` em memória (snapshot
+        # do boot, main.py) — sem recarregar, mensagens continuam saindo até o
+        # restart, mesmo com o toggle desligado. Recarrega do storage após o PUT.
+        if alerts is not None:
+            alerts.routing = storage.get_all_routing()
+        return jsonify({"status": "ok"}), 200
+
+    @app.route("/api/classes")
+    def classes():
+        from .config import DETECTOR_CLASSES
+        return jsonify({"classes": DETECTOR_CLASSES})
+
+    @app.route("/api/settings")
+    def settings_get():
+        privacy_mode = storage.get_setting("privacy_mode", "false")
+        return jsonify({"privacy_mode": is_privacy_mode_on(privacy_mode)})
+
+    @app.route("/api/settings", methods=["PUT"])
+    def settings_put():
+        payload = request.get_json() or {}
+        privacy_mode = payload.get("privacy_mode")
+        if not isinstance(privacy_mode, bool):
+            return jsonify({"error": "privacy_mode deve ser booleano"}), 400
+        storage.set_setting("privacy_mode", "true" if privacy_mode else "false")
+        return jsonify({"privacy_mode": privacy_mode}), 200
 
 
     # ========== Identity endpoints ==========
@@ -357,6 +582,9 @@ def create_app(camera_manager=None):
         payload = request.get_json() or {}
         name = payload.get("name")
         classification = payload.get("classification", "pública")
+        schedule = payload.get("schedule")
+        retention_policy = payload.get("retention_policy")
+        direction_line = payload.get("direction_line")
 
         if not name:
             return jsonify({"error": "name é obrigatório"}), 400
@@ -364,12 +592,24 @@ def create_app(camera_manager=None):
         if classification not in ('privativa', 'segurança', 'pública'):
             return jsonify({"error": "classification deve ser: privativa, segurança ou pública"}), 400
 
+        if schedule is not None and not _is_valid_schedule(schedule):
+            return jsonify({"error": "schedule deve ser {\"start\": \"HH:MM\", \"end\": \"HH:MM\"}"}), 400
+
+        if not _is_valid_retention_policy(retention_policy):
+            return jsonify({"error": "retention_policy deve ser {\"thumbnails\": N, \"clips\": N, \"days\": N}"}), 400
+
+        if not _is_valid_direction_line(direction_line):
+            return jsonify({"error": "direction_line deve ser {\"axis\": \"vertical|horizontal\", \"position\": 0-1}"}), 400
+
         existing = storage.list_zones()
         if any(z["name"] == name for z in existing):
             return jsonify({"error": "Zona com esse nome já existe"}), 400
 
-        zone_id = storage.add_zone(name, classification)
-        return jsonify({"id": zone_id, "name": name, "classification": classification}), 201
+        zone_id = storage.add_zone(name, classification, schedule=schedule,
+                                   retention_policy=retention_policy, direction_line=direction_line)
+        return jsonify({"id": zone_id, "name": name, "classification": classification,
+                        "schedule": schedule, "retention_policy": retention_policy,
+                        "direction_line": direction_line}), 201
 
     @app.route("/zones/<int:zone_id>", methods=["PUT"])
     def update_zone(zone_id):
@@ -380,6 +620,9 @@ def create_app(camera_manager=None):
         payload = request.get_json() or {}
         name = payload.get("name")
         classification = payload.get("classification")
+        schedule = payload.get("schedule")
+        retention_policy = payload.get("retention_policy")
+        direction_line = payload.get("direction_line")
 
         if not name or not classification:
             return jsonify({"error": "name e classification são obrigatórios"}), 400
@@ -387,7 +630,17 @@ def create_app(camera_manager=None):
         if classification not in ('privativa', 'segurança', 'pública'):
             return jsonify({"error": "classification deve ser: privativa, segurança ou pública"}), 400
 
-        storage.update_zone(zone_id, name, classification)
+        if schedule is not None and not _is_valid_schedule(schedule):
+            return jsonify({"error": "schedule deve ser {\"start\": \"HH:MM\", \"end\": \"HH:MM\"}"}), 400
+
+        if not _is_valid_retention_policy(retention_policy):
+            return jsonify({"error": "retention_policy deve ser {\"thumbnails\": N, \"clips\": N, \"days\": N}"}), 400
+
+        if not _is_valid_direction_line(direction_line):
+            return jsonify({"error": "direction_line deve ser {\"axis\": \"vertical|horizontal\", \"position\": 0-1}"}), 400
+
+        storage.update_zone(zone_id, name, classification, schedule=schedule,
+                            retention_policy=retention_policy, direction_line=direction_line)
         updated_zone = storage.get_zone(zone_id)
         return jsonify(updated_zone), 200
 

@@ -184,6 +184,20 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - Visualização de câmeras ao vivo e histórico de eventos.
 - Exportação básica de logs e imagens de evidência.
 
+## Privacidade
+
+- **100% local**: todo o processamento (detecção, reconhecimento, gravação) roda no dispositivo; nada sai dele, exceto pelos canais que você configurar explicitamente (Telegram, MQTT, Home Assistant).
+- **Mascaramento de regiões**: configure polígonos de máscara por câmera (formato JSON igual ao das zonas de exclusão) no dashboard; o blur é aplicado antes de salvar thumbnail, clipe e snapshot — a detecção usa sempre o frame original.
+- **Modo privacidade**: desliga o reconhecimento de identidade (movimento e objetos continuam ativos). Ative via env `PRIVACY_MODE=true`, pela API `PUT /api/settings` ou pelo toggle no dashboard (Configurações).
+- **Retenção seletiva**: política por zona (`retention_policy` JSON com `thumbnails`, `clips` e `days`) controla o prune de thumbnails e clipes.
+
+## Comportamento e anomalias (Fase 3)
+
+- **Loitering**: pessoa/veículo na mesma região por ≥ `LOITERING_SECONDS` (default 30s) dispara o evento `loitering` (cooldown próprio, env `ALERT_COOLDOWN_LOITERING`).
+- **Direção de movimento**: configure uma linha virtual por zona (`direction_line` JSON: `{"axis":"vertical"|"horizontal","position":0-1}`) — cruzá-la dispara `direction_change` com a direção (entrando/saindo).
+- **Zona restrita fora de horário**: desconhecido em zona privativa/segurança fora do schedule da zona → `intruder_detected` (prioridade); pessoa conhecida → `identity_recognized`.
+- **Queda (heurística)**: pessoa com bbox deitada (`w/h ≥ FALL_ASPECT_RATIO`, default 1.2) → `fall_detected`. O ângulo do torso por modelo de pose local fica como backlog (custo de inferência no hardware).
+
 ## Casos de perigo
 
 - Pessoa em área restrita.

@@ -5,18 +5,23 @@ import os
 import requests
 import paho.mqtt.publish as publish
 
+from .notifications import is_enabled
+
 logger = logging.getLogger(__name__)
 
 
 class AlertService:
-    def __init__(self):
+    def __init__(self, storage=None):
         self.handlers = []
+        if storage is not None:
+            self.register_handler(event_store_handler(storage))
 
     def register_handler(self, handler):
         self.handlers.append(handler)
 
     def send(self, camera_id, zone, event_type, details=None, zone_classification=None,
-             identity=None, known=None, recognition_method=None, category=None):
+             identity=None, known=None, recognition_method=None, category=None, routing=None,
+             thumbnail_path=None, clip_path=None):
         payload = {
             "camera_id": camera_id,
             "zone": zone,
@@ -27,17 +32,42 @@ class AlertService:
             "known": known,
             "recognition_method": recognition_method,
             "category": category,
+            "thumbnail_path": thumbnail_path,
+            "clip_path": clip_path,
         }
+        if routing is None:
+            routing = getattr(self, "routing", None)
+        event_id = None
         for handler in self.handlers:
+            channel = getattr(handler, "channel", None)
+            if channel is not None and routing is not None and not is_enabled(routing, channel, event_type):
+                continue
             try:
-                handler(payload)
+                result = handler(payload)
+                if result is not None and event_id is None:
+                    event_id = result
             except Exception:
                 logger.exception("Alert handler failed: %s", handler.__name__)
+        return event_id
+
+
+def event_store_handler(storage):
+    """Handler que grava o evento na tabela interna (dashboard). Nunca filtrado por routing."""
+    def handler(payload: Dict):
+        try:
+            return storage.add_event(
+                payload.get("camera_id"),
+                payload.get("zone"),
+                payload.get("event_type"),
+                payload.get("details"),
+            )
+        except Exception:
+            logger.exception("Falha ao gravar evento na tabela interna")
+            return None
+    return handler
 
 
 def telegram_handler(payload: Dict):
-    if payload.get("event_type") in ("snapshot_info", "identity_recognized", "unknown_detected"):
-        return
     api_token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -46,6 +76,19 @@ def telegram_handler(payload: Dict):
         return
 
     text = _format_message(payload)
+    thumbnail_path = payload.get("thumbnail_path")
+    if thumbnail_path and os.path.exists(thumbnail_path):
+        url = f"https://api.telegram.org/bot{api_token}/sendPhoto"
+        data = {"chat_id": chat_id, "caption": text, "parse_mode": "Markdown"}
+        try:
+            with open(thumbnail_path, "rb") as f:
+                response = requests.post(url, data=data, files={"photo": f}, timeout=10)
+            response.raise_for_status()
+            logger.info("Telegram photo sent for camera_id=%s event=%s", payload.get("camera_id"), payload.get("event_type"))
+            return
+        except Exception:
+            logger.exception("Telegram photo failed, falling back to text for camera_id=%s", payload.get("camera_id"))
+
     url = f"https://api.telegram.org/bot{api_token}/sendMessage"
     data = {
         "chat_id": chat_id,
@@ -61,9 +104,10 @@ def telegram_handler(payload: Dict):
         logger.exception("Telegram alert failed for camera_id=%s", payload.get("camera_id"))
 
 
+telegram_handler.channel = "telegram"
+
+
 def mqtt_handler(payload: Dict):
-    if payload.get("event_type") in ("snapshot_info", "identity_recognized", "unknown_detected"):
-        return
     broker = os.getenv("MQTT_BROKER_URL", "192.168.1.12")
     port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
     username = os.getenv("MQTT_USERNAME", "kzuca")
@@ -132,9 +176,10 @@ def mqtt_handler(payload: Dict):
         logger.warning("MQTT alert failed (broker %s:%s): %s", broker, port, e)
 
 
+mqtt_handler.channel = "automation"
+
+
 def home_assistant_handler(payload: Dict):
-    if payload.get("event_type") in ("snapshot_info",):
-        return
     url = os.getenv("HOME_ASSISTANT_URL", "http://192.168.1.12:8123")
     token = os.getenv("HOME_ASSISTANT_TOKEN")
     event_type = os.getenv("HOME_ASSISTANT_EVENT_TYPE", "secur_alert")
@@ -170,6 +215,9 @@ def home_assistant_handler(payload: Dict):
         logger.warning("Home Assistant event failed for event_type=%s", event_type)
 
 
+home_assistant_handler.channel = "automation"
+
+
 def _escape_markdown(text) -> str:
     """Escape Markdown special chars so Telegram accepts the message (parse_mode=Markdown)."""
     if text is None:
@@ -192,11 +240,29 @@ def _format_message(payload: Dict) -> str:
         f"*Evento:* {_escape_markdown(event_type)}\n"
         f"*Descrição:* {_escape_markdown(details)}"
     )
+    zone_classification = payload.get("zone_classification")
+    if zone_classification:
+        message += f"\n*Classificação:* {_escape_markdown(zone_classification)}"
     if identity:
         message += f"\n*Identidade:* {_escape_markdown(identity)}"
+    known = payload.get("known")
+    if known is not None:
+        message += f"\n*Conhecido:* {_escape_markdown('sim' if known else 'não')}"
+    recognition_method = payload.get("recognition_method")
+    if recognition_method:
+        message += f"\n*Método:* {_escape_markdown(recognition_method)}"
     category = payload.get("category")
     if category:
         message += f"\n*Categoria:* {_escape_markdown(category)}"
+    thumbnail_path = payload.get("thumbnail_path")
+    if thumbnail_path:
+        # Paths are intentionally NOT passed through _escape_markdown: generated
+        # paths are digit-only, and escaping would break "." (e.g. "thumb.jpg")
+        # and the test_format_message_full_context assertion.
+        message += f"\n*Snapshot:* {thumbnail_path}"
+    clip_path = payload.get("clip_path")
+    if clip_path:
+        message += f"\n*Clipe:* {clip_path}"
     return message
 
 
@@ -240,7 +306,7 @@ def mqtt_register_device(cameras):
                 "name": f"Secur - {cam_name}",
                 "model": "Secur Camera",
                 "manufacturer": "Secur",
-                "sw_version": "0.1.0",
+                "sw_version": "0.2.0",
                 "suggested_area": zone,
             }
 

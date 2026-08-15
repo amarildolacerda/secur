@@ -1,7 +1,9 @@
 import json
 import logging
+import os
 import time
 import threading
+import cv2
 from .config import (
     DEFAULT_CAMERAS,
     DETECTOR_CLASSES,
@@ -9,25 +11,59 @@ from .config import (
     DETECTOR_IOU,
     DETECTOR_MODEL_PATH,
     FRAME_WAIT_SECONDS,
+    WORKER_HEALTHY_TIMEOUT_SECONDS,
     SERVER_HOST,
     SERVER_PORT,
     MOTION_MIN_AREA,
     NO_MOTION_ALERT_SECONDS,
     ALERT_COOLDOWN_SECONDS,
+    ALERT_COOLDOWN_BY_EVENT,
+    THUMBNAILS_DIR,
+    THUMBNAIL_INTERVAL_SECONDS,
+    THUMBNAIL_DIFF_THRESHOLD,
+    THUMBNAIL_HISTORY_SIZE,
+    CLIP_PRE_SECONDS,
+    CLIP_POST_SECONDS,
+    CLIP_FPS,
+    CLIPS_DIR,
+    CLIP_HISTORY_SIZE,
+    PRIVACY_MODE,
+    is_privacy_mode_on,
+    TRACK_IOU_THRESHOLD,
+    TRACK_MAX_AGE_SECONDS,
+    LOITERING_SECONDS,
+    LOITERING_MAX_DISTANCE,
+    LOITERING_LABELS,
+    FALL_ASPECT_RATIO,
 )
 from .camera import CameraStream
 from .detector import ObjectDetector
 from .motion import MotionDetector
+from .geometry import bbox_center_in_polygons
+from .masking import frame_for_storage
 from .alerts import AlertService, telegram_handler, mqtt_handler, home_assistant_handler, mqtt_register_device
 from .app import create_app
 from .storage import EventStorage
 from .identity import IdentityRecognizer, decide_event, RECOGNITION_LABELS, build_recognizer
+from .notifications import DEFAULT_ROUTING
+from .tracking import IoUTracker
+from .behavior import check_loitering, check_direction_crossing, check_fall
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def _worker_healthy(last_frame_time, now, timeout):
+    """Câmera saudável se recebeu ao menos um frame e o último é recente.
+
+    last_frame_time None => fonte nunca entregou frame (ex: RTSP morto).
+    """
+    if last_frame_time is None:
+        return False
+    return (now - last_frame_time) <= timeout
 
 
 class CameraWorker:
@@ -37,6 +73,11 @@ class CameraWorker:
         self.alerts = alerts
         self.object_detector = object_detector
         self.identity_recognizer = identity_recognizer
+        self._privacy_check_time = 0.0
+        self._privacy_on = False
+        self.last_frame_time = None
+        self._last_thumb_time = None
+        self._last_saved_thumb = None
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
 
@@ -57,40 +98,199 @@ class CameraWorker:
             "zone": self.camera.get("zone"),
             "source": self.camera.get("source"),
             "running": self.thread.is_alive(),
+            "healthy": _worker_healthy(self.last_frame_time, time.time(), WORKER_HEALTHY_TIMEOUT_SECONDS),
         }
+
+    def _should_save_thumbnail(self, frame, now):
+        """Decisão única de captura de thumbnail (evento e history):
+        intervalo mínimo entre capturas + dedup por similaridade com o
+        último thumbnail salvo (cena estática não gera duplicatas)."""
+        if not should_capture_thumbnail(self._last_thumb_time, now, THUMBNAIL_INTERVAL_SECONDS):
+            return False
+        if self._last_saved_thumb is not None and frames_similar(self._last_saved_thumb, frame, THUMBNAIL_DIFF_THRESHOLD):
+            return False
+        return True
+
+    def _capture_thumbnail(self, storage_frame, event_type, now, keep=THUMBNAIL_HISTORY_SIZE, days=None):
+        """Salva um thumbnail com dedup por similaridade.
+
+        Retorna o path (str) se gravou, ou None se pulado (intervalo não
+        cumprido, frame similar ao último salvo ou falha de escrita).
+        Usado pelo thumbnail do evento e pelo history — mantém o estado
+        `_last_thumb_time`/`_last_saved_thumb` sempre que grava.
+        """
+        if not self._should_save_thumbnail(storage_frame, now):
+            return None
+        try:
+            cam_dir = THUMBNAILS_DIR / f"cam{self.camera['id']}"
+            cam_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"{int(now * 1000)}.jpg"
+            path = cam_dir / filename
+            ok, jpg = cv2.imencode(".jpg", storage_frame)
+            if not ok:
+                return None
+            path.write_bytes(jpg.tobytes())
+            self.storage.add_camera_thumbnail(self.camera["id"], str(path), event_type)
+            self.storage.prune_camera_thumbnails(self.camera["id"], keep=keep, max_age_days=days)
+        except Exception:
+            logger.warning("Falha ao capturar thumbnail (câmera %s)", self.camera.get("name"))
+            return None
+        self._last_thumb_time = now
+        self._last_saved_thumb = _thumbnail_mini(storage_frame)
+        return str(path)
+
+    def identity_enabled(self):
+        """Reconhecimento de identidade habilitado? (flag de privacidade com cache de 5s)."""
+        now = time.time()
+        if now - self._privacy_check_time >= 5.0:
+            self._privacy_check_time = now
+            try:
+                self._privacy_on = is_privacy_mode_on(self.storage.get_setting("privacy_mode"))
+            except Exception:
+                self._privacy_on = False
+        return self.identity_recognizer is not None and not self._privacy_on
 
     def run(self):
         camera_stream = CameraStream(self.camera["source"])
         motion_detector = MotionDetector(min_area=MOTION_MIN_AREA)
+        tracker = IoUTracker(iou_threshold=TRACK_IOU_THRESHOLD, max_age_seconds=TRACK_MAX_AGE_SECONDS)
         last_motion_time = None
         no_motion_alerted = False
         last_alert_time = {}
+        frame_buffer = CircularFrameBuffer(maxlen=max(1, int(CLIP_PRE_SECONDS * CLIP_FPS)))
+        clip_writer = None
+        clip_end_time = 0.0
+        clip_event_id = None
+        clip_path = None
+        clip_frames_written = 0
+        thumb_keep, thumb_days = THUMBNAIL_HISTORY_SIZE, None
+        clip_keep, clip_days = CLIP_HISTORY_SIZE, None
+        last_buffer_push = time.time()
+        last_clip_write = 0.0
 
         while not self.stop_event.is_set():
             frame = camera_stream.read()
+            if frame is not None:
+                self.last_frame_time = time.time()
             if frame is None:
                 time.sleep(1)
                 continue
 
-            # Look up zone classification (once)
+            # Máscara de privacidade: o que é salvo/exibido (thumbnail, clipe,
+            # snapshot) usa o frame mascarado; a detecção abaixo usa `frame` original.
+            storage_frame = frame_for_storage(frame, self.camera.get("mask_polygons"))
+
+            now = time.time()
+
+            # Sample the pre-event buffer at CLIP_FPS cadence so the window
+            # spans CLIP_PRE_SECONDS and playback runs at real-time speed.
+            # Frames are stored JPEG-encoded (~50-150KB) instead of raw BGR
+            # (~46MB at 640x480 per camera) to keep the worker footprint low.
+            if now - last_buffer_push >= 1.0 / CLIP_FPS:
+                last_buffer_push = now
+                ok, jpg = cv2.imencode(".jpg", storage_frame)
+                if ok:
+                    frame_buffer.push(jpg)
+
+            # Finalize clip recording after the post-event window.
+            # The whole write/release block is guarded so a failing writer
+            # (disk full, corrupted codec) cannot kill the worker thread.
+            if clip_writer is not None:
+                try:
+                    if now < clip_end_time:
+                        # Post-event frames are written at CLIP_FPS cadence,
+                        # matching the pre-event buffer sampling.
+                        if now - last_clip_write >= 1.0 / CLIP_FPS:
+                            last_clip_write = now
+                            clip_writer.write(storage_frame)
+                            clip_frames_written += 1
+                    else:
+                        clip_writer.release()
+                        clip_writer = None
+                        if clip_frames_written > 0:
+                            try:
+                                self.storage.add_event_clip(
+                                    self.camera["id"],
+                                    clip_event_id,
+                                    clip_path,
+                                    clip_frames_written / CLIP_FPS,
+                                )
+                            except Exception:
+                                logger.warning("Falha ao registrar clipe (câmera %s)", self.camera.get("name"))
+                            if clip_event_id is not None:
+                                try:
+                                    self.storage.update_event_clip_path(clip_event_id, clip_path)
+                                except Exception:
+                                    logger.warning("Falha ao linkar clipe ao evento (câmera %s)", self.camera.get("name"))
+                        else:
+                            # No frames written (e.g. failed encoder): drop the
+                            # empty file instead of registering a broken clip.
+                            try:
+                                os.remove(clip_path)
+                            except Exception:
+                                pass
+                        try:
+                            self.storage.prune_event_clips(self.camera["id"], keep=clip_keep, max_age_days=clip_days)
+                        except Exception:
+                            logger.warning("Falha ao podar clipes (câmera %s)", self.camera.get("name"))
+                except Exception:
+                    logger.exception("Falha na gravação do clipe (câmera %s)", self.camera.get("name"))
+                    try:
+                        clip_writer.release()
+                    except Exception:
+                        pass
+                    clip_writer = None
+
+            # Look up zone classification and schedule (once)
             zone_name = self.camera.get("zone")
             zone_classification = None
+            zone_schedule = None
+            zone_direction_line = None
             if zone_name:
                 zones = self.storage.list_zones()
                 zone_obj = next((z for z in zones if z["name"] == zone_name), None)
                 if zone_obj:
                     zone_classification = zone_obj.get("classification")
+                    zone_schedule = zone_obj.get("schedule")
+                    zone_retention = zone_obj.get("retention_policy")
+                    zone_direction_line = zone_obj.get("direction_line")
+                    thumb_keep, thumb_days = resolve_retention(zone_retention, "thumbnails", THUMBNAIL_HISTORY_SIZE)
+                    clip_keep, clip_days = resolve_retention(zone_retention, "clips", CLIP_HISTORY_SIZE)
 
-            motion_detected = motion_detector.detect(frame)
+            exclusion_polygons = self.camera.get("exclusion_zones") or []
+            motion_detected = motion_detector.detect(frame, exclusion_polygons=exclusion_polygons)
             if motion_detected:
                 last_motion_time = time.time()
                 no_motion_alerted = False
 
                 try:
                     detections = self.object_detector.detect(frame)
+                    detections = filter_detections_by_classes(detections, self.camera.get("alert_classes"))
+                    if exclusion_polygons:
+                        detections = [d for d in detections if not bbox_center_in_polygons(d["bbox"], exclusion_polygons)]
+
+                    tracks = tracker.update(detections, now=now)
+
+                    loitering = check_loitering(
+                        tracks, now, LOITERING_SECONDS, LOITERING_MAX_DISTANCE, set(LOITERING_LABELS)
+                    )
+
+                    fall = any(check_fall(d, FALL_ASPECT_RATIO) for d in detections)
+
+                    direction = None
+                    if zone_direction_line and tracks:
+                        if zone_direction_line.get("axis") == "vertical":
+                            line_px = {"axis": "vertical", "x": zone_direction_line["position"] * frame.shape[1]}
+                        else:
+                            line_px = {"axis": "horizontal", "y": zone_direction_line["position"] * frame.shape[0]}
+                        for t in tracks:
+                            direction = check_direction_crossing(t["prev_centroid"], t["centroid"], line_px)
+                            if direction is not None:
+                                break
+
                     identity_info = None
                     identity_label = None
-                    if detections and self.identity_recognizer is not None:
+                    if detections and self.identity_enabled():
                         for det in detections:
                             if det["label"] in RECOGNITION_LABELS:
                                 bbox = det["bbox"]
@@ -101,28 +301,92 @@ class CameraWorker:
                                     identity_label = det["label"]
                                     break
 
-                    event_type, details, identity_name, known, _label, category = decide_worker_event(
-                        detections, identity_info, zone_classification, self.camera["name"], identity_label
+                    decision = decide_worker_event(
+                        detections, identity_info, zone_classification, self.camera["name"], identity_label,
+                        in_schedule=is_within_schedule(zone_schedule, now),
+                        fall=fall, loitering=loitering, direction=direction, now=now,
                     )
+                    event_type, details, identity_name, known, _label, category = _unpack_worker_decision(decision)
 
-                    now = time.time()
-                    if now - last_alert_time.get(event_type, 0.0) >= ALERT_COOLDOWN_SECONDS:
-                        last_alert_time[event_type] = now
-                        self.storage.add_event(self.camera["id"], zone_name, event_type, details)
-                        self.alerts.send(
-                            self.camera["id"], zone_name, event_type, details, zone_classification,
-                            identity=identity_name, known=known, category=category,
-                            recognition_method=identity_info.get("method") if identity_info else None,
+                    alert_classes = self.camera.get("alert_classes")
+                    if alert_classes and not detections:
+                        logger.debug(
+                            "Evento suprimido (filtro de classes) câmera=%s",
+                            self.camera.get("name"),
                         )
                     else:
-                        logger.debug(
-                            "Evento suprimido (cooldown %ss) câmera=%s evento=%s",
-                            ALERT_COOLDOWN_SECONDS, self.camera.get("name"), event_type,
-                        )
+                        thumb_path = self._capture_thumbnail(storage_frame, event_type, time.time(), thumb_keep, thumb_days)
+                        now = time.time()
+                        if event_type is None:
+                            logger.debug(
+                                "Evento suprimido (fora do horário ou sem evento) câmera=%s",
+                                self.camera.get("name"),
+                            )
+                        elif now - last_alert_time.get(event_type, 0.0) >= get_cooldown_for_event(event_type):
+                            last_alert_time[event_type] = now
+                            event_id = self.alerts.send(
+                                self.camera["id"], zone_name, event_type, details, zone_classification,
+                                identity=identity_name, known=known, category=category,
+                                recognition_method=identity_info.get("method") if identity_info else None,
+                                thumbnail_path=thumb_path,
+                            )
+                            # Start clip recording: pre-event buffer + post-event frames
+                            # Guard: only start a new recording if no clip is already active;
+                            # otherwise the active writer/path/event would be overwritten
+                            # without releasing the previous writer.
+                            if clip_writer is not None:
+                                logger.debug(
+                                    "Clipe já ativo (câmera %s) — pulando gravação deste alerta",
+                                    self.camera.get("name"),
+                                )
+                            else:
+                                try:
+                                    cam_dir = CLIPS_DIR / f"cam{self.camera['id']}"
+                                    cam_dir.mkdir(parents=True, exist_ok=True)
+                                    clip_path = str(cam_dir / f"{int(now * 1000)}.mp4")
+                                    writer = cv2.VideoWriter(
+                                        clip_path,
+                                        cv2.VideoWriter_fourcc(*"mp4v"),
+                                        CLIP_FPS,
+                                        (frame.shape[1], frame.shape[0]),
+                                    )
+                                    if not writer.isOpened():
+                                        writer.release()
+                                        logger.warning(
+                                            "Falha ao abrir VideoWriter (codec indisponível?) para clipe (câmera %s)",
+                                            self.camera.get("name"),
+                                        )
+                                    else:
+                                        # Write the pre-event window (stored
+                                        # JPEG-encoded) into the new clip.
+                                        frames_written = 0
+                                        for buf_frame in frame_buffer.frames():
+                                            decoded = cv2.imdecode(buf_frame, cv2.IMREAD_COLOR)
+                                            if decoded is not None:
+                                                writer.write(decoded)
+                                                frames_written += 1
+                                        clip_writer = writer
+                                        clip_frames_written = frames_written
+                                        clip_end_time = now + CLIP_POST_SECONDS
+                                        clip_event_id = event_id
+                                        # Write the first post-event frame
+                                        # immediately, then at CLIP_FPS cadence.
+                                        last_clip_write = now - 1.0 / CLIP_FPS
+                                except Exception:
+                                    logger.warning("Falha ao iniciar gravação de clipe (câmera %s)", self.camera.get("name"))
+                        else:
+                            logger.debug(
+                                "Evento suprimido (cooldown %ss) câmera=%s evento=%s",
+                                get_cooldown_for_event(event_type), self.camera.get("name"), event_type,
+                            )
                 except Exception:
                     logger.exception("Erro no processamento do frame (câmera %s)", self.camera.get("name"))
                     time.sleep(1)
                     continue
+
+                # Thumbnail history: captura com dedup durante movimento contínuo
+                now_thumb = time.time()
+                self._capture_thumbnail(storage_frame, event_type, now_thumb, thumb_keep, thumb_days)
             else:
                 # No motion: after NO_MOTION_ALERT_SECONDS without any occurrence, send "sem movimento"
                 if (last_motion_time is not None
@@ -138,14 +402,50 @@ class CameraWorker:
             time.sleep(FRAME_WAIT_SECONDS)
 
 
-def decide_worker_event(detections, identity_info, zone_classification, camera_name, label=None):
+def decide_worker_event(detections, identity_info, zone_classification, camera_name, label=None,
+                        in_schedule=True, fall=False, loitering=None, direction=None, now=None):
+    """Decide o evento do frame (Fase 3: comportamento/anomalia).
+
+    Prioridade: identidade (intruder_detected/identity_recognized) > queda >
+    loitering > direção > snapshot > movimento. Fora do horário
+    (in_schedule=False), apenas eventos de identidade válidos passam:
+    intruder_detected (desconhecido em zona privativa/segurança, prioridade)
+    e identity_recognized (conhecido); os demais retornam None (suprimido).
+    """
     if identity_info is not None:
         decision = decide_event(identity_info, zone_classification, camera_name, label)
         if decision is not None:
+            if not in_schedule and decision[0] == "unknown_detected":
+                return None
             return decision
+    if not in_schedule:
+        return None
+    if fall:
+        return ("fall_detected", f"Possível queda de pessoa na câmera {camera_name}", None, None, None, None)
+    if loitering is not None:
+        seconds = int(now - loitering["first_seen"]) if now is not None else 0
+        track_label = loitering.get("label", "Objeto")
+        return ("loitering", f"{track_label} na mesma região há {seconds}s (câmera {camera_name})",
+                None, None, track_label, None)
+    if direction is not None:
+        return ("direction_change", f"Movimento {direction} detectado na câmera {camera_name}",
+                None, None, None, None)
     if detections:
         return ("snapshot_info", format_detections(detections), None, None, None, None)
     return ("motion_detected", f"Movimento detectado na câmera {camera_name}", None, None, None, None)
+
+
+def _unpack_worker_decision(decision):
+    """Desempacota a decisão de evento de forma segura no worker.
+
+    decide_worker_event retorna None (supressão: fora do horário sem
+    identidade válida). Desempacotar None direto lançaria TypeError por
+    frame — log spam, thumbnails congeladas e cadência degradada (regressão
+    Fase 3). None vira tupla de None; decisão real passa intacta.
+    """
+    if decision is None:
+        return (None, None, None, None, None, None)
+    return decision
 
 
 def format_detections(detections):
@@ -157,13 +457,116 @@ def format_detections(detections):
         [
             {
                 "label": d["label"],
-                "confidence": round(d["confidence"], 2),
-                "bbox": d["bbox"],
+                "confidence": round(d.get("confidence", 0.0), 2),
+                "bbox": d.get("bbox"),
             }
             for d in detections
         ]
     )
     return f"Objetos detectados: {', '.join(labels)} | detalhes: {details}"
+
+
+def filter_detections_by_classes(detections, alert_classes):
+    """Mantém apenas detecções cujo label está em alert_classes.
+    alert_classes None/vazio = todas as classes."""
+    if not alert_classes:
+        return detections
+    allowed = set(alert_classes)
+    return [d for d in detections if d["label"] in allowed]
+
+
+def is_within_schedule(schedule, now=None):
+    """True se `now` (epoch) está dentro do schedule {"start": "HH:MM", "end": "HH:MM"}.
+    Sem schedule → sempre True. Suporta virada de meia-noite (start > end)."""
+    if not schedule:
+        return True
+    start = schedule.get("start")
+    end = schedule.get("end")
+    if not start or not end:
+        return True
+    now = now if now is not None else time.time()
+    current = time.strftime("%H:%M", time.localtime(now))
+    if start <= end:
+        return start <= current <= end
+    return current >= start or current <= end
+
+
+def get_cooldown_for_event(event_type):
+    """Cooldown específico por evento, com fallback para o global."""
+    return ALERT_COOLDOWN_BY_EVENT.get(event_type, ALERT_COOLDOWN_SECONDS)
+
+
+def resolve_retention(policy, kind, default):
+    """Resolve (keep, max_age_days) da política de retenção da zona para um tipo.
+
+    policy: dict {"thumbnails": N, "clips": N, "days": N} (campos opcionais).
+    kind: "thumbnails" ou "clips".
+    Sem política → (default, None). keep=0 é respeitado (apaga tudo).
+    """
+    if not policy:
+        return default, None
+    keep = policy.get(kind)
+    days = policy.get("days")
+    return (int(keep) if keep is not None else default,
+            int(days) if days is not None else None)
+
+
+class CircularFrameBuffer:
+    """Buffer circular de frames (janela pré-evento). Descarta o mais antigo."""
+
+    def __init__(self, maxlen: int):
+        self.maxlen = maxlen
+        self._items = []
+
+    def push(self, frame):
+        self._items.append(frame)
+        if len(self._items) > self.maxlen:
+            self._items.pop(0)
+
+    def frames(self):
+        return list(self._items)
+
+
+def should_capture_thumbnail(last_thumb_time, now, interval):
+    if last_thumb_time is None:
+        return True
+    return (now - last_thumb_time) >= interval
+
+
+_THUMBNAIL_MINI_SIZE = 64
+
+
+def _thumbnail_mini(frame, size=_THUMBNAIL_MINI_SIZE):
+    """Miniatura para o estado de dedup (memória baixa por câmera)."""
+    if frame is None:
+        return None
+    try:
+        return cv2.resize(frame, (size, size), interpolation=cv2.INTER_AREA)
+    except Exception:
+        return None
+
+
+def frames_similar(a, b, threshold):
+    """True se os frames são visualmente similares (NÃO salvar duplicata).
+
+    Redimensiona ambos para 64x64 grayscale, absdiff e média da diferença.
+    threshold = diferença média por pixel tolerável (ruído de sensor).
+    Calibração (480x640 sintética): idêntico=0.0, jpeg roundtrip=0.0,
+    ruído sigma3=~0.97, objeto forte 2.5% do frame=~9.1. Limiar 3.0 cobre
+    ruído leve e separa mudança real de cena. None/erro -> False (nunca
+    bloquear: se não der para comparar, salvar).
+    """
+    if a is None or b is None:
+        return False
+    try:
+        mini_a = cv2.resize(a, (_THUMBNAIL_MINI_SIZE, _THUMBNAIL_MINI_SIZE))
+        mini_b = cv2.resize(b, (_THUMBNAIL_MINI_SIZE, _THUMBNAIL_MINI_SIZE))
+        gray_a = cv2.cvtColor(mini_a, cv2.COLOR_BGR2GRAY)
+        gray_b = cv2.cvtColor(mini_b, cv2.COLOR_BGR2GRAY)
+        diff = cv2.absdiff(gray_a, gray_b)
+        return cv2.mean(diff)[0] <= threshold
+    except Exception:
+        return False
 
 
 class CameraManager:
@@ -207,10 +610,12 @@ class CameraManager:
 
 def main():
     storage = EventStorage()
-    alerts = AlertService()
+    storage.ensure_default_routing(DEFAULT_ROUTING)
+    alerts = AlertService(storage=storage)
     alerts.register_handler(telegram_handler)
     alerts.register_handler(mqtt_handler)
     alerts.register_handler(home_assistant_handler)
+    alerts.routing = storage.get_all_routing()
 
     object_detector = ObjectDetector(
         model_path=DETECTOR_MODEL_PATH,
@@ -219,7 +624,16 @@ def main():
         classes=DETECTOR_CLASSES,
     )
 
-    identity_recognizer = build_recognizer(storage)
+    if PRIVACY_MODE:
+        storage.set_setting("privacy_mode", "true")
+    elif storage.get_setting("privacy_mode") is None:
+        storage.set_setting("privacy_mode", "false")
+
+    if is_privacy_mode_on(storage.get_setting("privacy_mode")):
+        logger.info("Modo privacidade ativo — reconhecimento de identidade desligado")
+        identity_recognizer = None
+    else:
+        identity_recognizer = build_recognizer(storage)
     camera_manager = CameraManager(storage, alerts, object_detector, identity_recognizer)
     camera_manager.start()
 
@@ -235,5 +649,5 @@ def main():
         {"name": "Recepção", "classification": "segurança"},
     ])
 
-    app = create_app(camera_manager=camera_manager)
+    app = create_app(camera_manager=camera_manager, alerts=alerts)
     app.run(host=SERVER_HOST, port=SERVER_PORT)

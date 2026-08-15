@@ -21,13 +21,17 @@
                 <span class="icon">&#x1F4F7;</span>
                 <span>Visão geral</span>
             </button>
-            <button type="button" class="nav-link" data-section="camera-status" id="nav-camera-status">
-                <span class="icon">&#x1F50D;</span>
-                <span>Câmeras</span>
-            </button>
             <button type="button" class="nav-link" data-section="recent-events" id="nav-recent-events">
                 <span class="icon">&#x1F4CB;</span>
                 <span>Eventos</span>
+            </button>
+            <button type="button" class="nav-link" data-section="notifications" id="nav-notifications">
+                <span class="icon">&#x1F514;</span>
+                <span>Notificações</span>
+            </button>
+            <button type="button" class="nav-link" data-section="settings" id="nav-settings">
+                <span class="icon">&#x1F512;</span>
+                <span>Configurações</span>
             </button>
             <div class="nav-divider"></div>
             <div class="nav-group collapsed">
@@ -53,14 +57,32 @@
                 </div>
             </div>
         </nav>
-        <div class="footer-nav">v0.1.0</div>
+        <div class="footer-nav">v0.2.0</div>
     </aside>
 
     <div class="main">
         <div id="page">
             <section class="panel" id="overview">
-                <h2>Visão geral</h2>
                 <div id="summary-cards" class="grid"></div>
+                <div id="camera-tiles" class="grid"></div>
+                <div id="camera-offline-bar" class="hidden-panel">
+                    <div>
+                        <span id="camera-offline-toggle-label" class="section-title">Ver offline</span>
+                        <label class="switch" title="Mostrar câmeras offline">
+                            <input type="checkbox" id="show-offline-cameras" />
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <div id="camera-offline-section" class="hidden-panel">
+                    <div id="camera-offline-list" class="grid"></div>
+                </div>
+                <div id="camera-empty-state" class="empty-state hidden-panel">
+                    <div class="empty-icon">&#x1F4F7;</div>
+                    <h3>Nenhuma câmera cadastrada</h3>
+                    <p>Adicione uma câmera para começar a monitorar.</p>
+                    <button type="button" class="button-primary" id="empty-add-camera">Adicionar câmera</button>
+                </div>
             </section>
 
             <!-- Identity dialog (copied from identities view) -->
@@ -126,6 +148,9 @@
                                 <th>Nome</th>
                                 <th>Fonte</th>
                                 <th>Zona</th>
+                                <th>Classes</th>
+                                <th>Exclusões</th>
+                                <th>Máscara</th>
                                 <th>Ações</th>
                             </tr>
                         </thead>
@@ -154,6 +179,19 @@
                             <select id="camera-zone">
                                 <option value="">Nenhuma zona</option>
                             </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="camera-alert-classes">Classes de alerta (vazio = todas)</label>
+                            <div id="camera-alert-classes" class="checkbox-group"></div>
+                        </div>
+                        <div class="form-row">
+                            <label for="camera-exclusion-zones">Zonas de exclusão (JSON)</label>
+                            <textarea id="camera-exclusion-zones" rows="3" placeholder='[{"x":0,"y":0},{"x":100,"y":0},{"x":100,"y":100}]'></textarea>
+                        </div>
+                        <div class="form-row">
+                            <label for="camera-mask-polygons">Máscara de privacidade (JSON)</label>
+                            <textarea id="camera-mask-polygons" rows="3" placeholder='[{"x":0,"y":0},{"x":100,"y":0},{"x":100,"y":100}]'></textarea>
+                            <small style="color:var(--muted-subtle);">Regiões com blur nos thumbnails, clipes e snapshot. Mesmo formato das zonas de exclusão.</small>
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="button-primary" id="camera-form-submit">Salvar</button>
@@ -206,6 +244,18 @@
                                 <option value="privativa">Privativa</option>
                             </select>
                         </div>
+                        <div class="form-row">
+                            <label for="zone-schedule-start">Horário de alerta (início)</label>
+                            <input id="zone-schedule-start" type="time">
+                        </div>
+                        <div class="form-row">
+                            <label for="zone-schedule-end">Horário de alerta (fim)</label>
+                            <input id="zone-schedule-end" type="time">
+                        </div>
+                        <div class="form-row">
+                            <label for="zone-direction-line">Linha de direção (JSON)</label>
+                            <textarea id="zone-direction-line" rows="2" placeholder='{"axis":"vertical","position":0.5}'></textarea>
+                        </div>
                         <div class="form-actions">
                             <button type="submit" class="button-primary" id="zone-form-submit">Salvar</button>
                             <button type="button" class="button-secondary" id="cancel-zone-edit">Cancelar</button>
@@ -215,26 +265,75 @@
                 </div>
             </div>
 
-            <section class="panel hidden-panel" id="camera-status">
-                <h2>Status das câmeras</h2>
-                <div id="camera-list" class="grid"></div>
+            <section class="panel hidden-panel" id="recent-events">
+                <div class="panel-header">
+                    <div>
+                        <h2>Eventos recentes</h2>
+                        <p>Últimos 100 eventos carregados.</p>
+                    </div>
+                </div>
+                <div class="chips-bar" id="event-filters">
+                    <select id="filter-camera" class="chip-select"><option value="">Todas as câmeras</option></select>
+                    <select id="filter-zone" class="chip-select"><option value="">Todas as zonas</option></select>
+                    <select id="filter-type" class="chip-select"><option value="">Todos os tipos</option></select>
+                    <select id="filter-since" class="chip-select">
+                        <option value="">Todo o período</option>
+                        <option value="1">Última hora</option>
+                        <option value="24">Últimas 24h</option>
+                        <option value="168">Últimos 7 dias</option>
+                    </select>
+                    <label class="checkbox-inline" title="Mostrar apenas eventos de alerta">
+                        <input type="checkbox" id="filter-alerts" /> Só alertas
+                    </label>
+                    <button type="button" class="button-secondary button-mini" id="filter-clear">Limpar</button>
+                </div>
+                <div id="events-grid" class="grid"></div>
+                <div id="events-empty" class="empty-state hidden-panel">
+                    <div class="empty-icon">&#x1F50D;</div>
+                    <h3>Nenhum evento encontrado</h3>
+                    <p id="events-empty-text">Ajuste os filtros para ver resultados.</p>
+                    <button type="button" class="button-primary" id="events-clear-filters">Limpar filtros</button>
+                </div>
             </section>
 
-            <section class="panel hidden-panel" id="recent-events">
-                <h2>Eventos recentes</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Timestamp</th>
-                            <th>Câmera</th>
-                            <th>Zona</th>
-                            <th>Evento</th>
-                            <th>Detalhes</th>
-                        </tr>
-                    </thead>
-                    <tbody id="events-table"></tbody>
-                </table>
+            <section class="panel hidden-panel" id="notifications">
+                <div class="panel-header">
+                    <div>
+                        <h2>Configuração de notificações</h2>
+                        <p>Escolha quais tipos de evento são notificados em cada canal.</p>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Evento</th>
+                                <th>Categoria</th>
+                                <th id="notif-channel-headers"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="notifications-table-body"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel hidden-panel" id="settings">
+                <h2>Configurações</h2>
+                <div class="card">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                        <div>
+                            <strong>Modo privacidade</strong>
+                            <p style="color:var(--muted-subtle);font-size:0.85rem;margin:4px 0 0;">
+                                Desliga o reconhecimento de identidade (faces/ReID). Movimento e
+                                detecção de objetos continuam ativos. Tudo permanece 100% local.
+                            </p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="privacy-mode-toggle" />
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
             </section>
 
             <section class="panel hidden-panel" id="identities-management">
@@ -262,6 +361,7 @@
             <span id="status-health">Status: carregando...</span>
             <span id="status-cameras">Câmeras: —</span>
             <span id="status-workers">Workers: —</span>
+            <span class="local-badge" title="Todo o processamento acontece no dispositivo. Nada sai dele, exceto pelos canais que você configurar (Telegram, MQTT, Home Assistant).">100% local</span>
         </div>
         <div class="footer-right">
             <span id="status-uptime">Uptime: —</span>
@@ -283,6 +383,30 @@
                 <img id="live-snapshot" class="live-snapshot" alt="Ao vivo" />
                 <p class="live-label">Ao vivo (atualização a cada 500ms)</p>
             </div>
+        </div>
+    </div>
+
+    <!-- Thumbnail History Modal -->
+    <div id="thumb-history-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
+        <div class="dialog-card thumb-history-card">
+            <div class="dialog-header">
+                <h3 id="thumb-history-title">Histórico</h3>
+                <button type="button" class="button-close" aria-label="Fechar" onclick="closeThumbHistory()">×</button>
+            </div>
+            <div id="thumb-history-grid" class="thumb-history-grid"></div>
+            <p id="thumb-history-empty" class="thumb-history-empty">Nenhum thumbnail capturado ainda.</p>
+        </div>
+    </div>
+
+    <!-- Clip History Modal -->
+    <div id="clip-history-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true" aria-labelledby="clip-history-title">
+        <div class="dialog-card">
+            <div class="dialog-header">
+                <h3 id="clip-history-title">Clipes</h3>
+                <button id="clip-history-close" type="button" class="button-close" aria-label="Fechar">×</button>
+            </div>
+            <div id="clip-history-grid" style="display:flex;flex-direction:column;gap:12px;max-height:60vh;overflow-y:auto;"></div>
+            <div id="clip-history-empty" style="display:none;color:var(--muted-subtle);padding:12px 0;">Nenhum clipe gravado.</div>
         </div>
     </div>
 

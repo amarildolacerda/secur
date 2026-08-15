@@ -1,10 +1,12 @@
 import logging
+import json
 import sqlite3
 import threading
 import time
 import sys
 import os
-from datetime import datetime, timezone
+import shutil
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -53,7 +55,9 @@ class EventStorage:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
                     source TEXT NOT NULL,
-                    zone TEXT
+                    zone TEXT,
+                    alert_classes TEXT,
+                    exclusion_zones TEXT
                 )
                 """
             )
@@ -62,7 +66,8 @@ class EventStorage:
                 CREATE TABLE IF NOT EXISTS zones (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
-                    classification TEXT NOT NULL DEFAULT 'pública'
+                    classification TEXT NOT NULL DEFAULT 'pública',
+                    schedule TEXT
                 )
                 """
             )
@@ -86,6 +91,79 @@ class EventStorage:
                     cursor.execute("ALTER TABLE known_identities ADD COLUMN thumbnail_path TEXT")
             except Exception:
                 pass
+            # Ensure new camera columns exist for older DBs
+            try:
+                cursor.execute("PRAGMA table_info(cameras)")
+                cols = [r[1] for r in cursor.fetchall()]
+                if 'alert_classes' not in cols:
+                    cursor.execute("ALTER TABLE cameras ADD COLUMN alert_classes TEXT")
+                if 'exclusion_zones' not in cols:
+                    cursor.execute("ALTER TABLE cameras ADD COLUMN exclusion_zones TEXT")
+                if 'mask_polygons' not in cols:
+                    cursor.execute("ALTER TABLE cameras ADD COLUMN mask_polygons TEXT")
+            except Exception:
+                pass
+            # Ensure schedule column exists for older DBs
+            try:
+                cursor.execute("PRAGMA table_info(zones)")
+                cols = [r[1] for r in cursor.fetchall()]
+                if 'schedule' not in cols:
+                    cursor.execute("ALTER TABLE zones ADD COLUMN schedule TEXT")
+                if 'retention_policy' not in cols:
+                    cursor.execute("ALTER TABLE zones ADD COLUMN retention_policy TEXT")
+                if 'direction_line' not in cols:
+                    cursor.execute("ALTER TABLE zones ADD COLUMN direction_line TEXT")
+            except Exception:
+                pass
+            # Ensure clip_path column exists for older DBs
+            try:
+                cursor.execute("PRAGMA table_info(events)")
+                cols = [r[1] for r in cursor.fetchall()]
+                if 'clip_path' not in cols:
+                    cursor.execute("ALTER TABLE events ADD COLUMN clip_path TEXT")
+            except Exception:
+                pass
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS camera_thumbnails (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    camera_id INTEGER NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    event_type TEXT,
+                    path TEXT NOT NULL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS event_clips (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    camera_id INTEGER NOT NULL,
+                    event_id INTEGER,
+                    timestamp TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    duration_s REAL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notification_routing (
+                    channel TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    PRIMARY KEY (channel, event_type)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+                """
+            )
             self.connection.commit()
 
     def add_event(self, camera_id: str, zone: str, event_type: str, details: str = None):
@@ -103,17 +181,20 @@ class EventStorage:
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "SELECT id, timestamp, camera_id, zone, event_type, details FROM events ORDER BY id DESC LIMIT ?",
+                "SELECT id, timestamp, camera_id, zone, event_type, details, clip_path FROM events ORDER BY id DESC LIMIT ?",
                 (limit,),
             )
             return [dict(row) for row in cursor.fetchall()]
 
-    def add_camera(self, name: str, source: str, zone: str = None):
+    def add_camera(self, name: str, source: str, zone: str = None, alert_classes=None, exclusion_zones=None, mask_polygons=None):
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "INSERT INTO cameras (name, source, zone) VALUES (?, ?, ?)",
-                (name, source, zone),
+                "INSERT INTO cameras (name, source, zone, alert_classes, exclusion_zones, mask_polygons) VALUES (?, ?, ?, ?, ?, ?)",
+                (name, source, zone,
+                 json.dumps(alert_classes) if alert_classes else None,
+                 json.dumps(exclusion_zones) if exclusion_zones else None,
+                 json.dumps(mask_polygons) if mask_polygons else None),
             )
             self.connection.commit()
             return cursor.lastrowid
@@ -121,22 +202,37 @@ class EventStorage:
     def list_cameras(self):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, source, zone FROM cameras ORDER BY id ASC")
-            return [dict(row) for row in cursor.fetchall()]
+            cursor.execute("SELECT id, name, source, zone, alert_classes, exclusion_zones, mask_polygons FROM cameras ORDER BY id ASC")
+            rows = [dict(row) for row in cursor.fetchall()]
+        for row in rows:
+            row["alert_classes"] = json.loads(row["alert_classes"]) if row.get("alert_classes") else None
+            row["exclusion_zones"] = json.loads(row["exclusion_zones"]) if row.get("exclusion_zones") else None
+            row["mask_polygons"] = json.loads(row["mask_polygons"]) if row.get("mask_polygons") else None
+        return rows
 
     def get_camera(self, camera_id: int):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, source, zone FROM cameras WHERE id = ?", (camera_id,))
+            cursor.execute("SELECT id, name, source, zone, alert_classes, exclusion_zones, mask_polygons FROM cameras WHERE id = ?", (camera_id,))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            camera = dict(row)
+        camera["alert_classes"] = json.loads(camera["alert_classes"]) if camera.get("alert_classes") else None
+        camera["exclusion_zones"] = json.loads(camera["exclusion_zones"]) if camera.get("exclusion_zones") else None
+        camera["mask_polygons"] = json.loads(camera["mask_polygons"]) if camera.get("mask_polygons") else None
+        return camera
 
-    def update_camera(self, camera_id: int, name: str, source: str, zone: str = None):
+    def update_camera(self, camera_id: int, name: str, source: str, zone: str = None, alert_classes=None, exclusion_zones=None, mask_polygons=None):
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "UPDATE cameras SET name = ?, source = ?, zone = ? WHERE id = ?",
-                (name, source, zone, camera_id),
+                "UPDATE cameras SET name = ?, source = ?, zone = ?, alert_classes = ?, exclusion_zones = ?, mask_polygons = ? WHERE id = ?",
+                (name, source, zone,
+                 json.dumps(alert_classes) if alert_classes else None,
+                 json.dumps(exclusion_zones) if exclusion_zones else None,
+                 json.dumps(mask_polygons) if mask_polygons else None,
+                 camera_id),
             )
             self.connection.commit()
             return cursor.rowcount > 0
@@ -154,12 +250,14 @@ class EventStorage:
         for camera in default_cameras:
             self.add_camera(camera["name"], camera["source"], camera.get("zone"))
 
-    def add_zone(self, name: str, classification: str = 'pública'):
+    def add_zone(self, name: str, classification: str = 'pública', schedule=None, retention_policy=None, direction_line=None):
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "INSERT INTO zones (name, classification) VALUES (?, ?)",
-                (name, classification),
+                "INSERT INTO zones (name, classification, schedule, retention_policy, direction_line) VALUES (?, ?, ?, ?, ?)",
+                (name, classification, json.dumps(schedule) if schedule else None,
+                 json.dumps(retention_policy) if retention_policy else None,
+                 json.dumps(direction_line) if direction_line else None),
             )
             self.connection.commit()
             return cursor.lastrowid
@@ -167,22 +265,35 @@ class EventStorage:
     def list_zones(self):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, classification FROM zones ORDER BY id ASC")
-            return [dict(row) for row in cursor.fetchall()]
+            cursor.execute("SELECT id, name, classification, schedule, retention_policy, direction_line FROM zones ORDER BY id ASC")
+            rows = [dict(row) for row in cursor.fetchall()]
+        for row in rows:
+            row["schedule"] = json.loads(row["schedule"]) if row.get("schedule") else None
+            row["retention_policy"] = json.loads(row["retention_policy"]) if row.get("retention_policy") else None
+            row["direction_line"] = json.loads(row["direction_line"]) if row.get("direction_line") else None
+        return rows
 
     def get_zone(self, zone_id: int):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, classification FROM zones WHERE id = ?", (zone_id,))
+            cursor.execute("SELECT id, name, classification, schedule, retention_policy, direction_line FROM zones WHERE id = ?", (zone_id,))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            zone = dict(row)
+        zone["schedule"] = json.loads(zone["schedule"]) if zone.get("schedule") else None
+        zone["retention_policy"] = json.loads(zone["retention_policy"]) if zone.get("retention_policy") else None
+        zone["direction_line"] = json.loads(zone["direction_line"]) if zone.get("direction_line") else None
+        return zone
 
-    def update_zone(self, zone_id: int, name: str, classification: str):
+    def update_zone(self, zone_id: int, name: str, classification: str, schedule=None, retention_policy=None, direction_line=None):
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "UPDATE zones SET name = ?, classification = ? WHERE id = ?",
-                (name, classification, zone_id),
+                "UPDATE zones SET name = ?, classification = ?, schedule = ?, retention_policy = ?, direction_line = ? WHERE id = ?",
+                (name, classification, json.dumps(schedule) if schedule else None,
+                 json.dumps(retention_policy) if retention_policy else None,
+                 json.dumps(direction_line) if direction_line else None, zone_id),
             )
             self.connection.commit()
             return cursor.rowcount > 0
@@ -287,6 +398,238 @@ class EventStorage:
             cursor.execute("DELETE FROM known_identities WHERE id = ?", (identity_id,))
             self.connection.commit()
             return cursor.rowcount > 0
+
+    def add_camera_thumbnail(self, camera_id: int, path: str, event_type: str) -> int:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO camera_thumbnails (camera_id, timestamp, event_type, path) VALUES (?, ?, ?, ?)",
+                (camera_id, timestamp, event_type, path),
+            )
+            self.connection.commit()
+            return cursor.lastrowid
+
+    def list_camera_thumbnails(self, camera_id: int, limit: int = 20):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, timestamp, camera_id, event_type, path FROM camera_thumbnails "
+                "WHERE camera_id = ? ORDER BY id DESC LIMIT ?",
+                (camera_id, limit),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def prune_camera_thumbnails(self, camera_id: int, keep: int = 20, max_age_days: int = None):
+        with self.lock:
+            cursor = self.connection.cursor()
+            if max_age_days:
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+                cursor.execute(
+                    "SELECT id, path FROM camera_thumbnails WHERE camera_id = ? AND timestamp < ?",
+                    (camera_id, cutoff),
+                )
+                for item in [dict(row) for row in cursor.fetchall()]:
+                    try:
+                        Path(item["path"]).unlink(missing_ok=True)
+                    except Exception:
+                        logger.warning("Falha ao remover thumbnail %s", item["path"])
+                    cursor.execute("DELETE FROM camera_thumbnails WHERE id = ?", (item["id"],))
+            cursor.execute(
+                "SELECT id, path FROM camera_thumbnails WHERE camera_id = ? ORDER BY id DESC LIMIT -1 OFFSET ?",
+                (camera_id, keep),
+            )
+            excess = [dict(row) for row in cursor.fetchall()]
+            for item in excess:
+                try:
+                    Path(item["path"]).unlink(missing_ok=True)
+                except Exception:
+                    logger.warning("Falha ao remover thumbnail %s", item["path"])
+                cursor.execute("DELETE FROM camera_thumbnails WHERE id = ?", (item["id"],))
+            self.connection.commit()
+
+    def remove_camera_thumbnails(self, camera_id: int):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT path FROM camera_thumbnails WHERE camera_id = ?", (camera_id,))
+            rows = cursor.fetchall()
+            for row in rows:
+                try:
+                    Path(row["path"]).unlink(missing_ok=True)
+                except Exception:
+                    logger.warning("Falha ao remover thumbnail %s", row["path"])
+            cursor.execute("DELETE FROM camera_thumbnails WHERE camera_id = ?", (camera_id,))
+            self.connection.commit()
+
+    def get_camera_thumbnail(self, thumb_id: int):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, camera_id, timestamp, event_type, path FROM camera_thumbnails WHERE id = ?",
+                (thumb_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def add_event_clip(self, camera_id: int, event_id, path: str, duration_s: float) -> int:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO event_clips (camera_id, event_id, timestamp, path, duration_s) VALUES (?, ?, ?, ?, ?)",
+                (camera_id, event_id, timestamp, path, duration_s),
+            )
+            self.connection.commit()
+            return cursor.lastrowid
+
+    def list_event_clips(self, camera_id: int, limit: int = 20):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, camera_id, event_id, timestamp, path, duration_s FROM event_clips "
+                "WHERE camera_id = ? ORDER BY id DESC LIMIT ?",
+                (camera_id, limit),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_event_clip(self, clip_id: int):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, camera_id, event_id, timestamp, path, duration_s FROM event_clips WHERE id = ?",
+                (clip_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def prune_event_clips(self, camera_id: int, keep: int = 20, max_age_days: int = None):
+        with self.lock:
+            cursor = self.connection.cursor()
+            if max_age_days:
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+                cursor.execute(
+                    "SELECT id, path FROM event_clips WHERE camera_id = ? AND timestamp < ?",
+                    (camera_id, cutoff),
+                )
+                for item in [dict(row) for row in cursor.fetchall()]:
+                    try:
+                        Path(item["path"]).unlink(missing_ok=True)
+                    except Exception:
+                        logger.warning("Falha ao remover clipe %s", item["path"])
+                    cursor.execute("DELETE FROM event_clips WHERE id = ?", (item["id"],))
+            cursor.execute(
+                "SELECT id, path FROM event_clips WHERE camera_id = ? ORDER BY id DESC LIMIT -1 OFFSET ?",
+                (camera_id, keep),
+            )
+            excess = [dict(row) for row in cursor.fetchall()]
+            for item in excess:
+                try:
+                    Path(item["path"]).unlink(missing_ok=True)
+                except Exception:
+                    logger.warning("Falha ao remover clipe %s", item["path"])
+                cursor.execute("DELETE FROM event_clips WHERE id = ?", (item["id"],))
+            self.connection.commit()
+
+    def remove_event_clips(self, camera_id: int):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT path FROM event_clips WHERE camera_id = ?", (camera_id,))
+            rows = cursor.fetchall()
+            for row in rows:
+                try:
+                    Path(row["path"]).unlink(missing_ok=True)
+                except Exception:
+                    logger.warning("Falha ao remover clipe %s", row["path"])
+            cursor.execute("DELETE FROM event_clips WHERE camera_id = ?", (camera_id,))
+            self.connection.commit()
+
+    def update_event_clip_path(self, event_id: int, clip_path: str) -> bool:
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "UPDATE events SET clip_path = ? WHERE id = ?",
+                (clip_path, event_id),
+            )
+            self.connection.commit()
+            return cursor.rowcount > 0
+
+    def get_routing(self, channel: str) -> dict:
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT event_type, enabled FROM notification_routing WHERE channel = ?",
+                (channel,),
+            )
+            return {row["event_type"]: bool(row["enabled"]) for row in cursor.fetchall()}
+
+    def set_routing(self, channel: str, event_type: str, enabled: bool):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO notification_routing (channel, event_type, enabled) VALUES (?, ?, ?) "
+                "ON CONFLICT(channel, event_type) DO UPDATE SET enabled = excluded.enabled",
+                (channel, event_type, int(enabled)),
+            )
+            self.connection.commit()
+
+    def get_all_routing(self) -> dict:
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT channel, event_type, enabled FROM notification_routing")
+            routing = {}
+            for row in cursor.fetchall():
+                routing.setdefault(row["channel"], {})[row["event_type"]] = bool(row["enabled"])
+            return routing
+
+    def seed_default_routing(self, defaults: dict):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT COUNT(*) AS c FROM notification_routing")
+            if cursor.fetchone()["c"] > 0:
+                return
+            for channel, events in defaults.items():
+                for event_type, enabled in events.items():
+                    cursor.execute(
+                        "INSERT INTO notification_routing (channel, event_type, enabled) VALUES (?, ?, ?)",
+                        (channel, event_type, int(enabled)),
+                    )
+            self.connection.commit()
+
+    def ensure_default_routing(self, defaults: dict):
+        """Reconcilia a tabela com os defaults: insere (INSERT OR IGNORE) TODAS
+        as combinações canal × evento do DEFAULT_ROUTING que ainda não têm linha.
+        Linhas existentes (config do usuário) não são sobrescritas; rodar 2x é
+        idempotente (PK channel+event_type). Diferente de seed_default_routing
+        (que só age com tabela vazia), cobre DBs seedados com um
+        DEFAULT_ROUTING antigo/parcial — sem isso, evento novo sem linha era
+        tratado como "envia sempre" (bug: notificação chegando desabilitada)."""
+        with self.lock:
+            cursor = self.connection.cursor()
+            for channel, events in defaults.items():
+                for event_type, enabled in events.items():
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO notification_routing (channel, event_type, enabled) "
+                        "VALUES (?, ?, ?)",
+                        (channel, event_type, int(enabled)),
+                    )
+            self.connection.commit()
+
+    def get_setting(self, key: str, default=None):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+            self.connection.commit()
 
     def close(self):
         with self.lock:

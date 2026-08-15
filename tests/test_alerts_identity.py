@@ -1,4 +1,5 @@
 import secur.alerts as alerts
+from secur.notifications import DEFAULT_ROUTING
 
 
 def _payload(event_type, zone_classification="privativa", identity="João", known=True, category="person"):
@@ -20,14 +21,22 @@ def test_telegram_skips_known_unknown_and_snapshot(monkeypatch):
     monkeypatch.setattr(alerts.requests, "post", fake_post)
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "x")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "y")
-    for skipped in ("snapshot_info", "identity_recognized", "unknown_detected"):
-        alerts.telegram_handler(_payload(skipped))
-    assert calls == [], "telegram must skip snapshot/identity/unknown"
+
+    service = alerts.AlertService()
+    service.register_handler(alerts.telegram_handler)
+    service.routing = DEFAULT_ROUTING
+
+    for skipped in ("snapshot_info", "identity_recognized", "unknown_detected", "no_motion"):
+        calls.clear()
+        service.send("1", "Entrada", skipped, details="x")
+        assert calls == [], f"telegram must skip {skipped}"
+
     calls.clear()
-    alerts.telegram_handler(_payload("intruder_detected"))
+    service.send("1", "Entrada", "intruder_detected", details="x")
     assert len(calls) == 1, "telegram must alarm on intruder"
+
     calls.clear()
-    alerts.telegram_handler(_payload("motion_detected"))
+    service.send("1", "Entrada", "motion_detected", details="x")
     assert len(calls) == 1, "telegram must alarm on motion"
 
 
@@ -51,15 +60,27 @@ def test_mqtt_only_intruder(monkeypatch):
 
     monkeypatch.setattr(mqtt_mod, "Client", FakeClient)
     monkeypatch.setenv("MQTT_BROKER_URL", "broker")
+    monkeypatch.delenv("MQTT_TOPIC", raising=False)
+
+    service = alerts.AlertService()
+    service.register_handler(alerts.mqtt_handler)
+    service.routing = DEFAULT_ROUTING
+
     instances.clear()
-    alerts.mqtt_handler(_payload("intruder_detected"))
+    service.send("1", "Entrada", "intruder_detected", details="x")
     assert instances and instances[-1].published, "intruder must publish to MQTT"
+
     instances.clear()
-    alerts.mqtt_handler(_payload("identity_recognized"))
-    assert not (instances and instances[-1].published), "identity must NOT publish to MQTT"
+    service.send("1", "Entrada", "identity_recognized", details="x")
+    assert instances and instances[-1].published, "identity must publish to MQTT (automation routing True)"
+
     instances.clear()
-    alerts.mqtt_handler(_payload("unknown_detected"))
-    assert not (instances and instances[-1].published), "unknown_detected must NOT publish to MQTT"
+    service.send("1", "Entrada", "unknown_detected", details="x")
+    assert instances and instances[-1].published, "unknown_detected must publish to MQTT (automation routing True)"
+
+    instances.clear()
+    service.send("1", "Entrada", "snapshot_info", details="x")
+    assert not (instances and instances[-1].published), "snapshot_info must NOT publish to MQTT"
 
 
 def test_ha_receives_all_identity_events(monkeypatch):
