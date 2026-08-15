@@ -111,6 +111,8 @@ class EventStorage:
                     cursor.execute("ALTER TABLE zones ADD COLUMN schedule TEXT")
                 if 'retention_policy' not in cols:
                     cursor.execute("ALTER TABLE zones ADD COLUMN retention_policy TEXT")
+                if 'direction_line' not in cols:
+                    cursor.execute("ALTER TABLE zones ADD COLUMN direction_line TEXT")
             except Exception:
                 pass
             # Ensure clip_path column exists for older DBs
@@ -248,13 +250,14 @@ class EventStorage:
         for camera in default_cameras:
             self.add_camera(camera["name"], camera["source"], camera.get("zone"))
 
-    def add_zone(self, name: str, classification: str = 'pública', schedule=None, retention_policy=None):
+    def add_zone(self, name: str, classification: str = 'pública', schedule=None, retention_policy=None, direction_line=None):
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "INSERT INTO zones (name, classification, schedule, retention_policy) VALUES (?, ?, ?, ?)",
+                "INSERT INTO zones (name, classification, schedule, retention_policy, direction_line) VALUES (?, ?, ?, ?, ?)",
                 (name, classification, json.dumps(schedule) if schedule else None,
-                 json.dumps(retention_policy) if retention_policy else None),
+                 json.dumps(retention_policy) if retention_policy else None,
+                 json.dumps(direction_line) if direction_line else None),
             )
             self.connection.commit()
             return cursor.lastrowid
@@ -262,32 +265,35 @@ class EventStorage:
     def list_zones(self):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, classification, schedule, retention_policy FROM zones ORDER BY id ASC")
+            cursor.execute("SELECT id, name, classification, schedule, retention_policy, direction_line FROM zones ORDER BY id ASC")
             rows = [dict(row) for row in cursor.fetchall()]
         for row in rows:
             row["schedule"] = json.loads(row["schedule"]) if row.get("schedule") else None
             row["retention_policy"] = json.loads(row["retention_policy"]) if row.get("retention_policy") else None
+            row["direction_line"] = json.loads(row["direction_line"]) if row.get("direction_line") else None
         return rows
 
     def get_zone(self, zone_id: int):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute("SELECT id, name, classification, schedule, retention_policy FROM zones WHERE id = ?", (zone_id,))
+            cursor.execute("SELECT id, name, classification, schedule, retention_policy, direction_line FROM zones WHERE id = ?", (zone_id,))
             row = cursor.fetchone()
             if not row:
                 return None
             zone = dict(row)
         zone["schedule"] = json.loads(zone["schedule"]) if zone.get("schedule") else None
         zone["retention_policy"] = json.loads(zone["retention_policy"]) if zone.get("retention_policy") else None
+        zone["direction_line"] = json.loads(zone["direction_line"]) if zone.get("direction_line") else None
         return zone
 
-    def update_zone(self, zone_id: int, name: str, classification: str, schedule=None, retention_policy=None):
+    def update_zone(self, zone_id: int, name: str, classification: str, schedule=None, retention_policy=None, direction_line=None):
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "UPDATE zones SET name = ?, classification = ?, schedule = ?, retention_policy = ? WHERE id = ?",
+                "UPDATE zones SET name = ?, classification = ?, schedule = ?, retention_policy = ?, direction_line = ? WHERE id = ?",
                 (name, classification, json.dumps(schedule) if schedule else None,
-                 json.dumps(retention_policy) if retention_policy else None, zone_id),
+                 json.dumps(retention_policy) if retention_policy else None,
+                 json.dumps(direction_line) if direction_line else None, zone_id),
             )
             self.connection.commit()
             return cursor.rowcount > 0
