@@ -3,6 +3,9 @@ let zoneEditId = null;
 const appStartTime = Date.now();
 // local thumbnails for recently captured images (id -> base64)
 const localThumbnails = {};
+// Toggle "Ver offline" da overview: preferência da sessão (não resetada a
+// cada render/poll — a visibilidade da seção offline é derivada dela).
+let showOfflineCameras = false;
 
 function formatUptime(ms) {
   const s = Math.floor(ms / 1000);
@@ -162,14 +165,12 @@ function updateVisibleSnapshots(cameras) {
 
 function renderCameraTiles(cameras, workerStatus) {
   const tilesContainer = document.getElementById('camera-tiles');
-  const offlineSection = document.getElementById('camera-offline-section');
-  const offlineList = document.getElementById('camera-offline-list');
   const emptyState = document.getElementById('camera-empty-state');
   if (!tilesContainer) return;
 
   if (!cameras.length) {
     tilesContainer.innerHTML = '';
-    if (offlineSection) offlineSection.classList.add('hidden-panel');
+    updateOfflineSection([], null);
     if (emptyState) emptyState.classList.remove('hidden-panel');
     return;
   }
@@ -180,13 +181,45 @@ function renderCameraTiles(cameras, workerStatus) {
   const onlineCameras = workerStatus ? cameras.filter(c => activeIds.has(c.id)) : cameras;
 
   tilesContainer.innerHTML = onlineCameras.map(c => createCameraCard(c, false)).join('');
+  updateOfflineSection(cameras, workerStatus);
+  observeSnapshots();
+}
+
+// Câmeras offline ocultas por padrão (otimização de espaço): aparece apenas o
+// bar "Ver offline (N)" com switch quando há offline; o switch revela a lista
+// em #camera-offline-section. Chamada a cada poll da overview (sem re-renderizar
+// a grade, que tem guard de lazy-load) mantém contador e visibilidade em dia.
+// A preferência do usuário (showOfflineCameras) é preservada na sessão.
+function updateOfflineSection(cameras, workerStatus) {
+  const offlineBar = document.getElementById('camera-offline-bar');
+  const offlineSection = document.getElementById('camera-offline-section');
+  const offlineList = document.getElementById('camera-offline-list');
+  const offlineLabel = document.getElementById('camera-offline-toggle-label');
+  if (!offlineBar || !offlineSection) return;
+
+  const activeIds = new Set((workerStatus || []).filter(w => w.healthy !== false).map(w => w.camera_id));
+  const offlineCameras = workerStatus ? cameras.filter(c => !activeIds.has(c.id)) : [];
+
   if (offlineCameras.length) {
-    offlineList.innerHTML = offlineCameras.map(c => createCameraCard(c, true)).join('');
-    offlineSection.classList.remove('hidden-panel');
-  } else if (offlineSection) {
+    if (offlineList) offlineList.innerHTML = offlineCameras.map(c => createCameraCard(c, true)).join('');
+    if (offlineLabel) offlineLabel.textContent = `Ver offline (${offlineCameras.length})`;
+    offlineBar.classList.remove('hidden-panel');
+    offlineSection.classList.toggle('hidden-panel', !showOfflineCameras);
+  } else {
+    if (offlineList) offlineList.innerHTML = '';
+    offlineBar.classList.add('hidden-panel');
     offlineSection.classList.add('hidden-panel');
   }
-  observeSnapshots();
+}
+
+function setupOfflineToggle() {
+  const toggle = document.getElementById('show-offline-cameras');
+  if (!toggle) return;
+  toggle.addEventListener('change', () => {
+    showOfflineCameras = toggle.checked;
+    const offlineSection = document.getElementById('camera-offline-section');
+    if (offlineSection) offlineSection.classList.toggle('hidden-panel', !showOfflineCameras);
+  });
 }
 
 /* ========== Live Player ========== */
@@ -1399,17 +1432,21 @@ async function renderOverviewSection() {
   ].join('');
 
   // Camera tiles: lazy-load + offline grouping (status via /status worker_status).
-  // Renderiza a grade UMA vez (guard dataset.rendered) — re-render a cada poll de 5s
-  // recriaria os <img> sem src e perderia o estado 'loaded' do lazy-load.
+  // A grade é renderizada UMA vez (guard dataset.rendered) — re-render a cada poll
+  // recriaria os <img> sem src e perderia o estado 'loaded' do lazy-load. O bar
+  // "Ver offline" (contador + visibilidade), porém, é atualizado em todo poll.
   const cameraTiles = document.getElementById('camera-tiles');
+  let workerStatus = null;
+  try {
+    const status = await fetchData('/status');
+    workerStatus = status.worker_status || null;
+  } catch (e) { /* offline: grade única + bar escondido */ }
+
   if (!cameraTiles.dataset.rendered) {
     cameraTiles.dataset.rendered = '1';
-    let workerStatus = null;
-    try {
-      const status = await fetchData('/status');
-      workerStatus = status.worker_status || null;
-    } catch (e) { /* offline: grade única */ }
     renderCameraTiles(cameras, workerStatus);
+  } else {
+    updateOfflineSection(cameras, workerStatus);
   }
   updateVisibleSnapshots(cameras);
 }
@@ -1547,6 +1584,7 @@ setupCameraForm();
 setupZoneForm();
 setupSettings();
 setupEventFilters();
+setupOfflineToggle();
   setupIdentityForm();
 const emptyAddCamera = document.getElementById('empty-add-camera');
 if (emptyAddCamera) {

@@ -1021,6 +1021,19 @@ tr.event-info td {
   min-width: 0;
 }
 
+/* Barra do toggle "Ver offline" — aparece só quando há câmeras offline */
+#camera-offline-bar > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 2px;
+}
+
+#camera-offline-toggle-label {
+  margin: 0;
+}
+
 .section-title {
   font-size: 0.8rem;
   text-transform: uppercase;
