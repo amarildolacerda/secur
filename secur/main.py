@@ -11,6 +11,7 @@ from .config import (
     DETECTOR_IOU,
     DETECTOR_MODEL_PATH,
     FRAME_WAIT_SECONDS,
+    WORKER_HEALTHY_TIMEOUT_SECONDS,
     SERVER_HOST,
     SERVER_PORT,
     MOTION_MIN_AREA,
@@ -54,6 +55,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _worker_healthy(last_frame_time, now, timeout):
+    """Câmera saudável se recebeu ao menos um frame e o último é recente.
+
+    last_frame_time None => fonte nunca entregou frame (ex: RTSP morto).
+    """
+    if last_frame_time is None:
+        return False
+    return (now - last_frame_time) <= timeout
+
+
 class CameraWorker:
     def __init__(self, camera, storage: EventStorage, alerts: AlertService, object_detector: ObjectDetector, identity_recognizer=None):
         self.camera = camera
@@ -63,6 +74,7 @@ class CameraWorker:
         self.identity_recognizer = identity_recognizer
         self._privacy_check_time = 0.0
         self._privacy_on = False
+        self.last_frame_time = None
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
 
@@ -83,6 +95,7 @@ class CameraWorker:
             "zone": self.camera.get("zone"),
             "source": self.camera.get("source"),
             "running": self.thread.is_alive(),
+            "healthy": _worker_healthy(self.last_frame_time, time.time(), WORKER_HEALTHY_TIMEOUT_SECONDS),
         }
 
     def identity_enabled(self):
@@ -117,6 +130,8 @@ class CameraWorker:
 
         while not self.stop_event.is_set():
             frame = camera_stream.read()
+            if frame is not None:
+                self.last_frame_time = time.time()
             if frame is None:
                 time.sleep(1)
                 continue

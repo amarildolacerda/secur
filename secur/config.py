@@ -16,6 +16,9 @@ DEFAULT_CAMERAS = [
 
 MOTION_MIN_AREA = int(os.getenv("MOTION_MIN_AREA", "5000"))
 FRAME_WAIT_SECONDS = float(os.getenv("FRAME_WAIT_SECONDS", "0.1"))
+# Tempo sem frame válido para considerar a câmera não-saudável (FRAME_WAIT_SECONDS=0.1
+# -> 15s = ~150 frames perdidos, generoso para câmeras lentas).
+WORKER_HEALTHY_TIMEOUT_SECONDS = float(os.getenv("WORKER_HEALTHY_TIMEOUT", "15"))
 # Send a "sem movimento" alert after this many seconds without any occurrence (per camera)
 NO_MOTION_ALERT_SECONDS = float(os.getenv("NO_MOTION_ALERT_SECONDS", "60"))
 # Suppress repeated events of the same type within this window (per camera)
