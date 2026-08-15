@@ -27,6 +27,12 @@ from .config import (
     CLIP_HISTORY_SIZE,
     PRIVACY_MODE,
     is_privacy_mode_on,
+    TRACK_IOU_THRESHOLD,
+    TRACK_MAX_AGE_SECONDS,
+    LOITERING_SECONDS,
+    LOITERING_MAX_DISTANCE,
+    LOITERING_LABELS,
+    FALL_ASPECT_RATIO,
 )
 from .camera import CameraStream
 from .detector import ObjectDetector
@@ -38,6 +44,8 @@ from .app import create_app
 from .storage import EventStorage
 from .identity import IdentityRecognizer, decide_event, RECOGNITION_LABELS, build_recognizer
 from .notifications import DEFAULT_ROUTING
+from .tracking import IoUTracker
+from .behavior import check_loitering, check_direction_crossing, check_fall
 
 logging.basicConfig(
     level=logging.INFO,
@@ -91,6 +99,7 @@ class CameraWorker:
     def run(self):
         camera_stream = CameraStream(self.camera["source"])
         motion_detector = MotionDetector(min_area=MOTION_MIN_AREA)
+        tracker = IoUTracker(iou_threshold=TRACK_IOU_THRESHOLD, max_age_seconds=TRACK_MAX_AGE_SECONDS)
         last_motion_time = None
         no_motion_alerted = False
         last_alert_time = {}
@@ -181,6 +190,7 @@ class CameraWorker:
             zone_name = self.camera.get("zone")
             zone_classification = None
             zone_schedule = None
+            zone_direction_line = None
             if zone_name:
                 zones = self.storage.list_zones()
                 zone_obj = next((z for z in zones if z["name"] == zone_name), None)
@@ -188,6 +198,7 @@ class CameraWorker:
                     zone_classification = zone_obj.get("classification")
                     zone_schedule = zone_obj.get("schedule")
                     zone_retention = zone_obj.get("retention_policy")
+                    zone_direction_line = zone_obj.get("direction_line")
                     thumb_keep, thumb_days = resolve_retention(zone_retention, "thumbnails", THUMBNAIL_HISTORY_SIZE)
                     clip_keep, clip_days = resolve_retention(zone_retention, "clips", CLIP_HISTORY_SIZE)
 
@@ -203,6 +214,25 @@ class CameraWorker:
                     if exclusion_polygons:
                         detections = [d for d in detections if not bbox_center_in_polygons(d["bbox"], exclusion_polygons)]
 
+                    tracks = tracker.update(detections, now=now)
+
+                    loitering = check_loitering(
+                        tracks, now, LOITERING_SECONDS, LOITERING_MAX_DISTANCE, set(LOITERING_LABELS)
+                    )
+
+                    fall = any(check_fall(d, FALL_ASPECT_RATIO) for d in detections)
+
+                    direction = None
+                    if zone_direction_line and tracks:
+                        if zone_direction_line.get("axis") == "vertical":
+                            line_px = {"axis": "vertical", "x": zone_direction_line["position"] * frame.shape[1]}
+                        else:
+                            line_px = {"axis": "horizontal", "y": zone_direction_line["position"] * frame.shape[0]}
+                        for t in tracks:
+                            direction = check_direction_crossing(t["prev_centroid"], t["centroid"], line_px)
+                            if direction is not None:
+                                break
+
                     identity_info = None
                     identity_label = None
                     if detections and self.identity_enabled():
@@ -217,7 +247,9 @@ class CameraWorker:
                                     break
 
                     event_type, details, identity_name, known, _label, category = decide_worker_event(
-                        detections, identity_info, zone_classification, self.camera["name"], identity_label
+                        detections, identity_info, zone_classification, self.camera["name"], identity_label,
+                        in_schedule=is_within_schedule(zone_schedule, now),
+                        fall=fall, loitering=loitering, direction=direction, now=now,
                     )
 
                     alert_classes = self.camera.get("alert_classes")
@@ -244,10 +276,10 @@ class CameraWorker:
                             except Exception:
                                 logger.warning("Falha ao capturar thumbnail (câmera %s)", self.camera.get("name"))
                         now = time.time()
-                        if not is_within_schedule(zone_schedule, now):
+                        if event_type is None:
                             logger.debug(
-                                "Evento suprimido (fora do horário) câmera=%s evento=%s",
-                                self.camera.get("name"), event_type,
+                                "Evento suprimido (fora do horário ou sem evento) câmera=%s",
+                                self.camera.get("name"),
                             )
                         elif now - last_alert_time.get(event_type, 0.0) >= get_cooldown_for_event(event_type):
                             last_alert_time[event_type] = now
