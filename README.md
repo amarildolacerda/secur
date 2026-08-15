@@ -280,29 +280,30 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - [ ] Semantic search (embeddings locais) — requer 8GB+ RAM e AVX2; não roda no Pi
 ### 7. Escala 80 câmeras (condomínio — fibra óptica)
 > Projeto real: condomínio com 80 câmeras IP em rede de fibra óptica.
-> **A gravação 24/7 e a retenção ficam nos NVRs existentes; o Secur responde apenas pela análise.**
+> **A gravação 24/7 fica nos NVRs; a borda só faz triagem leve (movimento); a central de análise decide a providência (informar/alertar/perigo eminente).**
 > Proposta completa em [docs/architecture-80-cameras.md](docs/architecture-80-cameras.md).
 
-#### Fase A — Worker autônomo
-- [ ] Extrair CameraWorker para processo independente (`python -m secur.worker`)
-- [ ] Worker busca config na API central; registro de nós com heartbeat
+#### Fase A — Nó de borda (triagem leve)
+- [ ] Worker de borda: movimento + captura seletiva de frames candidatos (ROI), sem IA pesada
+- [ ] Envio de candidatos via MQTT/HTTPS; fila offline; registro de nós com heartbeat
 
-#### Fase B — Eventos distribuídos
-- [ ] Eventos via MQTT (JSON com UUID) + upload de mídia via HTTPS
-- [ ] Consumidor central persiste eventos e dispara notificações
+#### Fase B — Transporte de candidatos
+- [ ] Eventos com UUID (MQTT) + upload de frame/ROI via HTTPS multipart
+- [ ] Consumidor central deduplica por event_id
 
-#### Fase C — Banco central
-- [ ] PostgreSQL no servidor central (particionamento mensal, índices)
-- [ ] Camada de storage plugável (SQLite para single-node / Pi)
+#### Fase C — Central de análise e decisão
+- [ ] Fila de análise + IA centralizada (detecção/tracking/identidade/regras)
+- [ ] Classificação de providência: informar / alertar / perigo eminente (novo nível crítico)
+- [ ] PostgreSQL central (particionamento mensal); storage plugável (SQLite p/ single-node)
 
 #### Fase D — Integração com NVR e evidência
-- [ ] Descoberta de câmeras via ONVIF + consumo de sub-stream RTSP do NVR
-- [ ] Export sob demanda: baixar clipe do NVR e anexar ao evento/alerta
+- [ ] Descoberta de câmeras via ONVIF + sub-stream RTSP do NVR para a borda
+- [ ] Export sob demanda: central baixa clipe do NVR e anexa ao evento/alerta
 - [ ] Retenção por espaço em disco para evidência curta; exports fora da retenção
 
 #### Fase E — Resiliência e operação
-- [ ] Heartbeat/watchdog por nó remoto; fila offline + dedup
-- [ ] HA do servidor central; backup do banco e verificação de mídia
+- [ ] Heartbeat/watchdog por nó remoto; fila offline + dedup (MQTT QoS 1)
+- [ ] HA da central (active/standby); backup do banco e verificação de mídia
 
 
 

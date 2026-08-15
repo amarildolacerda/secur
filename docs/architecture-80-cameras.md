@@ -2,170 +2,212 @@
 
 > **Data:** 2026-08-15
 > **Status:** Proposta de dimensionamento (a validar com o projeto real do condomínio)
-> **Objetivo:** dimensionar o Secur para um condomínio com 80 câmeras IP, rede em fibra óptica, **mantendo a gravação 24/7 nos NVRs existentes** — o Secur responde apenas pela análise.
+> **Objetivo:** dimensionar o Secur para um condomínio com 80 câmeras IP, rede em fibra óptica.
+> **Princípios:**
+> 1. **A gravação 24/7 e a retenção ficam nos NVRs existentes** — o Secur não grava contínuo.
+> 2. **A borda só faz triagem leve** (movimento + separação de potenciais pontos de análise) — **nenhum processamento pesado** (IA/classificação) na borda.
+> 3. **A central de análise recebe os candidatos e decide a providência** (informar, alertar, perigo eminente).
 
 ---
 
-## 1. Princípio de arquitetura
-
-**A gravação contínua e a retenção ficam nos NVRs do condomínio** (responsabilidade e discos deles). O Secur **não grava 24/7** — ele consome sub-streams para análise (movimento → detecção IA → regras → eventos/alertas), guarda apenas **evidência curta por evento** (thumbnail + clipe de alguns segundos) e o banco de eventos, e integra com os NVRs para recuperar gravação completa quando necessário.
-
-Consequências:
-- **Rede:** o tráfego pesado de gravação (câmeras → NVR) não passa pelo backbone do Secur; o Secur só puxa sub-streams leves.
-- **Armazenamento:** sem custo de 24/7 no Secur — thumbnails + clipes de evidência + DB (~1-5 TB/30d, não ~50-100 TB).
-- **Computação:** análise pura, mais leve e mais barata.
-- **Resiliência:** o NVR é o "gravador de verdade"; o Secur pode cair/reiniciar sem perder evidência contínua.
-
----
-
-## 2. Arquitetura alvo
+## 1. Modelo de processamento: borda leve → central de análise
 
 ```
-      Câmeras PoE (80) — switches PoE por andar/prédio (uplink fibra)
-        │                                   │
-        │ main-stream (gravação)            │ sub-stream (análise)
-        ▼                                   ▼
-   ┌──────────┐  (Rede interna,    ┌──────────────────┐
-   │  NVR(s)  │   não cruza o      │ Nós de análise   │
-   │ gravação │   backbone Secur)  │ Secur (4-6 nós,  │
-   │ 24/7 +   │                    │ 8-16 câmeras c/  │
-   │ retenção │                    │ movimento→IA→    │
-   └──────────┘                    │ eventos)         │
-                                   └────────┬─────────┘
-                                            │ MQTT (eventos) + HTTPS (mídia)
-                                            ▼
-                                   ┌──────────────────┐
-                                   │ Servidor central │
-                                   │ Flask + Postgres │
-                                   │ dashboard/alertas│
-                                   └──────────────────┘
+   Câmeras PoE (80) — switches PoE por andar/prédio (uplink fibra)
+     │                                   │
+     │ main-stream (gravação)            │ sub-stream (triagem)
+     ▼                                   ▼
+┌──────────┐                      ┌───────────────────────┐
+│  NVR(s)  │  grava 24/7,         │  Nós de BORDA (leves) │
+│ gravação │  retenção própria    │  só triagem:          │
+│          │                      │  • movimento (OpenCV) │
+└──────────┘                      │  • zonas/exclusão     │
+                                  │  • captura SELETIVA   │
+                                  │    de frames candid.  │
+                                  │  • NENHUMA IA pesada  │
+                                  └──────────┬────────────┘
+                                             │ frames candidatos + eventos
+                                             │ (MQTT + HTTPS/multipart)
+                                             ▼
+                              ┌────────────────────────────────┐
+                              │    CENTRAL DE ANÁLISE          │
+                              │  • fila de análise             │
+                              │  • detecção IA (ONNX/YOLO)     │
+                              │  • tracking / comportamento    │
+                              │  • identidade                  │
+                              │  • regras + classificação      │
+                              │  • DECISÃO DE PROVIDÊNCIA      │
+                              └───────┬────────────┬───────────┘
+                                      │            │
+                      ┌───────────────▼──┐  ┌──────▼──────────────┐
+                      │  PROVIDÊNCIAS    │  │  Banco + Dashboard  │
+                      │  informar /      │  │  Postgres + Flask   │
+                      │  alertar /       │  │  + notificações     │
+                      │  perigo eminente │  │  (Telegram/MQTT/HA) │
+                      └──────────────────┘  └─────────────────────┘
 ```
 
-### Componentes
+### Por que esse modelo?
 
-1. **NVRs (existentes)** — gravam 24/7 com retenção própria (ex.: 30 dias). Expõem RTSP (re-stream) e/ou ONVIF para o Secur consumir sub-streams. Sem mudança de responsabilidade.
-2. **Nós de análise Secur** — puxam o **sub-stream** de cada câmera (640×360 @ 5 fps ≈ 0,3-0,5 Mbps) via RTSP do NVR ou direto da câmera; rodam o pipeline atual (movimento → detecção → tracking → regras); publicam eventos em MQTT e enviam thumbnail/clipe de evidência via HTTPS.
-3. **Servidor central** — recebe eventos, persiste em PostgreSQL, serve dashboard/API, dispara notificações (Telegram/MQTT/HA), gerencia retenção da evidência curta.
-4. **Integração com NVR** — API/ONVIF do NVR para: listar câmeras, consultar gravação e **exportar evidência sob demanda** (ex.: baixar o clipe do NVR para anexar a um alerta ou para o morador/síndico).
+| Aspecto | Borda com IA (antes) | Borda leve + central (agora) |
+|---|---|---|
+| Custo do nó de borda | mini-PC i5/i7 (R$ 2-5k) | RPi/mini-PC fraco (R$ 300-1k) |
+| Modelo de IA | 1 por nó, redundante | **1 centralizado** (GPU ou CPU forte) — mais barato de manter/atualizar |
+| Banda | sub-stream contínuo sobe | **só frames candidatos sobem** (pico de movimento) |
+| Latência de decisão | local (mais rápido) | rede LAN fibra (poucos ms) — aceitável |
+| Resiliência | nó decide sozinho | nó enfileira offline; central deduplica |
+
+**O ponto-chave:** movimento + ROI (região de interesse) é barato (OpenCV, µs-ms por frame). IA pesada (detecção, identidade, tracking) roda **uma vez**, na central, só quando há candidato — e o volume de candidatos é uma fração do tempo total (motion-gating).
 
 ---
 
-## 3. Dimensionamento de rede (fibra)
+## 2. Dimensionamento do tráfego de candidatos (central)
 
-O tráfego do Secur é só o de análise:
+A borda só envia frames quando há movimento relevante (após exclusões/máscaras). Estimativa:
 
-| Plano | Bitrate/câmera | 80 câmeras | Observação |
+| Cenário | Suposição | Frames/s na central | Banda |
 |---|---|---|---|
-| Sub-stream 640×360 @5fps H.264 | ~0,4 Mbps | **~32 Mbps** | Cabe em 1 Gbps |
-| Sub-stream 720p @5fps H.264 | ~0,8-1 Mbps | **~64-80 Mbps** | Cabe em 1 Gbps |
-| Sub-stream 1080p @5fps H.265 | ~1 Mbps | **~80 Mbps** | Cabe em 1 Gbps |
+| Conservador | 80 câmeras, 10% do tempo com movimento, 5 fps de candidato | ~40 fps | ~2 MB/s (~16 Mbps) @ 640×360 JPEG |
+| Típico | 5% do tempo ativo | ~20 fps | ~1 MB/s (~8 Mbps) |
+| Agressivo (eventos densos) | 20% ativo | ~80 fps | ~4 MB/s (~32 Mbps) |
 
-**Recomendação:**
-- **Backbone fibra 1G é suficiente** para a análise do Secur (folga de 10x+); **10G no core** só se quiser sobra para 4K/mais streams ou tráfego de exportação pesado.
-- O tráfego de gravação (câmeras → NVR) fica **local aos switches PoE/andar** e não cruza o backbone — projetar os uplinks dos switches PoE para os NVRs conforme os NVRs exigirem.
-- **VLANs:** VLAN Câmeras (isolada, sem internet), VLAN NVR/Gravação, VLAN Secur/Análise, VLAN Gestão (dashboard). 
-- **PoE:** somar potência das câmeras (ex.: 80 × 7W = 560W) → switches PoE+ com orçamento de energia e nobreak.
+- **Backbone fibra 1G sobra** (folga 30-100x).
+- Cada frame candidato: JPEG 640×360 (~30-60 KB) ou ROI recortado menor.
+- **Diminui-se ainda mais** enviando só o **ROI** do movimento (crop) em vez do frame inteiro.
 
 ---
 
-## 4. Dimensionamento de armazenamento (Secur)
+## 3. Dimensionamento da central de análise
 
-Só evidência curta por evento + banco:
+### Fila de análise
+- Entrada: frames candidatos + metadados (câmera, timestamp, bbox de movimento, ROI).
+- Fila em memória (Redis) ou disco (bounded); consumidor processa em ordem.
+- **Backpressure:** se a central não acompanhar, a borda reduz fps de candidato ou descarta com marcação (política configurável).
 
-| Tipo | Volume estimado (80 câmeras, 30 dias) |
+### Detecção IA centralizada
+- **40 fps** de inferência (conservador). 
+  - **CPU 8-16 cores**: YOLO-tiny/ONNX ~50-100 fps → aguenta.
+  - **GPU (RTX 4060+/Arc)**: centenas de fps → folga enorme.
+- Modelo único, atualizável em um lugar.
+
+### Tracking / comportamento / identidade
+- Tudo na central, com o estado por câmera (tracking já existe por worker → passa a ser por câmera na central).
+- Identidade (embeddings) também centralizada — 1 modelo, 1 base de identidades.
+
+### Decisão de providência (classificação de severidade)
+A central classifica cada evento em **3 níveis** (mapeia para as categorias atuais do Secur):
+
+| Nível | Significado | Exemplos | Ação padrão |
+|---|---|---|---|
+| **Informar** | Contexto, sem ação | objeto detectado, sem movimento, identidade reconhecida em área pública | log + dashboard; notificação opcional (info) |
+| **Alertar** | Atenção necessária | intruso em zona privativa/segurança, loitering, direção proibida, não reconhecido | notificação imediata (Telegram/MQTT/HA) + snapshot |
+| **Perigo eminente** | Ação urgente | queda detectada, intruso + zona privativa + identidade desconhecida, padrão de arrombamento | notificação prioritária + export de evidência do NVR + opção de acionar sirene/automação |
+
+> Isso **estende** o modelo atual do Secur (categorias `info`/`alerta` em `notifications.py`) com um nível **crítico/perigo iminente** — e deixa a **decisão** concentrada na central, não na borda.
+
+---
+
+## 4. Dimensionamento de rede (fibra)
+
+| Tráfego | Volume | Onde trafega |
+|---|---|---|
+| Câmera → NVR (gravação) | 80 × 2-8 Mbps = 160-640 Mbps | Local aos switches PoE/andar (não cruza o backbone Secur) |
+| Câmera → borda (triagem) | 80 × 0,4-1 Mbps = 32-80 Mbps | Rede local |
+| Borda → central (candidatos) | ~8-32 Mbps | Backbone fibra — **1G sobra** |
+| Central → NVR (export evidência) | picos (ex.: clipe de 10-60s) | Backbone — agendar/limitar |
+
+- **Backbone fibra 1G** suficiente; **10G** só para sobra/expansão.
+- **VLANs:** Câmeras (isolada), NVR/Gravação, Secur (borda+central), Gestão.
+- **PoE:** 80 × ~7W ≈ 560W → switches PoE+ com orçamento e nobreak.
+
+---
+
+## 5. Dimensionamento de armazenamento (Secur)
+
+Só evidência curta + banco (o 24/7 fica no NVR):
+
+| Tipo | Volume (80 câmeras, 30 dias) |
 |---|---|
-| Thumbnails (JPEG ~100 KB × eventos) | ~0,1-0,5 TB |
-| Clipes de evidência (5-20 s @ 5 fps, H.264) | ~0,5-3 TB |
-| Banco de eventos (PostgreSQL + índices) | < 0,1 TB |
-| **Total** | **~1-4 TB** |
+| Thumbnails (~100 KB × eventos) | ~0,1-0,5 TB |
+| Clipes de evidência (5-20 s) | ~0,5-3 TB |
+| Banco (PostgreSQL) | < 0,1 TB |
+| **Total** | **~1-4 TB** → 1 SSD NVMe 2-4 TB (ou 2 em RAID-1) |
 
-**Recomendação:** 1 SSD NVMe de 2-4 TB no servidor central (ou 2 em RAID-1) resolve. Exportações/permanentes (clipes baixados do NVR) em diretório separado fora da retenção. Nada de storage em camadas 24/7 — **isso fica nos NVRs**.
-
----
-
-## 5. Dimensionamento de computação
-
-### Análise (a parte do Secur)
-
-Pipeline atual: movimento (barato) → detecção ONNX só quando há movimento. Com motion-gating, a maioria das câmeras fica ociosa.
-
-- **CPU:** ~1-2 câmeras por core com detecção ativa a 5 fps. Um nó de 8-16 cores sustenta 10-20 câmeras.
-- **80 câmeras → 4-6 nós de análise** (ex.: 1 por prédio/andar): mini-PC i5/i7, 16-32 GB RAM, SSD 512 GB-1 TB (buffer de pré-gravação + fila offline), 2×1G.
-- **Alternativa centralizada:** 1 servidor com GPU (RTX 4060+) analisando as 80 câmeras, com workers "burros" só capturando; 2 servidores em HA se quiser redundância.
-
-### Banco de dados
-
-- SQLite não serve para múltiplos nós escrevendo → **PostgreSQL** no servidor central.
-- Volume: 80 câmeras × 100-1000 eventos/dia = 8k-80k eventos/dia → 0,25-2,4M eventos/mês. Particionamento mensal + índices `(camera_id, timestamp)` resolve com folga.
-- Thumbnails/clipes continuam como arquivos referenciados por path.
-
-### Mensageria
-
-- **MQTT** (já é dependência do projeto) como backbone de eventos: `secur/event/<camera_id>` com JSON + UUID.
-- **Offline-first:** cada nó mantém fila local e reenvia quando a rede volta; central deduplica por `event_id`.
+Exports/permanentes em diretório separado, fora da retenção.
 
 ---
 
-## 6. Mudanças no código (fases)
+## 6. Computação (resumo)
 
-> Estratégia strangler: extrair, não reescrever.
+| Componente | Hardware sugerido |
+|---|---|
+| **Nó de borda** (×5-8, 10-16 câmeras cada) | RPi 4/5 ou mini-PC fraco (Celeron/i3), 4-8 GB RAM, SSD/eMMC 64-128 GB (fila offline), 1×1G |
+| **Central de análise** | 1 servidor: i7/Xeon 8-16c, 64 GB, SSD 2 TB; **GPU opcional** (RTX 4060+/Arc) para folga; 2 em HA se quiser redundância |
+| **Banco/dashboard** | Na central (mesmo host ou VM) — Postgres + Flask |
 
-### Fase A — Worker como processo autônomo
-- Extrair `CameraWorker` de `main.py` para `secur/worker.py` executável (`python -m secur.worker --camera-id N --node-id X`).
-- Config via API central (`GET /api/cameras` filtrado por node) com fallback local.
-- Dashboard mostra nós (registro via `POST /api/nodes` + heartbeat).
+---
 
-### Fase B — Eventos via MQTT
-- `AlertService` publica em MQTT estruturado (JSON + UUID); consumidor central persiste e notifica.
-- Snapshots/clipes sobem via HTTPS `POST /api/events/<uuid>/media`.
-- **Resultado:** N nós publicando, 1 central persistindo — sem SQLite compartilhado.
+## 7. Mudanças no código (fases)
 
-### Fase C — PostgreSQL
-- Camada de storage plugável (`StorageBackend`: SQLite hoje, PostgreSQL amanhã).
-- Migração com particionamento mensal; SQLite permanece para single-node/Pi.
+> Estratégia strangler: extrair, não reescrever. Cada fase mantém o sistema funcionando.
+
+### Fase A — Worker de borda (triagem leve)
+- Extrair `CameraWorker` para `secur/worker.py` executável em **modo borda**: movimento + exclusões + captura seletiva de frames candidatos (ROI), **sem detecção IA**.
+- Envia candidatos via MQTT/HTTPS para a central (ou enfileira local se offline).
+- Config via API central (`GET /api/cameras` por node); registro de nós com heartbeat.
+
+### Fase B — Transporte de candidatos
+- Formato de evento com **UUID** (`secur/event/<camera_id>` MQTT) + upload de frame/ROI via HTTPS multipart.
+- Fila offline local (arquivo/SQLite) + reenvio; central deduplica por `event_id`.
+
+### Fase C — Central de análise e decisão
+- **Fila de análise** (Redis ou bounded) + consumidor que roda: detecção IA → tracking → comportamento → identidade → regras → **classificação de providência (informar/alertar/perigo eminente)**.
+- **PostgreSQL** (particionamento mensal, índices `(camera_id, timestamp)`); camada de storage plugável (SQLite para single-node/Pi).
+- Categorias de notificação ganham o nível **crítico/perigo eminente**.
 
 ### Fase D — Integração com NVR e evidência
-- Descoberta de câmeras via **ONVIF** (listar dispositivos no NVR) e consumo de sub-stream RTSP.
-- **Export sob demanda:** endpoint que solicita clipe ao NVR (API/ONVIF) e o anexa ao evento/alerta.
-- Retenção por **espaço em disco** para a evidência curta (ex.: "use até 2TB") + exports fora da retenção.
+- Descoberta de câmeras via **ONVIF** + sub-stream RTSP do NVR para a borda.
+- **Export sob demanda:** central solicita clipe ao NVR e anexa ao evento/alerta (sobretudo para "perigo eminente").
+- Retenção por **espaço em disco** para evidência curta; exports fora da retenção.
 
 ### Fase E — Resiliência e operação
 - Heartbeat/watchdog por nó remoto; fila offline + dedup (MQTT QoS 1).
-- HA do servidor central (active/standby); backup do PostgreSQL + verificação de mídia.
-- Monitoramento: métricas por nó (CPU, fila, fps, latência RTSP) no dashboard.
+- HA da central (active/standby); backup do Postgres + verificação de mídia.
+- Monitoramento: métricas por nó (CPU, fila, fps de candidato, latência) e por central (fila de análise, fps de inferência) no dashboard.
 
 ---
 
-## 7. Hardware sugerido (3 perfis — sem storage 24/7)
+## 8. Hardware sugerido (3 perfis)
 
-| Perfil | Nós de análise (×5) | Servidor central | Armazenamento (central) | Custo relativo |
+| Perfil | Borda | Central | Armazenamento | Custo relativo |
 |---|---|---|---|---|
-| **Enxuto (event-only)** | mini-PC i5, 16 GB, SSD 512 GB, 2×1G | i5/i7, 32 GB, SSD 1 TB | 1× SSD 2 TB | $ |
-| **Equilibrado (análise + evidência)** | mini-PC i7, 32 GB, SSD 1 TB, 2×1G | i7, 64 GB, SSD 2 TB | 2× SSD 2 TB (RAID-1) | $$ |
-| **Completo (centralizado c/ GPU)** | só captura (RPi/mini-PC leves) | 2× servidor HA + GPU (RTX 4060+), 64-128 GB | 2× SSD 4 TB (RAID-1) + NAS opcional p/ exports | $$$ |
+| **Enxuto** | RPi 5 / mini-PC i3 (×5-8) | i7 8c, 32-64 GB, SSD 2 TB | 1× SSD 2 TB | $ |
+| **Equilibrado** | mini-PC i3/i5 (×5-8) | Xeon/i7 12-16c, 64 GB, SSD 2 TB + GPU entry (RTX 4060) | 2× SSD 2 TB (RAID-1) | $$ |
+| **Completo (HA)** | mini-PC i5 (×5-8) | 2× servidor HA + GPU (RTX 4070+/Arc A770), 128 GB | 2× SSD 4 TB (RAID-1) + NAS p/ exports | $$$ |
 
-Rede (todos): backbone fibra **1G core** (10G opcional), switches PoE+ por andar/prédio com uplink fibra, nobreak. Os **NVRs já existentes** seguem com seus discos e retenção.
+Rede: backbone fibra 1G core, switches PoE+ por andar/prédio (uplink fibra), nobreak. NVRs existentes seguem com discos/retenção próprios.
 
 ---
 
-## 8. Riscos e mitigações
+## 9. Riscos e mitigações
 
 | Risco | Mitigação |
 |---|---|
-| Dependência do NVR para evidência longa | Documentar contrato com o NVR (RTSP/ONVIF/API); testar export antes do go-live |
-| Compatibilidade RTSP/ONVIF entre fabricantes (Intelbras, Hikvision, Dahua) | Camada de integração por fabricante; fallback para RTSP puro |
-| Ponto único no servidor central | 2 servidores HA; nós continuam analisando e enfileirando offline |
-| Banda para exportação pesada | Limitar concorrência de exports; fila; horários |
-| LGPD/privacidade em condomínio | Modo privacidade + 100% local; política de acesso e retenção documentada |
-| Manutenção de N nós | Config centralizada via API, heartbeat, atualização por pacote |
+| Dependência da rede entre borda e central | LAN fibra 1G + fila offline na borda; candidatos não se perdem |
+| Central sobrecarregada (pico de movimento) | Backpressure: borda reduz fps/descarta com marcação; fila bounded + alerta de saturação |
+| Latência de decisão (borda→central) | LAN de poucos ms; aceitável para alerta; "perigo eminente" pode priorizar na fila |
+| Compatibilidade NVR (Intelbras/Hikvision/Dahua) | Camada de integração por fabricante; fallback RTSP puro |
+| Ponto único na central | HA (2 servidores) para o perfil completo; borda continua triando offline |
+| LGPD/privacidade em condomínio | Modo privacidade + 100% local; política de acesso/retenção documentada |
+| Custo de banda de exportação | Limitar concorrência, fila, horários |
 
 ---
 
-## 9. Próximos passos
+## 10. Próximos passos
 
-1. **Levantar os NVRs do condomínio** (fabricante/modelo): RTSP de re-stream disponível? ONVIF? API de export?
-2. Definir a topologia física: quantos prédios/andares, onde ficam os switches PoE e os NVRs, qual o caminho da fibra.
-3. Validar resolução/fps dos sub-streams que os NVRs/câmeras conseguem fornecer para análise.
-4. Detalhar a **Fase A** como plano de implementação (extração do worker + API de nós).
-5. Definir o broker MQTT (ex.: Mosquitto no servidor central) e o formato dos eventos.
-6. Orçar hardware conforme o perfil escolhido (sem storage 24/7).
+1. **Levantar os NVRs do condomínio** (fabricante/modelo): RTSP de re-stream? ONVIF? API de export?
+2. Definir topologia física: prédios/andares, switches PoE, NVRs, caminho da fibra.
+3. Validar resolução/fps dos **sub-streams** disponíveis para a triagem.
+4. Detalhar a **Fase A** (worker de borda leve) e a **Fase C** (central de análise + decisão de providência) como planos de implementação.
+5. Definir o formato dos candidatos (MQTT + HTTPS) e o broker (Mosquitto na central).
+6. Orçar hardware conforme o perfil escolhido.
