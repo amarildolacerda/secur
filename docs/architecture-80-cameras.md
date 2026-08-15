@@ -59,14 +59,14 @@
 
 **O ponto-chave:** movimento + ROI (região de interesse) é barato (OpenCV, µs-ms por frame). IA pesada (detecção, identidade, tracking) roda **uma vez**, na central, só quando há candidato — e o volume de candidatos é uma fração do tempo total (motion-gating).
 
-### 1.1 Triagem em níveis (funil de filtragem) — separar situações em potencial
+### 1.1 Triagem em níveis (funil de pesca) — separar situações em potencial
 
-O pipeline separa situações em potencial em **5 níveis de triagem**, do mais barato ao mais caro. Cada nível filtra o volume antes do próximo — quanto mais fundo, mais preciso e mais caro:
+O pipeline separa situações em potencial em **5 níveis de triagem**, do mais barato ao mais caro. Os níveis rasos **"pescam" sem se importar muito com o quê** — o objetivo é só ir limpando a lâmina d'água: coletar tudo que tem potencial e descartar o obviamente irrelevante, sem medo de puxar lixo junto. O que passa é que vira candidato sério para os níveis profundos (mais precisos e mais caros):
 
 | Nível | Onde roda | O que faz | Custo | Taxa de passagem (aprox.) |
 |---|---|---|---|---|
-| **N0 — Captura e movimento** | borda | sub-stream + motion-gating OpenCV | µs-ms/frame | 100% frames → ~5-15% com movimento |
-| **N1 — Pré-seleção** | borda | heurísticas leves: área do blob, posição (ROI/zonas), duração mínima, exclusões/máscaras | ~ms | → ~1-5% candidatos reais |
+| **N0 — Captura e movimento (pesca grossa)** | borda | sub-stream + motion-gating OpenCV — pega tudo que mexe, sem critério | µs-ms/frame | 100% frames → ~5-15% com movimento |
+| **N1 — Pré-seleção (pesca fina)** | borda | heurísticas leves: área do blob, posição (ROI/zonas), duração mínima, exclusões/máscaras — descarta o óbvio, mantém o duvidoso | ~ms | → ~1-5% candidatos reais |
 | **N2 — Detecção rápida** | central | YOLO-tiny/ONNX no ROI; só classifica (pessoa/veículo/animal/etc.), sem tracking | ~5-20 ms/frame | → ~0,5-2% detecções de interesse |
 | **N3 — Análise completa** | central | tracking, comportamento (loitering/direção/queda), identidade, regras de zona/schedule | ~20-100 ms/evento | → situações confirmadas |
 | **N4 — Decisão** | central | classifica providência (informar/alertar/perigo eminente) + roteia notificação + evidência | ~ms | → poucos eventos/min |
