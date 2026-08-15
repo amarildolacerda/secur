@@ -122,6 +122,8 @@ Construir um sistema de vigilância inteligente inicialmente desenvolvido em PC/
    - Visão (central N2-N4): fogo/fumaça, objeto abandonado em circulação, aglomeração, veículo obstruindo, vandalismo, porta aberta.
    - Sensores via MQTT/HA (candidatos já confirmados): alagamento/vazamento, fumaça/calor/CO, contato de porta.
    - Matriz completa (fontes, níveis, eventos, providências) em docs/architecture-80-cameras.md (seção 1.2).
+   - Alta circulação (shopping/rodoviária/varejo): bagagem abandonada, aglomeração/densidade, filas, footfall (analytics), queda em escada/elevador, superlotação de elevador, furto na portaria/encomenda, movimento suspeito na garagem, self-checkout fraud.
+   - Pesquisa de desejos em docs/research-monitoring-venues.md; matriz ampliada em docs/architecture-80-cameras.md (seção 1.3).
 
 
 

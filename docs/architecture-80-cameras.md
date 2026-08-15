@@ -110,7 +110,36 @@ O Secur monitora **situações**, não só presença/intrusão. Cada situação 
 - Providência ajustável por área: carrinho no corredor de fuga = alertar; carrinho em depósito = informar.
 - Cooldown por situação (reaproveita o mecanismo de cooldown atual por evento).
 
+### 1.3 Situações ampliadas — condomínio, shopping, rodoviária/terminal, varejo
+
+Pesquisa de desejos em [docs/research-monitoring-venues.md](docs/research-monitoring-venues.md). A maioria reusa o **mesmo funil N0-N4** — muda apenas o *analisador* na central (N2/N3) e a saída (alerta vs. analytics). A borda continua pescando movimento/ROI igual.
+
+| Situação | Ambiente | Fonte | Nível | Providência padrão |
+|---|---|---|---|---|
+| **Bagagem/objeto abandonado** (sem dono > threshold) | rodoviária, shopping, aeroporto, condomínio | visão (stationary + owner association) | N3 | alertar (área crítica); informar |
+| **Aglomeração/densidade** (capacidade excedida) | shopping, terminal, salão de festas, piscina | visão (contagem/densidade) | N3 | alertar |
+| **Filas (tempo de espera)** | loja, caixa, portaria, guichê | visão (contagem + throughput) | N3 | informar (operacional); alertar se longa |
+| **Fluxo/contagem de pessoas (footfall)** | loja, shopping, terminal | visão (counting) | N2/N3 | informar (analytics) |
+| **Queda em escada/elevador** | terminal, shopping, condomínio | visão (fall + localização) | N3 | **perigo eminente** |
+| **Superlotação de elevador** | condomínio, shopping | visão (contagem) | N3 | informar; alertar se risco |
+| **Furto na portaria / encomenda** | condomínio | visão (loitering + zona portaria) | N3 | alertar |
+| **Movimento suspeito na garagem** (loitering perto de veículo, mexer no veículo) | condomínio, shopping | visão (loitering + veículo) | N3 | alertar |
+| **Veículo parado/obstruindo** (roadmap) | garagem, shopping, rua | visão (stationary + zona) | N3 | alertar |
+| **Vandalismo/pichação** (roadmap) | shopping, condomínio, terminal | visão (stationary + zona) | N3 | alertar |
+| **Carrinho abandonado em circulação** (roadmap) | shopping, condomínio | visão (stationary + zona) | N3 | informar; alertar se bloqueia rota |
+| **Self-checkout/caixa fraud** | loja | visão (área de caixa) + POS | N3 | alertar (prevenção de perdas) |
+| Fogo/fumaça, alagamento, porta aberta (roadmap) | todos | visão + sensores | N2-N4 | perigo/alertar |
+
+**Analytics como saída:** footfall, filas, heat maps, contagem são casos *operacionais* — mesma infraestrutura, saída para dashboard/BI em vez de alerta. Amplia o público do Secur (operação + segurança) sem mudar a arquitetura.
+
+**Casos mais complexos (exigem avanço de N3):**
+- **Bagagem abandonada:** associação objeto-dono (owner association) — além do stationary simples.
+- **Contagem/densidade em alta circulação:** modelo dedicado (YOLO conta pessoas; densidade por grid).
+- **Queda em escada/elevador:** fall detection em contexto específico (escada/elevador) — já existe heurística de queda no Secur.
+
 ---
+
+
 
 
 

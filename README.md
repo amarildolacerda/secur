@@ -326,6 +326,18 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 #### Regras de negócio
 - [ ] Thresholds e providência configuráveis por situação + zona
 - [ ] Cooldown por situação (reaproveitar mecanismo atual)
+#### Alta circulação (shopping, rodoviária/terminal, varejo)
+- [ ] Bagagem/objeto abandonado (stationary + owner association) — alertar em área crítica
+- [ ] Aglomeração/densidade (capacidade excedida) — alertar
+- [ ] Filas e tempo de espera (caixa, portaria, guichê) — operacional
+- [ ] Fluxo/contagem de pessoas (footfall) — analytics
+- [ ] Queda em escada/elevador — perigo eminente
+- [ ] Superlotação de elevador — informar/alertar
+- [ ] Furto na portaria/encomenda (loitering + zona) — alertar
+- [ ] Movimento suspeito na garagem (loitering perto de veículo) — alertar
+- [ ] Self-checkout/caixa fraud (área de caixa + POS) — alertar (prevenção de perdas)
+
+> Pesquisa completa: [docs/research-monitoring-venues.md](docs/research-monitoring-venues.md).
 
 
 
