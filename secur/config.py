@@ -24,6 +24,9 @@ ALERT_COOLDOWN_SECONDS = float(os.getenv("ALERT_COOLDOWN_SECONDS", "60"))
 ALERT_COOLDOWN_BY_EVENT = {
     "intruder_detected": float(os.getenv("ALERT_COOLDOWN_INTRUDER", "30")),
     "unknown_detected": float(os.getenv("ALERT_COOLDOWN_UNKNOWN", "30")),
+    "loitering": float(os.getenv("ALERT_COOLDOWN_LOITERING", "300")),
+    "direction_change": float(os.getenv("ALERT_COOLDOWN_DIRECTION", "60")),
+    "fall_detected": float(os.getenv("ALERT_COOLDOWN_FALL", "30")),
 }
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))

@@ -342,11 +342,34 @@ class CameraWorker:
             time.sleep(FRAME_WAIT_SECONDS)
 
 
-def decide_worker_event(detections, identity_info, zone_classification, camera_name, label=None):
+def decide_worker_event(detections, identity_info, zone_classification, camera_name, label=None,
+                        in_schedule=True, fall=False, loitering=None, direction=None, now=None):
+    """Decide o evento do frame (Fase 3: comportamento/anomalia).
+
+    Prioridade: identidade (intruder_detected/identity_recognized) > queda >
+    loitering > direção > snapshot > movimento. Fora do horário
+    (in_schedule=False), apenas eventos de identidade válidos passam:
+    intruder_detected (desconhecido em zona privativa/segurança, prioridade)
+    e identity_recognized (conhecido); os demais retornam None (suprimido).
+    """
     if identity_info is not None:
         decision = decide_event(identity_info, zone_classification, camera_name, label)
         if decision is not None:
+            if not in_schedule and decision[0] == "unknown_detected":
+                return None
             return decision
+    if not in_schedule:
+        return None
+    if fall:
+        return ("fall_detected", f"Possível queda de pessoa na câmera {camera_name}", None, None, None, None)
+    if loitering is not None:
+        seconds = int(now - loitering["first_seen"]) if now is not None else 0
+        track_label = loitering.get("label", "Objeto")
+        return ("loitering", f"{track_label} na mesma região há {seconds}s (câmera {camera_name})",
+                None, None, track_label, None)
+    if direction is not None:
+        return ("direction_change", f"Movimento {direction} detectado na câmera {camera_name}",
+                None, None, None, None)
     if detections:
         return ("snapshot_info", format_detections(detections), None, None, None, None)
     return ("motion_detected", f"Movimento detectado na câmera {camera_name}", None, None, None, None)
@@ -361,8 +384,8 @@ def format_detections(detections):
         [
             {
                 "label": d["label"],
-                "confidence": round(d["confidence"], 2),
-                "bbox": d["bbox"],
+                "confidence": round(d.get("confidence", 0.0), 2),
+                "bbox": d.get("bbox"),
             }
             for d in detections
         ]

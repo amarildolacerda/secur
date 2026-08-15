@@ -142,3 +142,74 @@ def test_worker_identity_enabled_without_recognizer():
         identity_recognizer=None,
     )
     assert worker.identity_enabled() is False
+
+from secur.main import decide_worker_event
+
+
+def test_decide_worker_event_outside_schedule_suppresses_non_identity():
+    assert decide_worker_event([{"label": "person"}], None, "pública", "Cam",
+                               in_schedule=False) is None
+
+
+def test_decide_worker_event_unknown_in_restricted_outside_schedule():
+    identity_info = {"known": False, "name": "desconhecido"}
+    decision = decide_worker_event([{"label": "person"}], identity_info, "privativa", "Cam",
+                                   label="person", in_schedule=False)
+    assert decision[0] == "intruder_detected"
+
+
+def test_decide_worker_event_known_outside_schedule():
+    identity_info = {"known": True, "name": "Alice"}
+    decision = decide_worker_event([{"label": "person"}], identity_info, "privativa", "Cam",
+                                   label="person", in_schedule=False)
+    assert decision[0] == "identity_recognized"
+    assert decision[2] == "Alice"
+
+
+def test_decide_worker_event_unknown_public_outside_schedule_suppressed():
+    identity_info = {"known": False, "name": "desconhecido"}
+    assert decide_worker_event([{"label": "person"}], identity_info, "pública", "Cam",
+                               label="person", in_schedule=False) is None
+
+
+def test_decide_worker_event_fall():
+    decision = decide_worker_event([], None, "pública", "Cam", in_schedule=True,
+                                   fall=True, now=100.0)
+    assert decision[0] == "fall_detected"
+
+
+def test_decide_worker_event_loitering_before_direction():
+    loitering = {"label": "person", "first_seen": 100.0}
+    decision = decide_worker_event([], None, "pública", "Cam", in_schedule=True,
+                                   loitering=loitering, direction="entrando", now=130.0)
+    assert decision[0] == "loitering"
+    assert "30s" in decision[1]
+
+
+def test_decide_worker_event_direction():
+    decision = decide_worker_event([], None, "pública", "Cam", in_schedule=True,
+                                   direction="entrando", now=100.0)
+    assert decision[0] == "direction_change"
+    assert "entrando" in decision[1]
+
+
+def test_decide_worker_event_identity_wins_over_fall():
+    identity_info = {"known": True, "name": "Alice"}
+    decision = decide_worker_event([], identity_info, "privativa", "Cam", label="person",
+                                   in_schedule=True, fall=True, now=100.0)
+    assert decision[0] == "identity_recognized"
+
+
+def test_decide_worker_event_snapshot_and_motion_fallbacks():
+    decision = decide_worker_event([{"label": "person"}], None, "pública", "Cam", in_schedule=True)
+    assert decision[0] == "snapshot_info"
+
+    decision = decide_worker_event([], None, "pública", "Cam", in_schedule=True)
+    assert decision[0] == "motion_detected"
+
+
+def test_get_cooldown_for_event_behavior_events():
+    from secur.config import ALERT_COOLDOWN_BY_EVENT
+    assert get_cooldown_for_event("loitering") == ALERT_COOLDOWN_BY_EVENT["loitering"]
+    assert get_cooldown_for_event("direction_change") == ALERT_COOLDOWN_BY_EVENT["direction_change"]
+    assert get_cooldown_for_event("fall_detected") == ALERT_COOLDOWN_BY_EVENT["fall_detected"]
