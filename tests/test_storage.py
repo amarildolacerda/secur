@@ -101,6 +101,61 @@ def test_notification_routing_seed_and_update(tmp_path):
     storage.close()
 
 
+def test_ensure_default_routing_fills_missing_rows(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+
+    defaults = {
+        "telegram": {"motion_detected": True, "no_motion": False, "unknown_detected": False},
+        "automation": {"motion_detected": True, "no_motion": True},
+    }
+    storage.ensure_default_routing(defaults)
+    assert storage.get_routing("telegram") == {
+        "motion_detected": True, "no_motion": False, "unknown_detected": False,
+    }
+    assert storage.get_routing("automation") == {"motion_detected": True, "no_motion": True}
+    storage.close()
+
+
+def test_ensure_default_routing_preserves_user_config(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+
+    # Tabela "antiga" (seedada com DEFAULT_ROUTING antigo/parcial) + config do usuário
+    storage.set_routing("telegram", "motion_detected", False)  # usuário desabilitou
+    storage.set_routing("telegram", "no_motion", True)
+
+    defaults = {
+        "telegram": {"motion_detected": True, "no_motion": False, "unknown_detected": False},
+        "automation": {"motion_detected": True, "no_motion": True},
+    }
+    storage.ensure_default_routing(defaults)
+
+    # Linhas existentes preservadas (config do usuário NÃO é sobrescrita)
+    assert storage.get_routing("telegram")["motion_detected"] is False
+    assert storage.get_routing("telegram")["no_motion"] is True
+    # Linhas ausentes ganham o default
+    assert storage.get_routing("telegram")["unknown_detected"] is False
+    assert storage.get_routing("automation")["motion_detected"] is True
+    storage.close()
+
+
+def test_ensure_default_routing_idempotent(tmp_path):
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+
+    defaults = {
+        "telegram": {"motion_detected": True, "no_motion": False},
+        "automation": {"motion_detected": True, "no_motion": True},
+    }
+    storage.ensure_default_routing(defaults)
+    storage.ensure_default_routing(defaults)
+
+    assert storage.get_routing("telegram") == {"motion_detected": True, "no_motion": False}
+    assert storage.get_routing("automation") == {"motion_detected": True, "no_motion": True}
+    storage.close()
+
+
 def test_camera_alert_classes_and_exclusion_zones(tmp_path):
     db_path = tmp_path / "events.db"
     storage = EventStorage(db_path)

@@ -595,6 +595,25 @@ class EventStorage:
                     )
             self.connection.commit()
 
+    def ensure_default_routing(self, defaults: dict):
+        """Reconcilia a tabela com os defaults: insere (INSERT OR IGNORE) TODAS
+        as combinações canal × evento do DEFAULT_ROUTING que ainda não têm linha.
+        Linhas existentes (config do usuário) não são sobrescritas; rodar 2x é
+        idempotente (PK channel+event_type). Diferente de seed_default_routing
+        (que só age com tabela vazia), cobre DBs seedados com um
+        DEFAULT_ROUTING antigo/parcial — sem isso, evento novo sem linha era
+        tratado como "envia sempre" (bug: notificação chegando desabilitada)."""
+        with self.lock:
+            cursor = self.connection.cursor()
+            for channel, events in defaults.items():
+                for event_type, enabled in events.items():
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO notification_routing (channel, event_type, enabled) "
+                        "VALUES (?, ?, ?)",
+                        (channel, event_type, int(enabled)),
+                    )
+            self.connection.commit()
+
     def get_setting(self, key: str, default=None):
         with self.lock:
             cursor = self.connection.cursor()

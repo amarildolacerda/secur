@@ -47,8 +47,16 @@ DEFAULT_ROUTING = {
 
 
 def is_enabled(routing: dict, channel: str, event_type: str) -> bool:
-    """True se o canal não tem config para o evento (default permissivo)."""
+    """True se o evento está habilitado para o canal.
+
+    Linha presente no routing → valor da linha. Linha ausente → fallback no
+    DEFAULT_ROUTING do próprio módulo (comportamento intencional por
+    evento/canal); permissivo True apenas para canal/evento totalmente
+    desconhecido. Sem o fallback, evento sem linha na tabela (DB antigo/
+    parcial) era tratado como "envia sempre" — notificações chegavam mesmo
+    com o evento desabilitado na página.
+    """
     channel_routing = routing.get(channel)
-    if channel_routing is None:
-        return True
-    return channel_routing.get(event_type, True)
+    if channel_routing is not None and event_type in channel_routing:
+        return bool(channel_routing[event_type])
+    return DEFAULT_ROUTING.get(channel, {}).get(event_type, True)

@@ -610,7 +610,7 @@ class CameraManager:
 
 def main():
     storage = EventStorage()
-    storage.seed_default_routing(DEFAULT_ROUTING)
+    storage.ensure_default_routing(DEFAULT_ROUTING)
     alerts = AlertService(storage=storage)
     alerts.register_handler(telegram_handler)
     alerts.register_handler(mqtt_handler)

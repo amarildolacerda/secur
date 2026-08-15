@@ -172,7 +172,22 @@ def test_default_routing_behavior_events():
 def test_is_enabled_defaults_true():
     assert is_enabled({}, "telegram", "motion_detected") is True
     assert is_enabled({"telegram": {"motion_detected": False}}, "telegram", "motion_detected") is False
-    assert is_enabled({"telegram": {"motion_detected": False}}, "telegram", "no_motion") is True
+    # Linha ausente cai no DEFAULT_ROUTING (no_motion/telegram default False) —
+    # antes o fallback cego era True e notificações chegavam mesmo desabilitadas.
+    assert is_enabled({"telegram": {"motion_detected": False}}, "telegram", "no_motion") is False
+
+
+def test_is_enabled_falls_back_to_default_routing():
+    # (i) linha existente false → False
+    assert is_enabled({"telegram": {"motion_detected": False}}, "telegram", "motion_detected") is False
+    # (ii) linha ausente, DEFAULT_ROUTING True → True
+    assert is_enabled({}, "telegram", "motion_detected") is True
+    assert is_enabled({"telegram": {}}, "telegram", "motion_detected") is True
+    # (iii) linha ausente, DEFAULT_ROUTING False → False (ex: unknown_detected/telegram)
+    assert is_enabled({}, "telegram", "unknown_detected") is False
+    assert is_enabled({"telegram": {}}, "telegram", "unknown_detected") is False
+    # (iv) canal inexistente no DEFAULT_ROUTING → permissivo final True
+    assert is_enabled({}, "email", "motion_detected") is True
 
 
 def test_alert_service_respects_routing(monkeypatch):
@@ -188,9 +203,10 @@ def test_alert_service_respects_routing(monkeypatch):
     service.send("1", "entrada", "motion_detected", "teste", routing=routing)
     assert called == []
 
-    service.send("1", "entrada", "no_motion", "teste", routing=routing)
+    # intruder_detected sem linha: default telegram é True → envia
+    service.send("1", "entrada", "intruder_detected", "teste", routing=routing)
     assert len(called) == 1
-    assert called[0]["event_type"] == "no_motion"
+    assert called[0]["event_type"] == "intruder_detected"
 
 
 def test_alert_service_skips_no_motion_for_telegram(monkeypatch):
