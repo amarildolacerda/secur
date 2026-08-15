@@ -278,5 +278,30 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - [ ] Áudio bidirecional (two-way) em doorbell
 - [ ] Integração com portaria remota / app do morador (contexto Brasil)
 - [ ] Semantic search (embeddings locais) — requer 8GB+ RAM e AVX2; não roda no Pi
+### 7. Escala 80 câmeras (condomínio — fibra óptica)
+> Projeto real: condomínio com 80 câmeras IP em rede de fibra óptica.
+> Proposta completa de dimensionamento em [docs/architecture-80-cameras.md](docs/architecture-80-cameras.md).
+
+#### Fase A — Worker autônomo
+- [ ] Extrair CameraWorker para processo independente (`python -m secur.worker`)
+- [ ] Worker busca config na API central; registro de nós com heartbeat
+
+#### Fase B — Eventos distribuídos
+- [ ] Eventos via MQTT (JSON com UUID) + upload de mídia via HTTPS
+- [ ] Consumidor central persiste eventos e dispara notificações
+
+#### Fase C — Banco central
+- [ ] PostgreSQL no servidor central (particionamento mensal, índices)
+- [ ] Camada de storage plugável (SQLite para single-node / Pi)
+
+#### Fase D — Armazenamento em camadas
+- [ ] Camada quente (SSD) + fria (HDD/NAS) com migração por idade
+- [ ] Retenção por espaço em disco + exports fora da retenção
+
+#### Fase E — Resiliência e operação
+- [ ] Heartbeat/watchdog por nó remoto; fila offline + dedup
+- [ ] HA do servidor central; backup do banco e verificação de mídia
+
+
 
 
