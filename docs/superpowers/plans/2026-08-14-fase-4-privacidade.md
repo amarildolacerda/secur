@@ -1,6 +1,6 @@
 # Fase 4 — Privacidade e Robustez Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Implementar mascaramento de regiões (4.1), retenção seletiva por zona (4.2), modo privacidade (4.3) e badge "100% local" (4.4).
 
@@ -37,7 +37,7 @@
   - `update_camera(camera_id, name, source, zone=None, alert_classes=None, exclusion_zones=None, mask_polygons=None) -> bool`
   - `list_cameras()`/`get_camera()` retornam `mask_polygons` parseado (ou `None`).
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [x] **Step 1: Escrever os testes que falham**
 
 Adicionar ao final de `tests/test_storage.py`:
 
@@ -89,12 +89,12 @@ def test_migration_adds_mask_polygons_column(tmp_path):
     storage.close()
 ```
 
-- [ ] **Step 2: Rodar os testes para ver falhar**
+- [x] **Step 2: Rodar os testes para ver falhar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_storage.py::test_camera_mask_polygons_crud tests/test_storage.py::test_camera_mask_polygons_default_none tests/test_storage.py::test_migration_adds_mask_polygons_column -q`
 Expected: FAIL — `TypeError: add_camera() got an unexpected keyword argument 'mask_polygons'`.
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 Em `secur/storage.py`:
 
@@ -172,12 +172,12 @@ Em `secur/storage.py`:
             return cursor.rowcount > 0
 ```
 
-- [ ] **Step 4: Rodar os testes para ver passar**
+- [x] **Step 4: Rodar os testes para ver passar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_storage.py -q`
 Expected: PASS (inclui os existentes).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add secur/storage.py tests/test_storage.py
@@ -198,7 +198,7 @@ git commit -m "feat: camera mask_polygons storage column and CRUD"
   - `apply_mask_blur(frame, polygons) -> np.ndarray` — cópia do frame com blur gaussiano nas regiões dos polígonos (frame original NÃO é mutado).
   - `frame_for_storage(frame, mask_polygons)` — retorna frame mascarado se `mask_polygons` configurado, senão o MESMO frame (sem cópia; quem salva não precisa de cópia).
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [x] **Step 1: Escrever os testes que falham**
 
 Criar `tests/test_masking.py`:
 
@@ -251,12 +251,12 @@ def test_frame_for_storage_with_polygons_returns_masked():
     assert int(out[50, 50, 0]) < 200
 ```
 
-- [ ] **Step 2: Rodar os testes para ver falhar**
+- [x] **Step 2: Rodar os testes para ver falhar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_masking.py -q`
 Expected: FAIL — `ModuleNotFoundError: No module named 'secur.masking'`.
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 Criar `secur/masking.py`:
 
@@ -301,12 +301,12 @@ def frame_for_storage(frame, mask_polygons):
     return frame
 ```
 
-- [ ] **Step 4: Rodar os testes para ver passar**
+- [x] **Step 4: Rodar os testes para ver passar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_masking.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add secur/masking.py tests/test_masking.py
@@ -324,14 +324,14 @@ git commit -m "feat: polygon mask blur helper for storage frames"
 - Consumes: `frame_for_storage(frame, mask_polygons)` (Task 2); `self.camera["mask_polygons"]` (Task 1, já parseado por `list_cameras`).
 - Produces: `CameraWorker.run()` usa frame mascarado (`storage_frame`) para buffer do clipe, thumbnail e `clip_writer.write`; detecção/movimento continuam com `frame` original.
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [x] **Step 1: Escrever os testes que falham**
 
 Não há teste direto do worker (thread + câmera real — mesmo padrão da Fase 2). A lógica pura já está testada na Task 2. Verificação: a suíte existente não deve quebrar e o módulo deve importar.
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_masking.py -q`
 Expected: PASS (pré-condição).
 
-- [ ] **Step 2: Implementar**
+- [x] **Step 2: Implementar**
 
 Em `secur/main.py`:
 
@@ -375,7 +375,7 @@ from .masking import frame_for_storage
 
 Nota: os frames do buffer já chegam mascarados (item 3) — o clipe inteiro (pré + pós) fica mascarado. A detecção (`motion_detector.detect(frame)`, `object_detector.detect(frame)`, crop de identidade) continua usando `frame`.
 
-- [ ] **Step 3: Verificar**
+- [x] **Step 3: Verificar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_masking.py tests/test_main_filters.py -q`
 Expected: PASS.
@@ -383,7 +383,7 @@ Expected: PASS.
 Run: `/tmp/secur-venv/bin/python -c "import secur.main"` no diretório `/mnt/c/git/secur`
 Expected: sem erro de import.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add secur/main.py
@@ -404,7 +404,7 @@ git commit -m "feat: apply mask blur before saving thumbnails and clips"
   - `POST /cameras` e `PUT /cameras/<id>` aceitam `mask_polygons` (lista de polígonos; 400 se não for lista) e retornam no JSON.
   - `GET /camera/<id>/snapshot` retorna o frame com máscara aplicada.
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [x] **Step 1: Escrever os testes que falham**
 
 Adicionar ao final de `tests/test_app.py`:
 
@@ -529,12 +529,12 @@ def test_snapshot_route_without_mask_keeps_frame(client, monkeypatch):
     assert int(arr[50, 50, 0]) > 200  # branco puro preservado
 ```
 
-- [ ] **Step 2: Rodar os testes para ver falhar**
+- [x] **Step 2: Rodar os testes para ver falhar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_app.py::test_add_camera_with_mask_polygons tests/test_app.py::test_add_camera_rejects_invalid_mask_polygons tests/test_app.py::test_update_camera_mask_polygons tests/test_app.py::test_snapshot_route_applies_mask_polygons tests/test_app.py::test_snapshot_route_without_mask_keeps_frame -q`
 Expected: FAIL — `KeyError: 'mask_polygons'` no JSON de resposta e snapshot sem máscara.
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 Em `secur/app.py`:
 
@@ -595,12 +595,12 @@ Trocar a chamada ao storage:
         success, jpg = cv2.imencode(".jpg", frame)
 ```
 
-- [ ] **Step 4: Rodar os testes para ver passar**
+- [x] **Step 4: Rodar os testes para ver passar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_app.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add secur/app.py tests/test_app.py
@@ -618,7 +618,7 @@ git commit -m "feat: mask_polygons API on camera endpoints and masked snapshot"
 - Consumes: `POST/PUT /cameras` com `mask_polygons` (Task 4).
 - Produces: textarea JSON "Máscara (JSON)" no form da câmera (padrão de `exclusion_zones`) + coluna "Máscara" na tabela de gerenciamento.
 
-- [ ] **Step 1: Implementar o HTML**
+- [x] **Step 1: Implementar o HTML**
 
 Em `secur/templates/dashboard.html`, após o form-row de `camera-exclusion-zones` (linhas ~168-171), adicionar:
 
@@ -638,7 +638,7 @@ Na tabela de câmeras (`camera-management`), adicionar a coluna na cabeçalho:
                                 <th>Ações</th>
 ```
 
-- [ ] **Step 2: Implementar o JS**
+- [x] **Step 2: Implementar o JS**
 
 Em `secur/static/dashboard.js`:
 
@@ -682,12 +682,12 @@ E no HTML da linha (após o `<td>${exclusionsText}</td>`):
   payload.mask_polygons = maskPolygons;
 ```
 
-- [ ] **Step 3: Verificar**
+- [x] **Step 3: Verificar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_app.py -q`
 Expected: PASS (API intacta; UI sem testes automatizados).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add secur/templates/dashboard.html secur/static/dashboard.js
@@ -712,7 +712,7 @@ git commit -m "feat: mask polygon editor in camera form"
   - `prune_camera_thumbnails(camera_id, keep=20, max_age_days=None)` — além do `keep`, remove registros com timestamp mais antigo que `max_age_days` dias.
   - `prune_event_clips(camera_id, keep=20, max_age_days=None)` — idem para clipes.
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [x] **Step 1: Escrever os testes que falham**
 
 Adicionar ao final de `tests/test_storage.py`:
 
@@ -806,12 +806,12 @@ def test_prune_clips_by_max_age(tmp_path):
     storage.close()
 ```
 
-- [ ] **Step 2: Rodar os testes para ver falhar**
+- [x] **Step 2: Rodar os testes para ver falhar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_storage.py::test_zone_retention_policy_crud tests/test_storage.py::test_zone_retention_policy_default_none tests/test_storage.py::test_migration_adds_retention_policy_column tests/test_storage.py::test_prune_thumbnails_by_max_age tests/test_storage.py::test_prune_clips_by_max_age -q`
 Expected: FAIL — `TypeError: add_zone() got an unexpected keyword argument 'retention_policy'`.
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 Em `secur/storage.py`:
 
@@ -952,12 +952,12 @@ from datetime import datetime, timezone, timedelta
             self.connection.commit()
 ```
 
-- [ ] **Step 4: Rodar os testes para ver passar**
+- [x] **Step 4: Rodar os testes para ver passar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_storage.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add secur/storage.py tests/test_storage.py
@@ -979,7 +979,7 @@ git commit -m "feat: zone retention policy storage and age-based prune"
   - `CameraWorker.run()`: resolve a política da zona da câmera e passa `keep`/`max_age_days` aos 3 prunes (clip, thumbnail do alerta, thumbnail contínuo).
   - `POST /zones` e `PUT /zones/<id>` aceitam `retention_policy` (dict com `thumbnails`/`clips`/`days` ints >= 0; 400 se inválido).
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [x] **Step 1: Escrever os testes que falham**
 
 Adicionar ao final de `tests/test_main_filters.py`:
 
@@ -1051,12 +1051,12 @@ def test_update_zone_retention_policy(client):
     assert resp.json["retention_policy"] == {"thumbnails": 10}
 ```
 
-- [ ] **Step 2: Rodar os testes para ver falhar**
+- [x] **Step 2: Rodar os testes para ver falhar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_main_filters.py::test_resolve_retention_default_when_no_policy tests/test_main_filters.py::test_resolve_retention_policy_values tests/test_main_filters.py::test_resolve_retention_partial_policy tests/test_main_filters.py::test_resolve_retention_zero_keep_is_respected tests/test_app.py::test_add_zone_with_retention_policy tests/test_app.py::test_add_zone_rejects_invalid_retention_policy tests/test_app.py::test_update_zone_retention_policy -q`
 Expected: FAIL — `ImportError: cannot import name 'resolve_retention'` e `retention_policy` não aceito nas zonas.
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 Em `secur/main.py`:
 
@@ -1170,12 +1170,12 @@ Trocar a chamada:
         storage.update_zone(zone_id, name, classification, schedule=schedule, retention_policy=retention_policy)
 ```
 
-- [ ] **Step 4: Rodar os testes para ver passar**
+- [x] **Step 4: Rodar os testes para ver passar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_main_filters.py tests/test_app.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add secur/main.py secur/app.py tests/test_main_filters.py tests/test_app.py
@@ -1198,7 +1198,7 @@ git commit -m "feat: zone retention policy applied to pruning and zone API"
   - `main.py`: `is_privacy_mode_on(value) -> bool` (função pura); `CameraWorker.identity_enabled() -> bool` (checa a flag com cache de 5s; requer `identity_recognizer`); `CameraWorker.run()` usa `identity_enabled()` no bloco de identidade; `main()`: env força `"true"` na tabela, seed `"false"` se ausente, e `identity_recognizer = None` se a flag estiver ativa.
   - `app.py`: `GET /api/settings` → `{"privacy_mode": bool}`; `PUT /api/settings` aceita `{"privacy_mode": bool}` (400 se não for bool).
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [x] **Step 1: Escrever os testes que falham**
 
 Adicionar ao final de `tests/test_storage.py`:
 
@@ -1298,12 +1298,12 @@ def test_settings_put_turns_off_again(client):
     assert client.get("/api/settings").json["privacy_mode"] is False
 ```
 
-- [ ] **Step 2: Rodar os testes para ver falhar**
+- [x] **Step 2: Rodar os testes para ver falhar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_storage.py::test_settings_get_set tests/test_main_filters.py::test_is_privacy_mode_on tests/test_main_filters.py::test_worker_identity_enabled_respects_privacy_mode tests/test_main_filters.py::test_worker_identity_enabled_without_recognizer tests/test_app.py::test_settings_get_default tests/test_app.py::test_settings_put_and_get tests/test_app.py::test_settings_put_invalid tests/test_app.py::test_settings_put_turns_off_again -q`
 Expected: FAIL — `AttributeError: 'EventStorage' object has no attribute 'get_setting'`, `ImportError: cannot import name 'is_privacy_mode_on'`, `404 Not Found` para `/api/settings`.
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 Em `secur/config.py`, após `IDENTITY_MATCH_THRESHOLD`:
 
@@ -1434,7 +1434,7 @@ from .main import is_privacy_mode_on
 
 Atenção: `app.py` já importa de `main.py`? Não — `main.py` importa `create_app` de `app.py` (import circular potencial). Para evitar circular import, `main.py` importa `app` no corpo (`from .app import create_app` no topo do `main.py`). Se `app.py` importar `is_privacy_mode_on` do topo de `main.py`, e `main.py` importa `create_app` do topo de `app.py` — ciclo: `app` → `main` → `app`. Solução: definir `is_privacy_mode_on` em `secur/config.py` (sem dependências) e importar de lá nos dois módulos.
 
-- [ ] **Step 3b: Implementar (correção do import circular)**
+- [x] **Step 3b: Implementar (correção do import circular)**
 
 Em `secur/config.py`, após `PRIVACY_MODE`:
 
@@ -1460,7 +1460,7 @@ Em `secur/app.py`, o import no topo:
 from .config import is_privacy_mode_on
 ```
 
-- [ ] **Step 4: Rodar os testes para ver passar**
+- [x] **Step 4: Rodar os testes para ver passar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_storage.py tests/test_main_filters.py tests/test_app.py -q`
 Expected: PASS.
@@ -1468,7 +1468,7 @@ Expected: PASS.
 Run: `/tmp/secur-venv/bin/python -c "import secur.main; import secur.app"` no diretório `/mnt/c/git/secur`
 Expected: sem erro (sem import circular).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add secur/config.py secur/storage.py secur/main.py secur/app.py tests/test_storage.py tests/test_main_filters.py tests/test_app.py
@@ -1486,7 +1486,7 @@ git commit -m "feat: privacy mode setting and identity gate"
 - Consumes: `GET/PUT /api/settings` (Task 8).
 - Produces: nav "Configurações" com toggle de modo privacidade (switch padrão existente); badge estático "100% local" no footer com tooltip; `/docs` lista `/api/settings`; README documenta as 4 features de privacidade.
 
-- [ ] **Step 1: Implementar o HTML**
+- [x] **Step 1: Implementar o HTML**
 
 Em `secur/templates/dashboard.html`:
 
@@ -1528,7 +1528,7 @@ Em `secur/templates/dashboard.html`:
             <span class="local-badge" title="Todo o processamento acontece no dispositivo. Nada sai dele, exceto pelos canais que você configurar (Telegram, MQTT, Home Assistant).">100% local</span>
 ```
 
-- [ ] **Step 2: Implementar o CSS**
+- [x] **Step 2: Implementar o CSS**
 
 Em `secur/static/style.css`, adicionar ao final:
 
@@ -1543,7 +1543,7 @@ Em `secur/static/style.css`, adicionar ao final:
 }
 ```
 
-- [ ] **Step 3: Implementar o JS**
+- [x] **Step 3: Implementar o JS**
 
 Em `secur/static/dashboard.js`:
 
@@ -1590,7 +1590,7 @@ function setupSettings() {
 setupSettings();
 ```
 
-- [ ] **Step 4: Atualizar `/docs` e README**
+- [x] **Step 4: Atualizar `/docs` e README**
 
 Em `secur/app.py`, na lista `api_docs` de `/docs`, adicionar após a entrada de `/api/classes`:
 
@@ -1610,7 +1610,7 @@ Em `README.md`, adicionar após a seção "Funcionalidades principais" (antes de
 - **Retenção seletiva**: política por zona (`retention_policy` JSON com `thumbnails`, `clips` e `days`) controla o prune de thumbnails e clipes.
 ```
 
-- [ ] **Step 5: Verificar**
+- [x] **Step 5: Verificar**
 
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_app.py -q`
 Expected: PASS (inclui `test_docs_route` com as novas entradas presentes no HTML).
@@ -1618,7 +1618,7 @@ Expected: PASS (inclui `test_docs_route` com as novas entradas presentes no HTML
 Run: `/tmp/secur-venv/bin/python -m pytest tests/ -q`
 Expected: PASS (suíte completa, incluindo os novos testes das Tasks 1-8).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add secur/templates/dashboard.html secur/static/dashboard.js secur/static/style.css secur/app.py README.md
