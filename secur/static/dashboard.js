@@ -160,7 +160,7 @@ function renderCameraTiles(cameras, workerStatus) {
   }
   if (emptyState) emptyState.classList.add('hidden-panel');
 
-  const activeIds = new Set((workerStatus || []).filter(w => w.running).map(w => w.camera_id));
+  const activeIds = new Set((workerStatus || []).filter(w => w.healthy !== false).map(w => w.camera_id));
   const offlineCameras = workerStatus ? cameras.filter(c => !activeIds.has(c.id)) : [];
   const onlineCameras = workerStatus ? cameras.filter(c => activeIds.has(c.id)) : cameras;
 
