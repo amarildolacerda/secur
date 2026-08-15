@@ -29,7 +29,16 @@ function createSummaryCard(title, value, subtitle = "") {
   `;
 }
 
+// Seção ativa do sidebar (determina quais URLs o polling busca).
+let currentSection = 'overview';
+// True após o render inicial do boot; a partir daí, troca de seção
+// renderiza imediatamente (polling scoped à seção ativa).
+let dashboardReady = false;
+
 function setActiveSection(sectionId) {
+  const sectionChanged = sectionId !== currentSection;
+  currentSection = sectionId;
+
   const panels = document.querySelectorAll('#page .panel, #page .dialog-overlay');
   panels.forEach(panel => {
     if (panel.id === 'camera-dialog' || panel.id === 'zone-dialog') return;
@@ -41,6 +50,12 @@ function setActiveSection(sectionId) {
       link.classList.toggle('active', link.dataset.section === sectionId);
     }
   });
+
+  // Troca de seção renderiza imediatamente (sem esperar o próximo poll de 5s).
+  // Cobre nav links E botões de "Adicionar câmera/zona" (que chamam setActiveSection).
+  if (sectionChanged && dashboardReady) {
+    renderDashboard();
+  }
 }
 
 function toggleCrudNav() {
@@ -1337,7 +1352,37 @@ document.addEventListener('click', function(e){
   }
 });
 
+/* ========== Dashboard dispatcher ========== */
+// Polling scoped à seção ativa: cada render só busca/renderiza os dados que
+// contribuem para a seção em evidência. Mapa seção → URLs:
+//   overview              /cameras /events /zones (+ /status 1x p/ grade offline)
+//   recent-events         /events + /api/notifications (alertTypes p/ filtros)
+//   notifications         /api/notifications
+//   settings              /api/settings
+//   camera-management     /cameras + /zones (dropdown de zona do form)
+//   zones-management      /zones
+//   identities-management /identities
+const SECTION_RENDERERS = {
+  'overview': renderOverviewSection,
+  'recent-events': renderEventsSection,
+  'notifications': renderNotifications,
+  'settings': renderSettings,
+  'camera-management': renderCameraManagementSection,
+  'zones-management': renderZoneManagementSection,
+  'identities-management': loadAndRenderIdentities,
+};
+
 async function renderDashboard() {
+  const renderer = SECTION_RENDERERS[currentSection];
+  if (!renderer) return;
+  try {
+    await renderer();
+  } catch (error) {
+    // Falha de uma seção não pode matar o polling nem as demais seções.
+  }
+}
+
+async function renderOverviewSection() {
   const cameras = await fetchData('/cameras');
   const events = await fetchData('/events');
   const zones = await fetchData('/zones');
@@ -1367,16 +1412,32 @@ async function renderDashboard() {
     renderCameraTiles(cameras, workerStatus);
   }
   updateVisibleSnapshots(cameras);
+}
 
+async function renderEventsSection() {
+  const events = await fetchData('/events');
   lastEvents = events;
   lastAlertTypes = await renderEvents(events);
+}
 
+async function renderCameraManagementSection() {
+  const cameras = await fetchData('/cameras');
+  const zones = await fetchData('/zones');
   renderCameraManagement(cameras);
-  renderZoneManagement(zones);
-  renderNotifications();
   populateZoneDropdown(zones);
-  renderSettings();
+  bindCameraManagementActions(cameras, zones);
+}
 
+async function renderZoneManagementSection() {
+  const zones = await fetchData('/zones');
+  renderZoneManagement(zones);
+  bindZoneManagementActions(zones);
+}
+
+// Listeners re-bindados apenas na seção renderizada (camera-management):
+// a tabela é recriada a cada render (innerHTML), então os botões novos
+// precisam de bind — sem duplicação porque os nós antigos são descartados.
+function bindCameraManagementActions(cameras, zones) {
   document.querySelectorAll('.delete-camera').forEach(button => {
     button.addEventListener('click', () => {
       deleteCamera(button.dataset.cameraId);
@@ -1401,7 +1462,9 @@ async function renderDashboard() {
       openClipHistory(cameraId, camera ? camera.name : 'Câmera');
     });
   });
+}
 
+function bindZoneManagementActions(zones) {
   document.querySelectorAll('.delete-zone').forEach(button => {
     button.addEventListener('click', () => {
       deleteZone(button.dataset.zoneId);
@@ -1417,9 +1480,6 @@ async function renderDashboard() {
       }
     });
   });
-
-  await renderStatusFooter();
-  try { await loadAndRenderIdentities(); } catch (e) { /* ignore */ }
 }
 
 /* ========== Setup ========== */
@@ -1481,6 +1541,8 @@ function setupZoneForm() {
 setActiveSection('overview');
 setupSidebarNavigation();
 renderDashboard();
+renderStatusFooter(); // footer fixo global: renderiza no boot (render por seção não busca /status)
+dashboardReady = true;
 setupCameraForm();
 setupZoneForm();
 setupSettings();
