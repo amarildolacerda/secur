@@ -6,6 +6,8 @@
   --bg: #f4f4f4;
   --surface: #ffffff;
   --surface-2: #f9fafb;
+  --card-bg: #eef0fc;
+  --card-border: #e2e5fa;
   --text: #1f2937;
   --muted: #6b7280;
   --muted-subtle: #9ca3af;
@@ -275,8 +277,8 @@ body {
 }
 
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius);
   padding: 16px;
 }
@@ -286,7 +288,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.4px;
   font-weight: 500;
-  color: var(--muted-subtle);
+  color: var(--muted);
 }
 
 .summary-value {
