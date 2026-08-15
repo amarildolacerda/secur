@@ -280,7 +280,8 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - [ ] Semantic search (embeddings locais) — requer 8GB+ RAM e AVX2; não roda no Pi
 ### 7. Escala 80 câmeras (condomínio — fibra óptica)
 > Projeto real: condomínio com 80 câmeras IP em rede de fibra óptica.
-> Proposta completa de dimensionamento em [docs/architecture-80-cameras.md](docs/architecture-80-cameras.md).
+> **A gravação 24/7 e a retenção ficam nos NVRs existentes; o Secur responde apenas pela análise.**
+> Proposta completa em [docs/architecture-80-cameras.md](docs/architecture-80-cameras.md).
 
 #### Fase A — Worker autônomo
 - [ ] Extrair CameraWorker para processo independente (`python -m secur.worker`)
@@ -294,14 +295,14 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - [ ] PostgreSQL no servidor central (particionamento mensal, índices)
 - [ ] Camada de storage plugável (SQLite para single-node / Pi)
 
-#### Fase D — Armazenamento em camadas
-- [ ] Camada quente (SSD) + fria (HDD/NAS) com migração por idade
-- [ ] Retenção por espaço em disco + exports fora da retenção
+#### Fase D — Integração com NVR e evidência
+- [ ] Descoberta de câmeras via ONVIF + consumo de sub-stream RTSP do NVR
+- [ ] Export sob demanda: baixar clipe do NVR e anexar ao evento/alerta
+- [ ] Retenção por espaço em disco para evidência curta; exports fora da retenção
 
 #### Fase E — Resiliência e operação
 - [ ] Heartbeat/watchdog por nó remoto; fila offline + dedup
 - [ ] HA do servidor central; backup do banco e verificação de mídia
-
 
 
 

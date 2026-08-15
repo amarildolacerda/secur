@@ -114,8 +114,9 @@ Construir um sistema de vigilância inteligente inicialmente desenvolvido em PC/
    - Backlog: autotracking PTZ, LPR, face dedicada, WebRTC/go2rtc, two-way audio, portaria remota/app do morador, semantic search (não roda no Pi).
 7. Escala 80 câmeras (condomínio — fibra óptica)
    - Proposta de dimensionamento em docs/architecture-80-cameras.md; validar com o projeto real antes de implementar.
-   - Arquitetura distribuída: nós de captura (workers) + servidor central (PostgreSQL) + MQTT como backbone de eventos.
-   - Fases: A) worker autônomo; B) eventos MQTT; C) PostgreSQL; D) storage em camadas; E) resiliência/HA.
+   - **Gravação 24/7 e retenção ficam nos NVRs existentes; o Secur responde apenas pela análise** (eventos, alertas, evidência curta).
+   - Arquitetura distribuída: nós de análise (workers) + servidor central (PostgreSQL) + MQTT como backbone de eventos + integração ONVIF/RTSP com NVRs.
+   - Fases: A) worker autônomo; B) eventos MQTT; C) PostgreSQL; D) integração com NVR e evidência; E) resiliência/HA.
 
 
 
