@@ -338,6 +338,13 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 - [ ] Self-checkout/caixa fraud (área de caixa + POS) — alertar (prevenção de perdas)
 
 > Pesquisa completa: [docs/research-monitoring-venues.md](docs/research-monitoring-venues.md).
+#### Prioridade recomendada (valor para o usuário)
+1. **Alagamento/vazamento via sensores MQTT** — custo ~zero (já há MQTT/HA), impacto altíssimo (garagem subterrânea), entrega rápida
+2. **Fogo/fumaça por visão** — maior impacto (vidas+patrimônio), modelo YOLO fire/smoke maduro, complementa sensores obrigatórios
+3. **Objetos estacionários** — multiplicador: desbloqueia carrinho abandonado, veículo obstruindo, bagagem, vandalismo
+4. **Loitering contextual (portaria/garagem)** — furto é a dor nº1 em condomínio BR; `check_loitering` já existe no código
+5. Aglomeração/footfall/filas — só quando entrar em shopping/terminal (outro público)
+
 
 
 
