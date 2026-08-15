@@ -927,3 +927,79 @@ tr.event-info td {
   font-size: 0.72rem;
   font-weight: 600;
 }
+
+/* Dashboard redesign (Fase 5) */
+#camera-tiles {
+  margin-top: 16px;
+}
+
+.section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 20px 0 10px;
+}
+
+.camera-card-offline {
+  opacity: 0.65;
+  border-color: var(--border-strong);
+}
+
+.badge-offline {
+  display: inline-block;
+  background: rgba(220, 38, 38, 0.12);
+  color: var(--danger);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.camera-preview-wrapper {
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+}
+
+.camera-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  margin-top: 16px;
+}
+
+.empty-state .empty-icon {
+  font-size: 2.2rem;
+  margin-bottom: 10px;
+}
+
+.empty-state h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.empty-state p {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
+/* Carrega previews com aspect-ratio; a aba "Câmeras" foi removida */
+@media (max-width: 700px) {
+  .camera-preview-wrapper {
+    aspect-ratio: 16 / 9;
+  }
+}

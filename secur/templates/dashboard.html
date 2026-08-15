@@ -21,10 +21,6 @@
                 <span class="icon">&#x1F4F7;</span>
                 <span>Visão geral</span>
             </button>
-            <button type="button" class="nav-link" data-section="camera-status" id="nav-camera-status">
-                <span class="icon">&#x1F50D;</span>
-                <span>Câmeras</span>
-            </button>
             <button type="button" class="nav-link" data-section="recent-events" id="nav-recent-events">
                 <span class="icon">&#x1F4CB;</span>
                 <span>Eventos</span>
@@ -69,6 +65,17 @@
             <section class="panel" id="overview">
                 <h2>Visão geral</h2>
                 <div id="summary-cards" class="grid"></div>
+                <div id="camera-tiles" class="grid"></div>
+                <div id="camera-offline-section" class="hidden-panel">
+                    <h3 class="section-title">Câmeras offline</h3>
+                    <div id="camera-offline-list" class="grid"></div>
+                </div>
+                <div id="camera-empty-state" class="empty-state hidden-panel">
+                    <div class="empty-icon">&#x1F4F7;</div>
+                    <h3>Nenhuma câmera cadastrada</h3>
+                    <p>Adicione uma câmera para começar a monitorar.</p>
+                    <button type="button" class="button-primary" id="empty-add-camera">Adicionar câmera</button>
+                </div>
             </section>
 
             <!-- Identity dialog (copied from identities view) -->
@@ -250,11 +257,6 @@
                     </form>
                 </div>
             </div>
-
-            <section class="panel hidden-panel" id="camera-status">
-                <h2>Status das câmeras</h2>
-                <div id="camera-list" class="grid"></div>
-            </section>
 
             <section class="panel hidden-panel" id="recent-events">
                 <h2>Eventos recentes</h2>

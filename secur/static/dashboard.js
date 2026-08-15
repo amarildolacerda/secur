@@ -60,23 +60,30 @@ function setupSidebarNavigation() {
   });
 }
 
-function createCameraCard(camera) {
+function createCameraCard(camera, offline = false) {
   const zoneLabel = camera.zone || '-';
   const imgId = `snapshot-${camera.id}`;
+  const offlineBadge = offline
+    ? '<span class="badge-offline">Offline</span>'
+    : '';
 
   return `
-    <div class="card camera-card">
+    <div class="card camera-card${offline ? ' camera-card-offline' : ''}">
       <div class="camera-card-header">
         <strong>${camera.name}</strong>
         <span class="camera-badge">ID ${camera.id}</span>
       </div>
-      <p>Zona: ${zoneLabel}</p>
+      <p>Zona: ${zoneLabel} ${offlineBadge}</p>
       <p class="camera-source">Fonte: ${camera.source}</p>
-      <div class="camera-preview-wrapper" onclick="openThumbHistory(${camera.id}, '${camera.name}')" style="cursor:pointer;">
+      <div
+        class="camera-preview-wrapper"
+        data-camera-id="${camera.id}"
+        onclick="openThumbHistory(${camera.id}, '${camera.name}')"
+        style="cursor:pointer;"
+      >
         <img
           id="${imgId}"
           class="camera-preview"
-          src="/camera/${camera.id}/snapshot?ts=${Date.now()}"
           alt="Preview da câmera"
           onload="this.parentElement.classList.remove('loading'); this.parentElement.classList.remove('error');"
           onerror="this.parentElement.classList.remove('loading'); this.parentElement.classList.add('error'); this.style.display='none'; this.nextElementSibling.style.display='flex';"
@@ -103,6 +110,68 @@ function retrySnapshot(cameraId) {
     img.nextElementSibling.style.display = 'none';
     img.src = `/camera/${cameraId}/snapshot?ts=${Date.now()}`;
   }
+}
+
+/* ========== Camera tiles (lazy-load) ========== */
+
+const snapshotObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const wrapper = entry.target;
+    const img = wrapper.querySelector('.camera-preview');
+    if (entry.isIntersecting) {
+      wrapper.classList.add('in-viewport');
+      if (img && !img.dataset.loaded) {
+        img.dataset.loaded = '1';
+        img.src = `/camera/${wrapper.dataset.cameraId}/snapshot?ts=${Date.now()}`;
+      }
+    } else {
+      wrapper.classList.remove('in-viewport');
+    }
+  });
+}, { rootMargin: '100px' });
+
+function observeSnapshots() {
+  document.querySelectorAll('.camera-preview-wrapper').forEach(wrapper => {
+    snapshotObserver.observe(wrapper);
+  });
+}
+
+function updateVisibleSnapshots(cameras) {
+  cameras.forEach(camera => {
+    const img = document.getElementById(`snapshot-${camera.id}`);
+    if (img && img.dataset.loaded && img.parentElement.classList.contains('in-viewport') && !img.parentElement.classList.contains('error')) {
+      img.src = `/camera/${camera.id}/snapshot?ts=${Date.now()}`;
+    }
+  });
+}
+
+function renderCameraTiles(cameras, workerStatus) {
+  const tilesContainer = document.getElementById('camera-tiles');
+  const offlineSection = document.getElementById('camera-offline-section');
+  const offlineList = document.getElementById('camera-offline-list');
+  const emptyState = document.getElementById('camera-empty-state');
+  if (!tilesContainer) return;
+
+  if (!cameras.length) {
+    tilesContainer.innerHTML = '';
+    if (offlineSection) offlineSection.classList.add('hidden-panel');
+    if (emptyState) emptyState.classList.remove('hidden-panel');
+    return;
+  }
+  if (emptyState) emptyState.classList.add('hidden-panel');
+
+  const activeIds = new Set((workerStatus || []).filter(w => w.running).map(w => w.camera_id));
+  const offlineCameras = workerStatus ? cameras.filter(c => !activeIds.has(c.id)) : [];
+  const onlineCameras = workerStatus ? cameras.filter(c => activeIds.has(c.id)) : cameras;
+
+  tilesContainer.innerHTML = onlineCameras.map(c => createCameraCard(c, false)).join('');
+  if (offlineCameras.length) {
+    offlineList.innerHTML = offlineCameras.map(c => createCameraCard(c, true)).join('');
+    offlineSection.classList.remove('hidden-panel');
+  } else if (offlineSection) {
+    offlineSection.classList.add('hidden-panel');
+  }
+  observeSnapshots();
 }
 
 /* ========== Live Player ========== */
@@ -1041,20 +1110,20 @@ async function renderDashboard() {
     createSummaryCard('Último evento', lastEvent ? lastEvent.event_type : 'Nenhum', lastEventTime),
   ].join('');
 
-  // Only render camera cards if not already present (avoids snapshot flicker)
-  const cameraList = document.getElementById('camera-list');
-  if (!cameraList.dataset.rendered) {
-    cameraList.innerHTML = cameras.map(createCameraCard).join('');
-    cameraList.dataset.rendered = '1';
-  } else {
-    // Update only snapshot images with new timestamp
-    cameras.forEach(camera => {
-      const img = document.getElementById(`snapshot-${camera.id}`);
-      if (img && !img.parentElement.classList.contains('error')) {
-        img.src = `/camera/${camera.id}/snapshot?ts=${Date.now()}`;
-      }
-    });
+  // Camera tiles: lazy-load + offline grouping (status via /status worker_status).
+  // Renderiza a grade UMA vez (guard dataset.rendered) — re-render a cada poll de 5s
+  // recriaria os <img> sem src e perderia o estado 'loaded' do lazy-load.
+  const cameraTiles = document.getElementById('camera-tiles');
+  if (!cameraTiles.dataset.rendered) {
+    cameraTiles.dataset.rendered = '1';
+    let workerStatus = null;
+    try {
+      const status = await fetchData('/status');
+      workerStatus = status.worker_status || null;
+    } catch (e) { /* offline: grade única */ }
+    renderCameraTiles(cameras, workerStatus);
   }
+  updateVisibleSnapshots(cameras);
 
   const eventsTable = document.getElementById('events-table');
   eventsTable.innerHTML = events.map(createEventRow).join('');
@@ -1173,6 +1242,13 @@ setupCameraForm();
 setupZoneForm();
 setupSettings();
   setupIdentityForm();
+const emptyAddCamera = document.getElementById('empty-add-camera');
+if (emptyAddCamera) {
+  emptyAddCamera.addEventListener('click', () => {
+    setActiveSection('camera-management');
+    showCameraForm('add');
+  });
+}
 document.getElementById('clip-history-close').addEventListener('click', closeClipHistory);
 setInterval(() => {
   renderDashboard();
