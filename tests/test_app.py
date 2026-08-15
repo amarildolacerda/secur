@@ -463,3 +463,43 @@ def test_settings_put_turns_off_again(client):
     resp = client.put("/api/settings", json={"privacy_mode": False})
     assert resp.status_code == 200
     assert client.get("/api/settings").json["privacy_mode"] is False
+
+
+def test_add_zone_with_direction_line(client):
+    resp = client.post("/zones", json={
+        "name": "Portão", "classification": "segurança",
+        "direction_line": {"axis": "vertical", "position": 0.5},
+    })
+    assert resp.status_code == 201
+    assert resp.json["direction_line"] == {"axis": "vertical", "position": 0.5}
+
+
+def test_add_zone_rejects_invalid_direction_line(client):
+    resp = client.post("/zones", json={
+        "name": "Portão", "classification": "segurança",
+        "direction_line": {"axis": "diagonal", "position": 0.5},
+    })
+    assert resp.status_code == 400
+
+    resp = client.post("/zones", json={
+        "name": "Portão", "classification": "segurança",
+        "direction_line": {"axis": "vertical", "position": 2},
+    })
+    assert resp.status_code == 400
+
+    resp = client.post("/zones", json={
+        "name": "Portão", "classification": "segurança",
+        "direction_line": "vertical",
+    })
+    assert resp.status_code == 400
+
+
+def test_update_zone_direction_line(client):
+    resp = client.post("/zones", json={"name": "Entrada", "classification": "pública"})
+    zone_id = resp.json["id"]
+    resp = client.put(f"/zones/{zone_id}", json={
+        "name": "Entrada", "classification": "pública",
+        "direction_line": {"axis": "horizontal", "position": 0.3},
+    })
+    assert resp.status_code == 200
+    assert resp.json["direction_line"] == {"axis": "horizontal", "position": 0.3}

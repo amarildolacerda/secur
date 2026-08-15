@@ -44,6 +44,21 @@ def _is_valid_retention_policy(policy):
     return True
 
 
+def _is_valid_direction_line(line):
+    """True se None ou dict {"axis": "vertical"|"horizontal", "position": float 0-1}."""
+    if line is None:
+        return True
+    if not isinstance(line, dict):
+        return False
+    axis = line.get("axis")
+    position = line.get("position")
+    if axis not in ("vertical", "horizontal"):
+        return False
+    if isinstance(position, bool) or not isinstance(position, (int, float)):
+        return False
+    return 0.0 <= position <= 1.0
+
+
 def _validate_mask_polygons(mask_polygons):
     """Valida mask_polygons (mesmo formato de exclusion_zones).
 
@@ -563,6 +578,7 @@ def create_app(camera_manager=None, db_path=None):
         classification = payload.get("classification", "pública")
         schedule = payload.get("schedule")
         retention_policy = payload.get("retention_policy")
+        direction_line = payload.get("direction_line")
 
         if not name:
             return jsonify({"error": "name é obrigatório"}), 400
@@ -576,12 +592,18 @@ def create_app(camera_manager=None, db_path=None):
         if not _is_valid_retention_policy(retention_policy):
             return jsonify({"error": "retention_policy deve ser {\"thumbnails\": N, \"clips\": N, \"days\": N}"}), 400
 
+        if not _is_valid_direction_line(direction_line):
+            return jsonify({"error": "direction_line deve ser {\"axis\": \"vertical|horizontal\", \"position\": 0-1}"}), 400
+
         existing = storage.list_zones()
         if any(z["name"] == name for z in existing):
             return jsonify({"error": "Zona com esse nome já existe"}), 400
 
-        zone_id = storage.add_zone(name, classification, schedule=schedule, retention_policy=retention_policy)
-        return jsonify({"id": zone_id, "name": name, "classification": classification, "schedule": schedule, "retention_policy": retention_policy}), 201
+        zone_id = storage.add_zone(name, classification, schedule=schedule,
+                                   retention_policy=retention_policy, direction_line=direction_line)
+        return jsonify({"id": zone_id, "name": name, "classification": classification,
+                        "schedule": schedule, "retention_policy": retention_policy,
+                        "direction_line": direction_line}), 201
 
     @app.route("/zones/<int:zone_id>", methods=["PUT"])
     def update_zone(zone_id):
@@ -594,6 +616,7 @@ def create_app(camera_manager=None, db_path=None):
         classification = payload.get("classification")
         schedule = payload.get("schedule")
         retention_policy = payload.get("retention_policy")
+        direction_line = payload.get("direction_line")
 
         if not name or not classification:
             return jsonify({"error": "name e classification são obrigatórios"}), 400
@@ -607,7 +630,11 @@ def create_app(camera_manager=None, db_path=None):
         if not _is_valid_retention_policy(retention_policy):
             return jsonify({"error": "retention_policy deve ser {\"thumbnails\": N, \"clips\": N, \"days\": N}"}), 400
 
-        storage.update_zone(zone_id, name, classification, schedule=schedule, retention_policy=retention_policy)
+        if not _is_valid_direction_line(direction_line):
+            return jsonify({"error": "direction_line deve ser {\"axis\": \"vertical|horizontal\", \"position\": 0-1}"}), 400
+
+        storage.update_zone(zone_id, name, classification, schedule=schedule,
+                            retention_policy=retention_policy, direction_line=direction_line)
         updated_zone = storage.get_zone(zone_id)
         return jsonify(updated_zone), 200
 
