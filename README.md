@@ -305,6 +305,28 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
 #### Fase E — Resiliência e operação
 - [ ] Heartbeat/watchdog por nó remoto; fila offline + dedup (MQTT QoS 1)
 - [ ] HA da central (active/standby); backup do banco e verificação de mídia
+### 8. Situações monitoráveis (além de intrusão)
+> O Secur monitora **situações**, não só presença/intrusão — via visão (funil N0-N4) e/ou sensores (MQTT/Home Assistant).
+> Matriz completa em [docs/architecture-80-cameras.md](docs/architecture-80-cameras.md) (seção 1.2).
+
+#### Visão (central de análise N2-N4)
+- [ ] Fogo/fumaça (modelo YOLO fire/smoke) — perigo eminente
+- [ ] Objeto abandonado em área de circulação (stationary + zona) — ex.: carrinho
+- [ ] Aglomeração/multidão em área comum (contagem de pessoas)
+- [ ] Veículo parado/obstruindo em local proibido
+- [ ] Pichação/vandalismo suspeito
+- [ ] Porta/janela aberta fora de horário
+
+#### Sensores (via MQTT/Home Assistant — entram direto na central)
+- [ ] Alagamento/vazamento (bóia, umidade, condutivo) — alerta imediato
+- [ ] Fumaça/calor/CO (reforço ao fogo por visão)
+- [ ] Porta/janela (contato) — cruzar com horário
+- [ ] Qualquer sensor MQTT como "candidato já confirmado" no N4
+
+#### Regras de negócio
+- [ ] Thresholds e providência configuráveis por situação + zona
+- [ ] Cooldown por situação (reaproveitar mecanismo atual)
+
 
 
 

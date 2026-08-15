@@ -85,7 +85,34 @@ O pipeline separa situações em potencial em **5 níveis de triagem**, do mais 
 
 > Isso é o padrão Frigate (motion → detection → tracking) formalizado, e casa com o que o Secur já tem (motion-gating + detecção ONNX + tracking).
 
+### 1.2 Matriz de situações monitoráveis (além de intrusão)
+
+O Secur monitora **situações**, não só presença/intrusão. Cada situação tem uma fonte (visão e/ou sensor), um nível de detecção no funil e uma providência padrão:
+
+| Situação | Fonte | Detecção (nível) | Evento Secur | Providência padrão |
+|---|---|---|---|---|
+| Presença / intrusão (já existe) | visão | N2-N4 | `intruder_detected`, `motion_detected`, `identity_recognized` | alertar / perigo |
+| **Alagamento / vazamento** | **sensores** (bóia, umidade, condutivo) + visão (opcional) | sensor → direto na central (N4); visão → N2 | `flooding_detected`, `water_leak` | alertar (vazamento); **perigo eminente** (subida rápida em garagem/subsolo) |
+| **Fogo / fumaça** | **visão** (YOLO fire/smoke) + sensores (fumaça/calor via MQTT/HA) | N2 (visão) ou sensor direto | `fire_detected`, `smoke_detected` | **perigo eminente** (notificação prioritária + export de evidência + opção de alarme) |
+| **Objeto abandonado em área de circulação** (ex.: carrinho) | visão (stationary objects + zona/ROI proibido) | N3 (tempo parado > threshold + zona) | `object_left_behind`, `obstruction_detected` | informar; **alertar** se bloquear rota de fuga / área crítica |
+| Queda de pessoa (já existe) | visão | N3 | `fall_detected` | **perigo eminente** |
+| Aglomeração / multidão em área comum | visão (contagem de pessoas) | N3 | `crowd_detected` | informar; alertar acima de limite |
+| Veículo parado / obstruindo em local proibido | visão (stationary + zona) | N3 | `vehicle_blocking` | alertar |
+| Pichação / vandalismo suspeito | visão (motion + stationary + zona) | N3 | `vandalism_suspected` | alertar |
+| Porta/janela aberta fora de horário | visão (mudança de cena) ou sensor | N2/N3 ou sensor direto | `door_open` | alertar |
+| Animal (já existe) | visão | N2 | (labels animal) | informar |
+| Câmera offline / queda de energia | infra (health) | monitor | `camera_offline` | alertar |
+
+**Como sensores entram no funil:** sensores (alagamento, fumaça, calor, CO, porta) são **fontes externas de alto nível** — chegam via MQTT/Home Assistant e **entram direto na central como candidatos já confirmados** (pulam N0-N2; o N4 decide a providência e cruza com contexto de visão quando houver). Ex.: sensor de fumaça dispara → central cruza com câmera da área → se visão confirma fogo → **perigo eminente** + evidência.
+
+**Regras de negócio por situação (configuráveis):**
+- Thresholds por situação e zona (ex.: tempo parado do carrinho, nível de água, limite de pessoas).
+- Providência ajustável por área: carrinho no corredor de fuga = alertar; carrinho em depósito = informar.
+- Cooldown por situação (reaproveita o mecanismo de cooldown atual por evento).
+
 ---
+
+
 
 ## 2. Dimensionamento do tráfego de candidatos (central)
 

@@ -118,6 +118,10 @@ Construir um sistema de vigilância inteligente inicialmente desenvolvido em PC/
    - Arquitetura distribuída: nós de borda (triagem leve) + central de análise (IA, tracking, identidade, regras, decisão) + PostgreSQL + MQTT como backbone + integração ONVIF/RTSP com NVRs.
    - **Triagem em níveis (funil N0-N4):** N0 movimento e N1 pré-seleção na borda; N2 detecção rápida, N3 análise completa e N4 decisão de providência (informar/alertar/perigo eminente) na central.
    - Fases: A) nó de borda (triagem N0-N1); B) transporte de candidatos; C) central de análise e decisão (N2-N4); D) integração com NVR e evidência; E) resiliência/HA.
+8. Situações monitoráveis (além de intrusão)
+   - Visão (central N2-N4): fogo/fumaça, objeto abandonado em circulação, aglomeração, veículo obstruindo, vandalismo, porta aberta.
+   - Sensores via MQTT/HA (candidatos já confirmados): alagamento/vazamento, fumaça/calor/CO, contato de porta.
+   - Matriz completa (fontes, níveis, eventos, providências) em docs/architecture-80-cameras.md (seção 1.2).
 
 
 
