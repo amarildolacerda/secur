@@ -77,3 +77,7 @@ CLIP_FPS = int(os.getenv("CLIP_FPS", "5"))
 CLIPS_DIR = DATA_DIR / "clips"
 CLIPS_DIR.mkdir(exist_ok=True)
 CLIP_HISTORY_SIZE = int(os.getenv("CLIP_HISTORY_SIZE", "20"))
+
+# Fase 3 — comportamento/anomalia (tracking)
+TRACK_IOU_THRESHOLD = float(os.getenv("TRACK_IOU_THRESHOLD", "0.3"))
+TRACK_MAX_AGE_SECONDS = float(os.getenv("TRACK_MAX_AGE_SECONDS", "2.0"))
