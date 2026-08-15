@@ -78,12 +78,15 @@ function setupSidebarNavigation() {
   });
 }
 
-function createCameraCard(camera, offline = false) {
+function createCameraCard(camera, offline = false, lastEventTs = null) {
   const zoneLabel = camera.zone || '-';
   const imgId = `snapshot-${camera.id}`;
   const offlineBadge = offline
     ? '<span class="badge-offline">Offline</span>'
     : '';
+  const lastEventLabel = lastEventTs
+    ? new Date(lastEventTs).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : 'Sem eventos';
 
   return `
     <div class="card camera-card${offline ? ' camera-card-offline' : ''}">
@@ -93,6 +96,7 @@ function createCameraCard(camera, offline = false) {
       </div>
       <p>Zona: ${zoneLabel} ${offlineBadge}</p>
       <p class="camera-source">Fonte: ${camera.source}</p>
+      <p class="camera-card-time">Último evento: ${lastEventLabel}</p>
       <div
         class="camera-preview-wrapper"
         data-camera-id="${camera.id}"
@@ -163,14 +167,35 @@ function updateVisibleSnapshots(cameras) {
   });
 }
 
-function renderCameraTiles(cameras, workerStatus) {
+/* ========== Ordenação por último evento ========== */
+
+// Monta Map<camera_id, último timestamp de evento>. /events vem em ordem desc,
+// mas o máximo (em vez do primeiro match) garante o mais recente mesmo se a
+// ordem do endpoint mudar.
+function buildLastEventMap(events) {
+  const map = new Map();
+  events.forEach(e => {
+    if (e.camera_id == null) return;
+    const ts = new Date(e.timestamp).getTime();
+    if (!map.has(e.camera_id) || ts > map.get(e.camera_id)) map.set(e.camera_id, ts);
+  });
+  return map;
+}
+
+// Ordena câmeras por último evento desc (mais recentes primeiro). Câmeras sem
+// evento vão para o fim, preservando a ordem original entre elas (sort estável).
+function sortCamerasByLastEvent(cameras, lastEventMap) {
+  return [...cameras].sort((a, b) => (lastEventMap.get(b.id) || 0) - (lastEventMap.get(a.id) || 0));
+}
+
+function renderCameraTiles(cameras, workerStatus, lastEventMap = new Map()) {
   const tilesContainer = document.getElementById('camera-tiles');
   const emptyState = document.getElementById('camera-empty-state');
   if (!tilesContainer) return;
 
   if (!cameras.length) {
     tilesContainer.innerHTML = '';
-    updateOfflineSection([], null);
+    updateOfflineSection([], null, lastEventMap);
     if (emptyState) emptyState.classList.remove('hidden-panel');
     return;
   }
@@ -180,8 +205,8 @@ function renderCameraTiles(cameras, workerStatus) {
   const offlineCameras = workerStatus ? cameras.filter(c => !activeIds.has(c.id)) : [];
   const onlineCameras = workerStatus ? cameras.filter(c => activeIds.has(c.id)) : cameras;
 
-  tilesContainer.innerHTML = onlineCameras.map(c => createCameraCard(c, false)).join('');
-  updateOfflineSection(cameras, workerStatus);
+  tilesContainer.innerHTML = onlineCameras.map(c => createCameraCard(c, false, lastEventMap.get(c.id))).join('');
+  updateOfflineSection(cameras, workerStatus, lastEventMap);
   observeSnapshots();
 }
 
@@ -190,7 +215,7 @@ function renderCameraTiles(cameras, workerStatus) {
 // em #camera-offline-section. Chamada a cada poll da overview (sem re-renderizar
 // a grade, que tem guard de lazy-load) mantém contador e visibilidade em dia.
 // A preferência do usuário (showOfflineCameras) é preservada na sessão.
-function updateOfflineSection(cameras, workerStatus) {
+function updateOfflineSection(cameras, workerStatus, lastEventMap = new Map()) {
   const offlineBar = document.getElementById('camera-offline-bar');
   const offlineSection = document.getElementById('camera-offline-section');
   const offlineList = document.getElementById('camera-offline-list');
@@ -201,7 +226,7 @@ function updateOfflineSection(cameras, workerStatus) {
   const offlineCameras = workerStatus ? cameras.filter(c => !activeIds.has(c.id)) : [];
 
   if (offlineCameras.length) {
-    if (offlineList) offlineList.innerHTML = offlineCameras.map(c => createCameraCard(c, true)).join('');
+    if (offlineList) offlineList.innerHTML = offlineCameras.map(c => createCameraCard(c, true, lastEventMap.get(c.id))).join('');
     if (offlineLabel) offlineLabel.textContent = `Ver offline (${offlineCameras.length})`;
     offlineBar.classList.remove('hidden-panel');
     offlineSection.classList.toggle('hidden-panel', !showOfflineCameras);
@@ -1431,6 +1456,9 @@ async function renderOverviewSection() {
     createSummaryCard('Último evento', lastEvent ? lastEvent.event_type : 'Nenhum', lastEventTime),
   ].join('');
 
+  const lastEventMap = buildLastEventMap(events);
+  const sortedCameras = sortCamerasByLastEvent(cameras, lastEventMap);
+
   // Camera tiles: lazy-load + offline grouping (status via /status worker_status).
   // A grade é renderizada UMA vez (guard dataset.rendered) — re-render a cada poll
   // recriaria os <img> sem src e perderia o estado 'loaded' do lazy-load. O bar
@@ -1444,11 +1472,11 @@ async function renderOverviewSection() {
 
   if (!cameraTiles.dataset.rendered) {
     cameraTiles.dataset.rendered = '1';
-    renderCameraTiles(cameras, workerStatus);
+    renderCameraTiles(sortedCameras, workerStatus, lastEventMap);
   } else {
-    updateOfflineSection(cameras, workerStatus);
+    updateOfflineSection(sortedCameras, workerStatus, lastEventMap);
   }
-  updateVisibleSnapshots(cameras);
+  updateVisibleSnapshots(sortedCameras);
 }
 
 async function renderEventsSection() {

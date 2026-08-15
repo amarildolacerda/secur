@@ -673,6 +673,12 @@ tbody tr:last-child td {
   white-space: nowrap;
 }
 
+.camera-card p.camera-card-time {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
 .camera-preview {
   width: 100%;
   height: auto;
