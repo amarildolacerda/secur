@@ -246,11 +246,12 @@ class CameraWorker:
                                     identity_label = det["label"]
                                     break
 
-                    event_type, details, identity_name, known, _label, category = decide_worker_event(
+                    decision = decide_worker_event(
                         detections, identity_info, zone_classification, self.camera["name"], identity_label,
                         in_schedule=is_within_schedule(zone_schedule, now),
                         fall=fall, loitering=loitering, direction=direction, now=now,
                     )
+                    event_type, details, identity_name, known, _label, category = _unpack_worker_decision(decision)
 
                     alert_classes = self.camera.get("alert_classes")
                     if alert_classes and not detections:
@@ -405,6 +406,19 @@ def decide_worker_event(detections, identity_info, zone_classification, camera_n
     if detections:
         return ("snapshot_info", format_detections(detections), None, None, None, None)
     return ("motion_detected", f"Movimento detectado na câmera {camera_name}", None, None, None, None)
+
+
+def _unpack_worker_decision(decision):
+    """Desempacota a decisão de evento de forma segura no worker.
+
+    decide_worker_event retorna None (supressão: fora do horário sem
+    identidade válida). Desempacotar None direto lançaria TypeError por
+    frame — log spam, thumbnails congeladas e cadência degradada (regressão
+    Fase 3). None vira tupla de None; decisão real passa intacta.
+    """
+    if decision is None:
+        return (None, None, None, None, None, None)
+    return decision
 
 
 def format_detections(detections):
