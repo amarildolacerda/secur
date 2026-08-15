@@ -987,11 +987,15 @@ tr.event-info td {
 }
 
 /* Camera grid responsivo — auto-fit colapsa colunas vazias e distribui os
-   cards pela largura disponível: 2 câmeras preenchem em 2 colunas largas,
-   4 viram 1 linha de 4, 8 viram 4x2 (desktop). */
+   cards pela largura disponível. Track com min 280px e max 420px: em telas
+   grandes (~1920px) ~3 câmeras por linha (~420px cada), centradas quando
+   não preenchem toda a largura; com mais câmeras as colunas se ajustam
+   entre 280-420px (ex: 4 → ~400px, 8 → 5 colunas de ~318px no 1920px,
+   4x2 no 1440px). */
 #camera-tiles,
 #camera-offline-list {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 420px));
+  justify-content: center;
 }
 
 #camera-tiles .card,
