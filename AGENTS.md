@@ -61,6 +61,11 @@ Fornecer orientações claras sobre como dividir tarefas entre agentes de projet
 - Priorizar compatibilidade local e operação offline.
 - Projetar a arquitetura para suportar até 8 câmeras no futuro.
 
+## Retroalimentar conhecimento
+- Quando encontra solução para um problema, documentar o problema e como resolver;
+- Se um recurso novo for requerido, avaliar o que já existe pesquisando na web para propor melhores práticas na implementação e focar no "valor" para o usuário;
+- Avaliar riscos, aqueles ligados a pessoas, cultura e legislação antes de implementar
+  
 ## Melhorias futuras
 
 - Incluir um agente de integração com automação residencial.
