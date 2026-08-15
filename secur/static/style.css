@@ -315,17 +315,23 @@ body {
 #summary-cards .card h3 {
   font-size: 0.65rem;
   letter-spacing: 0.5px;
+  color: var(--text);
 }
 
 #summary-cards .summary-value {
   font-size: 1.15rem;
-  margin: 3px 0 2px;
+  margin: 4px 0;
   line-height: 1.15;
+  text-align: center;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
 }
 
 #summary-cards .card p:last-child {
   font-size: 0.7rem;
   line-height: 1.3;
+  color: #8b93a7;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
