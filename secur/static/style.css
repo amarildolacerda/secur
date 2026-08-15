@@ -847,6 +847,11 @@ tr.event-info td {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  #camera-tiles,
+  #camera-offline-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .app-footer {
     left: 60px;
   }
@@ -855,6 +860,11 @@ tr.event-info td {
 /* Visão geral — em telas muito estreitas, cards empilham */
 @media (max-width: 480px) {
   #summary-cards {
+    grid-template-columns: 1fr;
+  }
+
+  #camera-tiles,
+  #camera-offline-list {
     grid-template-columns: 1fr;
   }
 }
@@ -973,6 +983,19 @@ tr.event-info td {
 /* Dashboard redesign (Fase 5) */
 #camera-tiles {
   margin-top: 12px;
+}
+
+/* Camera grid responsivo — auto-fit colapsa colunas vazias e distribui os
+   cards pela largura disponível: 2 câmeras preenchem em 2 colunas largas,
+   4 viram 1 linha de 4, 8 viram 4x2 (desktop). */
+#camera-tiles,
+#camera-offline-list {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+#camera-tiles .card,
+#camera-offline-list .card {
+  min-width: 0;
 }
 
 .section-title {
