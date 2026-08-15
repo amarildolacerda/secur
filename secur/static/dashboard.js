@@ -561,8 +561,12 @@ function renderEventCards(events, alertTypes) {
   }
   if (empty) empty.classList.add('hidden-panel');
 
-  let pending = filtered.length;
-  const cards = filtered.map((event, idx) => {
+  // NOTA (fix Critical do review da Task 2): o grid DEVE ser limpo antes do
+  // append — renderDashboard roda a cada 5s e sem isso os cards duplicariam
+  // a cada poll (o brief original omitia a limpeza).
+  grid.innerHTML = '';
+
+  filtered.forEach((event) => {
     const card = document.createElement('div');
     card.className = 'card event-card';
     const thumb = document.createElement('div');
@@ -591,7 +595,6 @@ function renderEventCards(events, alertTypes) {
         thumb.replaceWith(img);
       }
     });
-    return card;
   });
 
   // re-render relógio a cada 30s
