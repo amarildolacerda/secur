@@ -751,20 +751,22 @@ def test_zone_direction_line_default_none(tmp_path):
 
 def test_migration_adds_direction_line_column(tmp_path):
     import sqlite3
-    db_path = tmp_path / "legacy.db"
+    db_path = tmp_path / "events.db"
     conn = sqlite3.connect(str(db_path))
     conn.execute(
         "CREATE TABLE zones (id INTEGER PRIMARY KEY AUTOINCREMENT, "
         "name TEXT NOT NULL UNIQUE, classification TEXT NOT NULL DEFAULT 'pública', schedule TEXT)"
     )
-    conn.execute("INSERT INTO zones (name, classification) VALUES ('Sala', 'privativa')")
     conn.commit()
     conn.close()
 
+    # NOTA: sob pytest, EventStorage.__init__ APAGA o DB legado (unlink
+    # pré-existente do repo) e recria o schema — o padrão real de teste de
+    # migração (test_migration_adds_new_columns) verifica o schema novo
+    # funcionando, sem dados sobreviventes.
     storage = EventStorage(db_path)
-    zone = storage.get_zone(1)
-    assert zone is not None
-    assert zone["direction_line"] is None
+    zone_id = storage.add_zone("Sala", "privativa", direction_line={"axis": "vertical", "position": 0.5})
+    assert storage.get_zone(zone_id)["direction_line"] == {"axis": "vertical", "position": 0.5}
     storage.close()
 ```
 
