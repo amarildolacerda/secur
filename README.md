@@ -1,4 +1,6 @@
-# Secur
+# Secur — Tucuxi Monitor
+
+> **Nome comercial: Tucuxi Monitor** — análise de situações em câmeras IP. Detalhes e rationale em [docs/branding.md](docs/branding.md).
 
 Sistema de vigilância inteligente para câmeras IP, com desenvolvimento inicial em Linux e deploy final planejado para Raspberry Pi.
 
