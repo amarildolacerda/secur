@@ -1,5 +1,9 @@
 # Tucuxi Monitor
 
+<p align="center">
+  <img src="assets/tucuxi-logo.png" alt="Tucuxi Monitor" width="220">
+</p>
+
 > Análise inteligente de situações em câmeras IP — 100% local.
 
 O **Tucuxi Monitor** é uma plataforma de monitoramento por vídeo com inteligência artificial que observa suas câmeras IP e detecta situações de segurança — presença, intrusão, fogo, alagamento, objetos abandonados e muito mais — gerando alertas na hora certa, sem depender de nuvem.
