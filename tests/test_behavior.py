@@ -38,3 +38,35 @@ def test_check_loitering_filters_labels():
 
     tracks = [_track(first_seen=100.0, label="person")]
     assert check_loitering(tracks, 130.0, 30, 80, labels={"person", "car"}) is tracks[0]
+
+from secur.behavior import check_direction_crossing
+
+
+def test_direction_crossing_vertical_entering():
+    line = {"axis": "vertical", "x": 100.0}
+    assert check_direction_crossing((50.0, 60.0), (150.0, 60.0), line) == "entrando"
+
+
+def test_direction_crossing_vertical_leaving():
+    line = {"axis": "vertical", "x": 100.0}
+    assert check_direction_crossing((150.0, 60.0), (50.0, 60.0), line) == "saindo"
+
+
+def test_direction_crossing_horizontal_entering():
+    line = {"axis": "horizontal", "y": 100.0}
+    assert check_direction_crossing((50.0, 60.0), (50.0, 150.0), line) == "entrando"
+
+
+def test_direction_crossing_horizontal_leaving():
+    line = {"axis": "horizontal", "y": 100.0}
+    assert check_direction_crossing((50.0, 150.0), (50.0, 60.0), line) == "saindo"
+
+
+def test_direction_crossing_no_cross():
+    line = {"axis": "vertical", "x": 100.0}
+    assert check_direction_crossing((50.0, 60.0), (60.0, 60.0), line) is None
+
+
+def test_direction_crossing_no_prev_centroid():
+    line = {"axis": "vertical", "x": 100.0}
+    assert check_direction_crossing(None, (150.0, 60.0), line) is None
