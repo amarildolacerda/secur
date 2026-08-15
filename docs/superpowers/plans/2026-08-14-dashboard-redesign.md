@@ -359,7 +359,29 @@ git commit -m "feat: dashboard overview camera grid"
 - Consumes: `GET /events` → `[{id, timestamp, camera_id, zone, event_type, details, clip_path}]`; `GET /camera/<id>/thumbnails` → `[{id, timestamp, event_type, url}]`; `GET /api/notifications` → `{events: [{key, category: "alerta"|"info"}]}` (para o filtro "só alertas").
 - Produces: `timeAgo(ts)`, `createEventCard(event, thumbUrl)`, `applyEventFilters(events, alertTypes)`, `syncUrl()`/`applyUrl()`, `renderEvents(events, alertTypes)` — helpers locais da aba Eventos.
 
-- [ ] **Step 1: Substituir a section `recent-events` no HTML**
+- [ ] **Step 2: Corrigir `resetCameraList` (fix Important do review da Task 1)**
+
+O review da Task 1 encontrou: `resetCameraList()` (dashboard.js:479-482) deleta `camera-list.dataset.rendered`, mas `#camera-list` foi removido na Task 1 e o guard de re-render agora é `camera-tiles.dataset.rendered` — que nunca é limpo. Consequência: após adicionar/editar/excluir câmera, a grade da Visão geral não re-renderiza (câmera nova não aparece, empty state não some, câmera removida permanece).
+
+Em `secur/static/dashboard.js:479-482`, substituir:
+
+```javascript
+function resetCameraList() {
+  const cameraList = document.getElementById('camera-list');
+  if (cameraList) delete cameraList.dataset.rendered;
+}
+```
+
+por:
+
+```javascript
+function resetCameraList() {
+  const cameraTiles = document.getElementById('camera-tiles');
+  if (cameraTiles) delete cameraTiles.dataset.rendered;
+}
+```
+
+- [ ] **Step 3:** Substituir a section `recent-events` no HTML**
 
 Em `secur/templates/dashboard.html:259-270`, substituir:
 
@@ -417,7 +439,7 @@ por:
             </section>
 ```
 
-- [ ] **Step 2: Substituir `createEventRow` por helpers de card**
+- [ ] **Step 3:** Substituir `createEventRow` por helpers de card**
 
 Em `secur/static/dashboard.js:337-350`, substituir a função inteira por:
 
@@ -477,7 +499,7 @@ function createEventCard(event, thumbUrl) {
 }
 ```
 
-- [ ] **Step 3: Adicionar filtros + URL/localStorage + render**
+- [ ] **Step 4:** Adicionar filtros + URL/localStorage + render**
 
 Em `secur/static/dashboard.js`, adicionar após o bloco de `createEventCard`:
 
@@ -645,7 +667,7 @@ async function renderEvents(events) {
 
 Nota: `renderEvents` retorna `alertTypes` para o handler de mudança de filtro re-renderizar sem refetch.
 
-- [ ] **Step 4: Wire dos filtros**
+- [ ] **Step 5:** Wire dos filtros**
 
 Em `secur/static/dashboard.js`, adicionar após `renderEvents`:
 
@@ -692,7 +714,7 @@ function setupEventFilters() {
 }
 ```
 
-- [ ] **Step 5: Atualizar `renderDashboard` e o setup**
+- [ ] **Step 6:** Atualizar `renderDashboard` e o setup**
 
 Em `secur/static/dashboard.js:1039-1040`, substituir:
 
@@ -714,7 +736,7 @@ Em `secur/static/dashboard.js:1149-1156` (fim do setup), após `setupSettings();
 setupEventFilters();
 ```
 
-- [ ] **Step 6: CSS dos cards e chips**
+- [ ] **Step 7:** CSS dos cards e chips**
 
 Adicionar ao final de `secur/static/style.css`:
 
@@ -807,7 +829,7 @@ Adicionar ao final de `secur/static/style.css`:
 }
 ```
 
-- [ ] **Step 7: Verificação + commit**
+- [ ] **Step 8:** Verificação + commit**
 
 Run: `node --check secur/static/dashboard.js && /tmp/secur-venv/bin/python -m pytest tests/ -q`
 Expected: `node --check` sem output (OK) e `191 passed, 2 skipped` (regressão).
