@@ -319,7 +319,45 @@ def get_cooldown_for_event(event_type):
     return COOLDOWNS.get(event_type, 30)
 ```
 
-Em `main.py`, remover as duas funções e (se nada mais as usar) ajustar; o worker não as chamará mais (quem chama é `AlertRuleEngine`).
+**Regras IF-THIS-THEN-THAT (decisão N4 — providência).** `decide_worker_event` continua classificando o *tipo* do evento (N2–N3); a *providência* (N4) é data-driven:
+
+```python
+# Cada regra: SE todas as chaves em `when` batem no contexto, ENTÃO executa `then`.
+# Ações em `then["alert"]`: canais que devem notificar (gatilho de HA é o canal "ha").
+RULES = [
+    {"when": {"event_type": ["intruder_detected", "fall_detected"]},
+     "then": {"alert": ["telegram", "mqtt", "ha"], "disposition": "alert"}},
+    {"when": {"event_type": ["identity_recognized"]},
+     "then": {"alert": ["telegram", "mqtt"], "disposition": "alert"}},
+    {"when": {"event_type": ["loitering", "direction_change"], "zone_classification": ["private", "security"]},
+     "then": {"alert": ["telegram", "mqtt", "ha"], "disposition": "alert"}},
+    {"when": {"event_type": ["motion_detected", "snapshot_info"]},
+     "then": {"alert": ["telegram"], "disposition": "alert"}},
+    {"when": {"no_motion": True},
+     "then": {"alert": ["telegram"], "disposition": "alert"}},
+]
+
+
+def match_rule(rule, ctx):
+    for key, val in rule["when"].items():
+        actual = ctx.get(key)
+        if isinstance(val, list):
+            if actual not in val:
+                return False
+        elif actual != val:
+            return False
+    return True
+
+
+def evaluate_rules(event_type, zone_classification, no_motion):
+    ctx = {"event_type": event_type, "zone_classification": zone_classification, "no_motion": no_motion}
+    for rule in RULES:
+        if match_rule(rule, ctx):
+            return rule["then"]
+    return {"alert": ["telegram"], "disposition": "alert"}
+```
+
+Em `main.py`, remover as duas funções e (se nada mais as usar) ajustar; o worker não as chamará mais (quem chama `decide_worker_event` é `AlertRuleEngine`).
 
 - [ ] **Step 4: Rodar**
 
@@ -517,7 +555,7 @@ Expected: FAIL.
 ```python
 import time
 import logging
-from .event_rules import decide_worker_event, _unpack_worker_decision, get_cooldown_for_event
+        from .event_rules import decide_worker_event, _unpack_worker_decision, get_cooldown_for_event, evaluate_rules
 
 logger = logging.getLogger("alert_rules")
 
@@ -566,13 +604,18 @@ class AlertRuleEngine:
             return
 
         self._last_alert_time[event_type] = now
+        # Providência N4 orientada a regras IF-THIS-THEN-THAT (não hardcoded).
+        action = evaluate_rules(event_type, event.zone_classification, event.no_motion)
+        channels = action.get("alert", ["telegram"])
+        disposition = action.get("disposition", "alert")
         self.alerts.send(
             event.camera_id, event.zone, event_type, details, event.zone_classification,
             identity=identity_name, known=known, category=category,
             recognition_method=event.recognition_method, thumbnail_path=event.thumbnail_path,
+            routing_channels=channels,
         )
         self.camera_manager.request_clip(event.camera_id, event_id)
-        self.storage.update_event_level(event_id, 4, event_type=event_type, details=details, disposition="alert")
+        self.storage.update_event_level(event_id, 4, event_type=event_type, details=details, disposition=disposition)
 ```
 
 - [ ] **Step 4: Rodar**
@@ -596,15 +639,22 @@ git commit -m "feat(alerts): AlertRuleEngine consome fila e decide N2-N4"
 - Modify: `src/app.py` (não registrar `event_store_handler`)
 
 **Interfaces:**
-- `AlertService.send` continua com a mesma assinatura, mas **não persiste** (quem persiste é `AlertRuleEngine`).
+- `AlertService.send(payload..., routing_channels: list[str] = None)` continua com a assinatura, mas **não persiste** (quem persiste é `AlertRuleEngine`). `routing_channels`, quando fornecido (pela regra N4), restringe quais handlers/dispositivos disparam — ainda respeitando o `routing` de configuração (um canal só dispara se habilitado NA config E na regra).
 
 - [ ] **Step 1: Garantir que nenhum caller depende do retorno de `add_event` via alerts.send**
 
 Run: `py -3 -c "import src.app"` e checar que `event_store_handler` não é registrado.
 
-- [ ] **Step 2: Remover handler**
+- [ ] **Step 2: Remover handler + aceitar routing_channels**
 
 Em `src/alerts.py`, apagar a função `event_store_handler` (linha 54-67).
+
+No loop de handlers de `send` (linha 41-50), aplicar também o filtro de regra:
+```python
+if routing_channels is not None and channel is not None and channel not in routing_channels:
+    continue
+```
+E adicionar `routing_channels=None` ao parâmetro de `send` (linha 22).
 
 Em `src/app.py`, onde os handlers são montados (ex.: `handlers=[event_store_handler(storage), telegram_handler, mqtt_handler, ha_handler]`), remover `event_store_handler(storage)`.
 

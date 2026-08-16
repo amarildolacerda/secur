@@ -24,6 +24,7 @@ Estas regras DEVEM ser respeitadas por qualquer implementação futura que expan
 6. **Origem é registrada.** `source = local | edge` distingue o que veio da captura local do que veio de borda remota.
 7. **Evidência (clipe) é NVR/armazenamento** na arquitetura 80-câmeras (Fase D). No box local, o worker grava clipe sob demanda do consumidor; borda remota usará NVR depois.
 8. **Topologia de processamento:** N0 e N1 rodam com **processamento modesto na borda**, sobre grupos reduzidos de câmeras. N2–N4 rodam com **processamento robusto**, que pode ser **local ou hospedado** (central de análise). A fila `EventQueue` é o limite entre as duas faixas — produtores de borda (N0/N1) e consumidores robustos (N2–N4) só se conhecem pela interface da fila.
+9. **Decisão orientada a regras (IF THIS, THEN THAT):** as fases de decisão (N2–N4, especialmente a providência N4) usam regras declarativas `SE <condição> ENTÃO <ação>` avaliadas sobre o evento/contexto (tipo, zona, identidade, horário). Ações: alertar (canais), disparar Home Assistant, informar. Regras são **dados configuráveis**, não ramificação hardcoded — fáceis de estender sem mexer no motor. O motor (`AlertRuleEngine`) apenas avalia e executa as regras.
 
 ## Modelo de evento (níveis N0–N4)
 
