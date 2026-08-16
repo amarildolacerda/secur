@@ -31,3 +31,27 @@ def test_local_queue_delivers():
     q.enqueue(ev)
     import time; time.sleep(0.2)
     assert received and received[0].camera_id == "1"
+
+
+def test_worker_emits_not_alerts():
+    import src.events as ev_mod
+    sent = []
+    class FakeBus:
+        def enqueue(self, e): sent.append(e)
+        def subscribe(self, h): pass
+        def start(self): pass
+    # usa CameraWorker com stubs; verifica que enfileira e NÃO chama alerts.send
+    from src.main import CameraWorker
+    cam = {"id": "1", "name": "cam1", "alert_classes": ["person"]}
+    alerts_spy = {"called": False}
+    class FakeAlerts:
+        def send(self, *a, **k): alerts_spy["called"] = True
+    w = CameraWorker.__new__(CameraWorker)
+    w.camera = cam
+    w.event_bus = FakeBus()
+    w.alerts = FakeAlerts()
+    ce = w.build_candidate_event([{"label": "person"}], None, None, "zone", "public",
+                                 None, 1.0, False, None, None, None, no_motion=False)
+    assert ce.source == "local" and ce.level == 1 and ce.dropped is False
+    assert alerts_spy["called"] is False
+
