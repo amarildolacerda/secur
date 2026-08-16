@@ -112,7 +112,7 @@ O projeto captura vídeo de câmeras IP, realiza detecção de movimento e class
    ```
    Se ainda houver erro HTTP 403, baixe manualmente um MP4 de exemplo para `data/sample.mp4`.
 3. Configure as câmeras no dashboard usando o arquivo local:
-   - `source`: `C:\git\secur\data\sample.mp4` (Windows)
+   - `source`: `C:\git\tucuxi\data\sample.mp4` (Windows)
    - ou `/path/to/project/data/sample.mp4` (Linux)
 4. Defina o caminho do modelo de detecção de objetos (opcional) em `DETECTOR_MODEL_PATH`.
 5. Configure as variáveis de ambiente do Telegram:

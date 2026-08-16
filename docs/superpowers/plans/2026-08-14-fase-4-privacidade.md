@@ -380,7 +380,7 @@ Nota: os frames do buffer já chegam mascarados (item 3) — o clipe inteiro (pr
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_masking.py tests/test_main_filters.py -q`
 Expected: PASS.
 
-Run: `/tmp/secur-venv/bin/python -c "import secur.main"` no diretório `/mnt/c/git/secur`
+Run: `/tmp/secur-venv/bin/python -c "import secur.main"` no diretório `/mnt/c/git/tucuxi`
 Expected: sem erro de import.
 
 - [x] **Step 4: Commit**
@@ -1465,7 +1465,7 @@ from .config import is_privacy_mode_on
 Run: `/tmp/secur-venv/bin/python -m pytest tests/test_storage.py tests/test_main_filters.py tests/test_app.py -q`
 Expected: PASS.
 
-Run: `/tmp/secur-venv/bin/python -c "import secur.main; import secur.app"` no diretório `/mnt/c/git/secur`
+Run: `/tmp/secur-venv/bin/python -c "import secur.main; import secur.app"` no diretório `/mnt/c/git/tucuxi`
 Expected: sem erro (sem import circular).
 
 - [x] **Step 5: Commit**
