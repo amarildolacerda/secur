@@ -1,4 +1,18 @@
 from src.event_rules import decide_worker_event, _unpack_worker_decision
+import pytest
+
+
+@pytest.fixture
+def app(tmp_path):
+    from src.app import create_app
+    app = create_app(db_path=tmp_path / "test.db")
+    app.config.update({"TESTING": True})
+    return app
+
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
 
 
 def test_decide_fall():
@@ -74,4 +88,30 @@ def test_worker_emits_not_alerts():
                                  None, 1.0, False, None, None, None, no_motion=False)
     assert ce.source == "local" and ce.level == 1 and ce.dropped is False
     assert alerts_spy["called"] is False
+
+
+def test_request_clip(monkeypatch):
+    import threading
+    from src.main import CameraManager
+    called = []
+    class W:
+        def start_clip(self, eid): called.append(eid)
+        def status(self): return {}
+    cm = CameraManager.__new__(CameraManager)
+    cm.lock = threading.Lock()
+    cm.workers = {"1": W()}
+    cm.request_clip("1", 99)
+    assert called == [99]
+
+
+def test_ingest_enqueues(client, monkeypatch):
+    q = []
+    monkeypatch.setattr(client.application, "event_bus", type("B", (), {"enqueue": q.append})())
+    r = client.post("/api/ingest", json={"camera_id": "5", "detections": [{"label": "person"}]})
+    assert r.status_code == 202 and q and q[0].source == "edge" and q[0].level == 1
+    # sensor heterogêneo (alagamento)
+    r3 = client.post("/api/ingest", json={"camera_id": "flood-1", "device_type": "sensor", "event_type": "flood", "details": "nivel alto"})
+    assert r3.status_code == 202 and q[-1].device_type == "sensor" and q[-1].event_type == "flood"
+    r2 = client.post("/api/ingest", json={})
+    assert r2.status_code == 400
 

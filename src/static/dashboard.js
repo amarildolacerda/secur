@@ -84,13 +84,16 @@ function setupSidebarNavigation() {
   });
 }
 
-function createCameraCard(camera, offline = false, lastEventTs = null) {
+function createCameraCard(camera, offline = false, lastEventTs = null, n0Count = 0) {
   const faultOffline = cameraFaultState[camera.id] && cameraFaultState[camera.id].status === 'offline';
   offline = offline || faultOffline;
   const zoneLabel = camera.zone || '-';
   const imgId = `snapshot-${camera.id}`;
   const offlineBadge = offline
     ? '<span class="badge-offline">Offline</span>'
+    : '';
+  const n0Badge = n0Count > 0
+    ? `<span class="badge badge-info" title="Eventos N0 (captura) desta câmera">N0: ${n0Count}</span>`
     : '';
   const lastEventLabel = lastEventTs
     ? new Date(lastEventTs).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -100,7 +103,7 @@ function createCameraCard(camera, offline = false, lastEventTs = null) {
     <div class="card camera-card${offline ? ' camera-card-offline' : ''}">
       <div class="camera-card-header">
         <strong>${camera.name}</strong>
-        <span class="camera-badge">ID ${camera.id}</span>
+        <span class="camera-badge">ID ${camera.id}</span> ${n0Badge}
       </div>
       <p>Zona: ${zoneLabel} ${offlineBadge}</p>
       <p class="camera-source">Fonte: ${camera.source}</p>
@@ -272,20 +275,32 @@ function buildLastEventMap(events) {
   return map;
 }
 
+// Conta eventos por câmera (chaves normalizadas para string, pois /events
+// devolve camera_id como string e /cameras como int). Usado no indicador N0.
+function countEventsByCamera(events) {
+  const map = new Map();
+  events.forEach(e => {
+    if (e.camera_id == null) return;
+    const key = String(e.camera_id);
+    map.set(key, (map.get(key) || 0) + 1);
+  });
+  return map;
+}
+
 // Ordena câmeras por último evento desc (mais recentes primeiro). Câmeras sem
 // evento vão para o fim, preservando a ordem original entre elas (sort estável).
 function sortCamerasByLastEvent(cameras, lastEventMap) {
   return [...cameras].sort((a, b) => (lastEventMap.get(b.id) || 0) - (lastEventMap.get(a.id) || 0));
 }
 
-function renderCameraTiles(cameras, workerStatus, lastEventMap = new Map()) {
+function renderCameraTiles(cameras, workerStatus, lastEventMap = new Map(), n0ByCamera = new Map()) {
   const tilesContainer = document.getElementById('camera-tiles');
   const emptyState = document.getElementById('camera-empty-state');
   if (!tilesContainer) return;
 
   if (!cameras.length) {
     tilesContainer.innerHTML = '';
-    updateOfflineSection([], null, lastEventMap);
+    updateOfflineSection([], null, lastEventMap, n0ByCamera);
     if (emptyState) emptyState.classList.remove('hidden-panel');
     return;
   }
@@ -295,8 +310,8 @@ function renderCameraTiles(cameras, workerStatus, lastEventMap = new Map()) {
   const offlineCameras = workerStatus ? cameras.filter(c => !activeIds.has(c.id)) : [];
   const onlineCameras = workerStatus ? cameras.filter(c => activeIds.has(c.id)) : cameras;
 
-  tilesContainer.innerHTML = onlineCameras.map(c => createCameraCard(c, false, lastEventMap.get(c.id))).join('');
-  updateOfflineSection(cameras, workerStatus, lastEventMap);
+  tilesContainer.innerHTML = onlineCameras.map(c => createCameraCard(c, false, lastEventMap.get(c.id), n0ByCamera.get(String(c.id)) || 0)).join('');
+  updateOfflineSection(cameras, workerStatus, lastEventMap, n0ByCamera);
   observeSnapshots();
 }
 
@@ -305,7 +320,7 @@ function renderCameraTiles(cameras, workerStatus, lastEventMap = new Map()) {
 // em #camera-offline-section. Chamada a cada poll da overview (sem re-renderizar
 // a grade, que tem guard de lazy-load) mantém contador e visibilidade em dia.
 // A preferência do usuário (showOfflineCameras) é preservada na sessão.
-function updateOfflineSection(cameras, workerStatus, lastEventMap = new Map()) {
+function updateOfflineSection(cameras, workerStatus, lastEventMap = new Map(), n0ByCamera = new Map()) {
   const offlineBar = document.getElementById('camera-offline-bar');
   const offlineSection = document.getElementById('camera-offline-section');
   const offlineList = document.getElementById('camera-offline-list');
@@ -316,7 +331,7 @@ function updateOfflineSection(cameras, workerStatus, lastEventMap = new Map()) {
   const offlineCameras = workerStatus ? cameras.filter(c => !activeIds.has(c.id)) : [];
 
   if (offlineCameras.length) {
-    if (offlineList) offlineList.innerHTML = offlineCameras.map(c => createCameraCard(c, true, lastEventMap.get(c.id))).join('');
+    if (offlineList) offlineList.innerHTML = offlineCameras.map(c => createCameraCard(c, true, lastEventMap.get(c.id), n0ByCamera.get(String(c.id)) || 0)).join('');
     if (offlineLabel) offlineLabel.textContent = `Ver offline (${offlineCameras.length})`;
     offlineBar.classList.remove('hidden-panel');
     offlineSection.classList.toggle('hidden-panel', !showOfflineCameras);
@@ -680,13 +695,14 @@ function readFilterState() {
     camera: url.get('camera') || '',
     zone: url.get('zone') || '',
     type: url.get('type') || '',
+    level: url.get('level') || '',
     since: url.get('since') || '',
     alerts: url.get('alerts') === '1',
   };
   if (Object.values(state).some(v => v !== '' && v !== false)) return state;
   try {
     const saved = JSON.parse(localStorage.getItem(EVENT_FILTERS_KEY) || 'null');
-    if (saved) return { camera: '', zone: '', type: '', since: '', alerts: false, ...saved };
+    if (saved) return { camera: '', zone: '', type: '', level: '', since: '', alerts: false, ...saved };
   } catch (e) { /* ignore */ }
   return state;
 }
@@ -702,6 +718,7 @@ function syncUrl(state) {
   if (state.camera) url.set('camera', state.camera);
   if (state.zone) url.set('zone', state.zone);
   if (state.type) url.set('type', state.type);
+  if (state.level) url.set('level', state.level);
   if (state.since) url.set('since', state.since);
   if (state.alerts) url.set('alerts', '1');
   const qs = url.toString();
@@ -716,6 +733,7 @@ function applyEventFilters(events, alertTypes) {
     if (state.camera && String(e.camera_id) !== state.camera) return false;
     if (state.zone && (e.zone || '') !== state.zone) return false;
     if (state.type && e.event_type !== state.type) return false;
+    if (state.level && Number(e.level) !== Number(state.level)) return false;
     if (cutoff && new Date(e.timestamp).getTime() < cutoff) return false;
     if (state.alerts && !alertTypes.has(e.event_type)) return false;
     return true;
@@ -757,6 +775,8 @@ function populateFilterOptions(events) {
   }
   const sinceSelect = document.getElementById('filter-since');
   if (sinceSelect) sinceSelect.value = state.since;
+  const levelSelect = document.getElementById('filter-level');
+  if (levelSelect) levelSelect.value = state.level;
   const alertsCheck = document.getElementById('filter-alerts');
   if (alertsCheck) alertsCheck.checked = state.alerts;
 }
@@ -788,9 +808,13 @@ function renderEventCards(events, alertTypes) {
     card.appendChild(thumb);
     const body = document.createElement('div');
     body.className = 'event-card-body';
+    const lvl = event.level != null ? Number(event.level) : 0;
+    const lvlLabel = ['N0', 'N1', 'N2', 'N3', 'N4'][lvl] || ('N' + lvl);
+    const droppedBadge = event.dropped ? '<span class="badge badge-off">descartado N1</span>' : '';
+    const levelBadge = `<span class="badge badge-info">${lvlLabel}</span>`;
     body.innerHTML = `
       <div class="event-card-header">
-        <span class="event-type">${event.event_type} ${alertTypes.has(event.event_type) ? '<span class="badge badge-alert">alerta</span>' : '<span class="badge badge-info">info</span>'}</span>
+        <span class="event-type">${event.event_type} ${alertTypes.has(event.event_type) ? '<span class="badge badge-alert">alerta</span>' : '<span class="badge badge-info">info</span>'} ${levelBadge} ${droppedBadge}</span>
         <span class="event-time" data-ts="${new Date(event.timestamp).toISOString()}">${timeAgo(event.timestamp)}</span>
       </div>
       <p class="event-meta">Câmera ${event.camera_id || '-'}${event.zone ? ' · ' + event.zone : ''}</p>
@@ -837,7 +861,7 @@ let lastEvents = [];
 let lastAlertTypes = new Set();
 
 function setupEventFilters() {
-  const ids = ['filter-camera', 'filter-zone', 'filter-type', 'filter-since', 'filter-alerts'];
+  const ids = ['filter-camera', 'filter-zone', 'filter-type', 'filter-level', 'filter-since', 'filter-alerts'];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', () => {
@@ -845,6 +869,7 @@ function setupEventFilters() {
       state.camera = document.getElementById('filter-camera').value;
       state.zone = document.getElementById('filter-zone').value;
       state.type = document.getElementById('filter-type').value;
+      state.level = document.getElementById('filter-level').value;
       state.since = document.getElementById('filter-since').value;
       state.alerts = document.getElementById('filter-alerts').checked;
       saveFilterState(state);
@@ -856,19 +881,21 @@ function setupEventFilters() {
   const clearButtons = ['filter-clear', 'events-clear-filters'];
   clearButtons.forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('click', () => {
+    if (el)     el.addEventListener('click', () => {
       const camera = document.getElementById('filter-camera');
       const zone = document.getElementById('filter-zone');
       const type = document.getElementById('filter-type');
+      const level = document.getElementById('filter-level');
       const since = document.getElementById('filter-since');
       const alerts = document.getElementById('filter-alerts');
       if (camera) camera.value = '';
       if (zone) zone.value = '';
       if (type) type.value = '';
+      if (level) level.value = '';
       if (since) since.value = '';
       if (alerts) alerts.checked = false;
-      saveFilterState({ camera: '', zone: '', type: '', since: '', alerts: false });
-      syncUrl({ camera: '', zone: '', type: '', since: '', alerts: false });
+      saveFilterState({ camera: '', zone: '', type: '', level: '', since: '', alerts: false });
+      syncUrl({ camera: '', zone: '', type: '', level: '', since: '', alerts: false });
       renderEventCards(lastEvents, lastAlertTypes);
     });
   });
@@ -1585,6 +1612,14 @@ async function renderOverviewSection() {
   const events = await fetchData('/events');
   const zones = await fetchData('/zones');
 
+  // Indicador N0 por câmera (Visão geral): contagem de eventos de captura
+  // (level=0) via reuso de /events?level=0 (filtro server-side).
+  let n0ByCamera = new Map();
+  try {
+    const n0events = await fetchData('/events?level=0');
+    n0ByCamera = countEventsByCamera(n0events);
+  } catch (e) { /* sem N0: indicador omitido */ }
+
   const summaryCards = document.getElementById('summary-cards');
   const lastEvent = events.length > 0 ? events[0] : null;
   const lastEventTime = lastEvent ? new Date(lastEvent.timestamp).toLocaleString() : 'Nenhum evento';
@@ -1612,15 +1647,15 @@ async function renderOverviewSection() {
 
   if (!cameraTiles.dataset.rendered) {
     cameraTiles.dataset.rendered = '1';
-    renderCameraTiles(sortedCameras, workerStatus, lastEventMap);
+    renderCameraTiles(sortedCameras, workerStatus, lastEventMap, n0ByCamera);
   } else {
-    updateOfflineSection(sortedCameras, workerStatus, lastEventMap);
+    updateOfflineSection(sortedCameras, workerStatus, lastEventMap, n0ByCamera);
   }
   updateVisibleSnapshots(sortedCameras);
 }
 
 async function renderEventsSection() {
-  const events = await fetchData('/events');
+  const events = await fetchData('/events?level=' + (readFilterState().level || ''));
   lastEvents = events;
   lastAlertTypes = await renderEvents(events);
 }

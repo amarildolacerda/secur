@@ -92,8 +92,9 @@ except Exception:
     IdentityRecognizer = None
 
 
-def create_app(camera_manager=None, db_path=None, alerts=None):
+def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
     app = Flask(__name__, template_folder="templates", static_folder="static")
+    app.event_bus = event_bus
     storage = EventStorage(db_path) if db_path is not None else EventStorage()
     # recognizer_factory hook: tests or callers may set app.recognizer_factory = lambda storage: recognizer
     def _make_recognizer() -> Optional[object]:
@@ -369,8 +370,48 @@ def create_app(camera_manager=None, db_path=None, alerts=None):
 
     @app.route("/events")
     def events():
-        items = storage.list_events(limit=100)
+        level = request.args.get("level", type=int)
+        camera_id = request.args.get("camera_id")
+        items = storage.list_events(limit=100, level=level, camera_id=camera_id)
         return jsonify(items)
+
+    @app.route("/api/ingest", methods=["POST"])
+    def api_ingest():
+        """Borda remota (câmeras E dispositivos/sensores) entra na fila em N1.
+
+        Genérico: aceita JSON {camera_id (id de origem), device_type?, zone?,
+        event_type?, details?, detections?, thumbnail_path?, identity_name?, ...}.
+        Para sensores (ex.: alagamento), device_type="sensor" e event_type
+        (ex.: "flood") é o sinal; detections pode vir vazio.
+        """
+        bus = getattr(app, "event_bus", None)
+        if bus is None:
+            return jsonify({"error": "event bus indisponivel"}), 503
+        payload = request.get_json(silent=True) or {}
+        camera_id = payload.get("camera_id")
+        if not camera_id:
+            return jsonify({"error": "camera_id obrigatorio"}), 400
+        from .events import CameraEvent
+        event = CameraEvent(
+            camera_id=str(camera_id),
+            device_type=payload.get("device_type", "camera"),
+            zone=payload.get("zone"),
+            zone_classification=payload.get("zone_classification"),
+            level=1,
+            source="edge",
+            event_type=payload.get("event_type"),
+            details=payload.get("details"),
+            identity_name=payload.get("identity_name"),
+            known=payload.get("known"),
+            category=payload.get("category"),
+            recognition_method=payload.get("recognition_method"),
+            thumbnail_path=payload.get("thumbnail_path"),
+            detections=payload.get("detections") or [],
+            camera_name=payload.get("camera_name"),
+            alert_classes=payload.get("alert_classes"),
+        )
+        bus.enqueue(event)
+        return jsonify({"status": "enqueued", "event_id": event.event_id}), 202
 
     @app.route("/zones")
     def zones():

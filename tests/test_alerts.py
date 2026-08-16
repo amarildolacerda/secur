@@ -209,6 +209,37 @@ def test_alert_service_respects_routing(monkeypatch):
     assert called[0]["event_type"] == "intruder_detected"
 
 
+def test_alert_service_routing_channels_restricts_handlers(monkeypatch):
+    """Task 6: routing_channels (regra N4) restringe quais canais disparam,
+    ainda respeitando o routing de configuração."""
+    called = []
+
+    def h1(payload):
+        called.append("telegram")
+    h1.channel = "telegram"
+
+    def h2(payload):
+        called.append("automation")
+    h2.channel = "automation"
+
+    service = AlertService()
+    service.register_handler(h1)
+    service.register_handler(h2)
+
+    # Regra restringe apenas ao canal telegram
+    service.send("1", "entrada", "intruder_detected", "x", routing_channels=["telegram"])
+    assert called == ["telegram"]
+
+    called.clear()
+    service.send("1", "entrada", "intruder_detected", "x", routing_channels=["automation"])
+    assert called == ["automation"]
+
+    # Sem routing_channels → sem restrição de regra (todos disparam)
+    called.clear()
+    service.send("1", "entrada", "intruder_detected", "x")
+    assert called == ["telegram", "automation"]
+
+
 def test_alert_service_skips_no_motion_for_telegram(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token123")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat123")
@@ -224,37 +255,9 @@ def test_alert_service_skips_no_motion_for_telegram(monkeypatch):
     service.send("1", "entrada", "no_motion", "teste")
 
 
-def test_event_store_handler_records_event(monkeypatch):
-    from src.alerts import event_store_handler
-
-    recorded = {}
-
-    class FakeStorage:
-        def add_event(self, camera_id, zone, event_type, details=None):
-            recorded["camera_id"] = camera_id
-            recorded["zone"] = zone
-            recorded["event_type"] = event_type
-            recorded["details"] = details
-
-    handler = event_store_handler(FakeStorage())
-    payload = {
-        "camera_id": "1",
-        "zone": "entrada",
-        "event_type": "motion_detected",
-        "details": "Movimento detectado",
-        "identity": "João",
-        "known": True,
-        "category": "person",
-    }
-    handler(payload)
-
-    assert recorded["camera_id"] == "1"
-    assert recorded["zone"] == "entrada"
-    assert recorded["event_type"] == "motion_detected"
-    assert recorded["details"] == "Movimento detectado"
-
-
-def test_alert_service_with_storage_registers_store_handler(monkeypatch):
+def test_alert_service_with_storage_does_not_persist(monkeypatch):
+    """Regressão Task 6: AlertService não persiste mais via storage — quem
+    persiste é o AlertRuleEngine. Um storage passado no __init__ é ignorado."""
     recorded = []
 
     class FakeStorage:
@@ -264,9 +267,7 @@ def test_alert_service_with_storage_registers_store_handler(monkeypatch):
     service = AlertService(storage=FakeStorage())
     service.send("1", "entrada", "no_motion", "Sem movimento")
 
-    assert len(recorded) == 1
-    assert recorded[0][0] == "1"
-    assert recorded[0][2] == "no_motion"
+    assert recorded == []
 
 
 def test_alert_service_payload_includes_optional_paths(monkeypatch):
@@ -286,20 +287,21 @@ def test_alert_service_payload_includes_optional_paths(monkeypatch):
     assert called[0]["clip_path"] == "/tmp/clip.mp4"
 
 
-def test_alert_service_returns_event_id(monkeypatch):
+def test_alert_service_returns_none_without_persistence(monkeypatch):
+    """Task 6: send NÃO persiste mais — sem handler com retorno, o resultado
+    é None (não existe mais handler de storage devolvendo um id)."""
     class FakeStorage:
         def add_event(self, camera_id, zone, event_type, details=None):
             return 42
 
     service = AlertService(storage=FakeStorage())
     event_id = service.send("1", "entrada", "motion_detected", "teste")
-    assert event_id == 42
+    assert event_id is None
 
-
-def test_alert_service_returns_none_without_store_handler():
-    service = AlertService()
-    service.register_handler(lambda payload: None)
-    assert service.send("1", "entrada", "motion_detected") is None
+    # Sem storage também: um handler comum que não devolve id → None.
+    service2 = AlertService()
+    service2.register_handler(lambda payload: None)
+    assert service2.send("1", "entrada", "motion_detected") is None
 
 
 def test_format_message_full_context():

@@ -54,6 +54,7 @@ from .app import create_app
 from .storage import EventStorage
 from .identity import IdentityRecognizer, RECOGNITION_LABELS, build_recognizer
 from .event_rules import decide_worker_event, _unpack_worker_decision
+from .alert_rules import AlertRuleEngine
 from .notifications import DEFAULT_ROUTING
 from .events import CameraEvent, LocalEventQueue
 from .tracking import IoUTracker
@@ -602,6 +603,14 @@ class CameraManager:
         with self.lock:
             return [worker.status() for worker in self.workers.values()]
 
+    def request_clip(self, camera_id, event_id):
+        """Pede ao worker da câmera que grave o clipe do evento (janela
+        pré-evento + pós-evento). Chamado pelo AlertRuleEngine na decisão N4."""
+        with self.lock:
+            worker = self.workers.get(camera_id)
+        if worker is not None:
+            worker.start_clip(event_id)
+
 
 def main():
     storage = EventStorage()
@@ -633,6 +642,12 @@ def main():
     camera_manager = CameraManager(storage, alerts, object_detector, identity_recognizer, event_bus)
     camera_manager.start()
 
+    # Consumidor da fila: AlertRuleEngine decide N2–N4 (persiste, alerta e
+    # pede clipe). O worker apenas PRODUZ eventos N0/N1 no event_bus.
+    alert_engine = AlertRuleEngine(storage, alerts, camera_manager)
+    event_bus.subscribe(alert_engine.handle)
+    event_bus.start()
+
     # Register device with HA via MQTT auto-discovery
     cameras = storage.list_cameras()
     mqtt_register_device(cameras)
@@ -645,5 +660,5 @@ def main():
         {"name": "Recepção", "classification": "segurança"},
     ])
 
-    app = create_app(camera_manager=camera_manager, alerts=alerts)
+    app = create_app(camera_manager=camera_manager, alerts=alerts, event_bus=event_bus)
     app.run(host=SERVER_HOST, port=SERVER_PORT)
