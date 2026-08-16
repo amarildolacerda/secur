@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import time
@@ -434,24 +433,6 @@ def should_send_no_motion(last_motion_time, motion_reported, no_motion_alerted, 
         and not no_motion_alerted
         and (now - last_motion_time) >= threshold
     )
-
-
-def format_detections(detections):
-    if not detections:
-        return None
-
-    labels = [d["label"] for d in detections]
-    details = json.dumps(
-        [
-            {
-                "label": d["label"],
-                "confidence": round(d.get("confidence", 0.0), 2),
-                "bbox": d.get("bbox"),
-            }
-            for d in detections
-        ]
-    )
-    return f"Objetos detectados: {', '.join(labels)} | detalhes: {details}"
 
 
 def filter_detections_by_classes(detections, alert_classes):

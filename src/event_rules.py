@@ -2,6 +2,8 @@ import json
 
 from .identity import decide_event
 
+# Cooldown do motor de fila (queue engine), distinto de qualquer
+# config-driven em main (ex.: ALERT_COOLDOWN_BY_EVENT).
 COOLDOWNS = {
     "motion_detected": 30,
     "snapshot_info": 30,
