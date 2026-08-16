@@ -130,6 +130,14 @@ class EventStorage:
                         cursor.execute(f"ALTER TABLE events ADD COLUMN {col} {ddl}")
             except Exception:
                 pass
+            # Ensure event_id column exists in camera_thumbnails for older DBs
+            try:
+                cursor.execute("PRAGMA table_info(camera_thumbnails)")
+                cols = [r[1] for r in cursor.fetchall()]
+                if 'event_id' not in cols:
+                    cursor.execute("ALTER TABLE camera_thumbnails ADD COLUMN event_id TEXT")
+            except Exception:
+                pass
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS camera_thumbnails (
@@ -137,7 +145,8 @@ class EventStorage:
                     camera_id INTEGER NOT NULL,
                     timestamp TEXT NOT NULL,
                     event_type TEXT,
-                    path TEXT NOT NULL
+                    path TEXT NOT NULL,
+                    event_id TEXT
                 )
                 """
             )
@@ -430,13 +439,13 @@ class EventStorage:
             self.connection.commit()
             return cursor.rowcount > 0
 
-    def add_camera_thumbnail(self, camera_id: int, path: str, event_type: str) -> int:
+    def add_camera_thumbnail(self, camera_id: int, path: str, event_type: str, event_id: str = None) -> int:
         timestamp = datetime.now(timezone.utc).isoformat()
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "INSERT INTO camera_thumbnails (camera_id, timestamp, event_type, path) VALUES (?, ?, ?, ?)",
-                (camera_id, timestamp, event_type, path),
+                "INSERT INTO camera_thumbnails (camera_id, timestamp, event_type, path, event_id) VALUES (?, ?, ?, ?, ?)",
+                (camera_id, timestamp, event_type, path, event_id),
             )
             self.connection.commit()
             return cursor.lastrowid
@@ -445,8 +454,11 @@ class EventStorage:
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "SELECT id, timestamp, camera_id, event_type, path FROM camera_thumbnails "
-                "WHERE camera_id = ? ORDER BY id DESC LIMIT ?",
+                "SELECT t.id, t.timestamp, t.camera_id, t.event_type, t.path, t.event_id, "
+                "       e.level AS event_level, e.disposition AS event_disposition, e.dropped AS event_dropped "
+                "FROM camera_thumbnails t "
+                "LEFT JOIN events e ON e.id = t.event_id "
+                "WHERE t.camera_id = ? ORDER BY t.id DESC LIMIT ?",
                 (camera_id, limit),
             )
             return [dict(row) for row in cursor.fetchall()]

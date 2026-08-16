@@ -479,6 +479,17 @@ function closeLivePlayer() {
 
 /* ========== Thumbnail History ========== */
 
+function thumbPhaseBadge(item) {
+  if (item.dropped === true) return '<span class="thumb-phase-badge thumb-phase-dropped">descartado</span>';
+  const lvl = item.level != null ? Number(item.level) : null;
+  if (lvl === null || lvl === undefined) return '';
+  const labels = ['N0', 'N1', 'N2', 'N3', 'N4'];
+  const classes = ['thumb-phase-n0', 'thumb-phase-n1', 'thumb-phase-n2', 'thumb-phase-n3', 'thumb-phase-n4'];
+  const label = labels[lvl] || ('N' + lvl);
+  const cls = classes[lvl] || 'thumb-phase-n0';
+  return `<span class="thumb-phase-badge ${cls}">${label}</span>`;
+}
+
 function openThumbHistory(cameraId, cameraName) {
   const overlay = document.getElementById('thumb-history-overlay');
   const title = document.getElementById('thumb-history-title');
@@ -498,10 +509,10 @@ function openThumbHistory(cameraId, cameraName) {
         return;
       }
       grid.innerHTML = items.map(item => `
-        <div class="thumb-history-item">
+        <div class="thumb-history-item" onclick="openThumbDetail('${item.url}', '${item.timestamp}', '${item.event_type || ''}', '${item.level != null ? item.level : ''}', '${item.disposition || ''}', ${item.dropped === true})">
           <img src="${item.url}" alt="thumbnail" loading="lazy" />
-          <span class="thumb-history-time">${new Date(item.timestamp).toLocaleString()}</span>
-          <span class="thumb-history-event">${item.event_type}</span>
+          <span class="thumb-history-time">${new Date(item.timestamp).toLocaleString()} ${thumbPhaseBadge(item)}</span>
+          <span class="thumb-history-event">${item.event_type || ''}</span>
         </div>
       `).join('');
     })
@@ -509,6 +520,37 @@ function openThumbHistory(cameraId, cameraName) {
       empty.textContent = 'Falha ao carregar histórico.';
       empty.style.display = '';
     });
+}
+
+function openThumbDetail(url, timestamp, eventType, level, disposition, dropped) {
+  const overlay = document.getElementById('thumb-detail-overlay');
+  const title = document.getElementById('thumb-detail-title');
+  const img = document.getElementById('thumb-detail-img');
+  const meta = document.getElementById('thumb-detail-meta');
+
+  title.textContent = 'Detalhe do evento';
+  img.src = url;
+
+  const lvl = level !== '' && level !== null && level !== undefined ? Number(level) : null;
+  const lvlLabel = lvl !== null ? (['N0', 'N1', 'N2', 'N3', 'N4'][lvl] || ('N' + lvl)) : null;
+  const dispLabel = disposition ? `<span class="badge badge-info">${disposition}</span>` : '';
+  const droppedLabel = dropped ? '<span class="badge badge-off">descartado</span>' : '';
+  const lvlBadge = lvlLabel ? `<span class="badge badge-info">${lvlLabel}</span>` : '';
+
+  meta.innerHTML = `
+    <span><strong>Data:</strong> ${new Date(timestamp).toLocaleString()}</span>
+    ${eventType ? `<span><strong>Tipo:</strong> ${eventType}</span>` : ''}
+    ${lvlBadge}
+    ${dispLabel}
+    ${droppedLabel}
+  `;
+
+  overlay.classList.remove('hidden-panel');
+}
+
+function closeThumbDetail() {
+  const overlay = document.getElementById('thumb-detail-overlay');
+  if (overlay) overlay.classList.add('hidden-panel');
 }
 
 function closeThumbHistory() {
@@ -801,14 +843,17 @@ function renderEventCards(events, alertTypes) {
 
   filtered.forEach((event) => {
     const card = document.createElement('div');
-    card.className = 'card event-card';
+    const lvl = event.level != null ? Number(event.level) : 0;
+    let cardClass = 'card event-card';
+    if (lvl === 3) cardClass += ' event-card-n3';
+    if (lvl === 4) cardClass += ' event-card-n4';
+    card.className = cardClass;
     const thumb = document.createElement('div');
     thumb.className = 'event-thumb event-thumb-empty';
     thumb.innerHTML = '&#x1F4F7;';
     card.appendChild(thumb);
     const body = document.createElement('div');
     body.className = 'event-card-body';
-    const lvl = event.level != null ? Number(event.level) : 0;
     const lvlLabel = ['N0', 'N1', 'N2', 'N3', 'N4'][lvl] || ('N' + lvl);
     const droppedBadge = event.dropped ? '<span class="badge badge-off">descartado N1</span>' : '';
     const levelBadge = `<span class="badge badge-info">${lvlLabel}</span>`;

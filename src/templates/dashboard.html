@@ -423,6 +423,18 @@
         </div>
     </div>
 
+    <!-- Thumbnail Detail Modal -->
+    <div id="thumb-detail-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
+        <div class="dialog-card thumb-detail-card">
+            <div class="dialog-header">
+                <h3 id="thumb-detail-title">Detalhe</h3>
+                <button type="button" class="button-close" aria-label="Fechar" onclick="closeThumbDetail()">×</button>
+            </div>
+            <img id="thumb-detail-img" src="" alt="Thumbnail ampliado" />
+            <div id="thumb-detail-meta" class="thumb-detail-meta"></div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <script src="/static/camera_fault.js"></script>
     <script src="/static/dashboard.js"></script>

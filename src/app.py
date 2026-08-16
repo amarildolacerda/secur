@@ -216,6 +216,10 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
                 "timestamp": it["timestamp"],
                 "event_type": it["event_type"],
                 "url": f"/thumbnails/{it['id']}/image",
+                "event_id": it.get("event_id"),
+                "level": it.get("event_level"),
+                "disposition": it.get("event_disposition"),
+                "dropped": bool(it.get("event_dropped")) if it.get("event_dropped") is not None else None,
             })
         return jsonify(out)
 

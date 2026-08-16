@@ -132,7 +132,7 @@ class CameraWorker:
             return False
         return True
 
-    def _capture_thumbnail(self, storage_frame, event_type, now, keep=THUMBNAIL_HISTORY_SIZE, days=None):
+    def _capture_thumbnail(self, storage_frame, event_type, now, keep=THUMBNAIL_HISTORY_SIZE, days=None, event_id=None):
         """Salva um thumbnail com dedup por similaridade.
 
         Retorna o path (str) se gravou, ou None se pulado (intervalo não
@@ -151,7 +151,7 @@ class CameraWorker:
             if not ok:
                 return None
             path.write_bytes(jpg.tobytes())
-            self.storage.add_camera_thumbnail(self.camera["id"], str(path), event_type)
+            self.storage.add_camera_thumbnail(self.camera["id"], str(path), event_type, event_id=event_id)
             self.storage.prune_camera_thumbnails(self.camera["id"], keep=keep, max_age_days=days)
         except Exception:
             logger.warning("Falha ao capturar thumbnail (câmera %s)", self.camera.get("name"))
@@ -397,15 +397,17 @@ class CameraWorker:
 
                     # N0/N1: a captura apenas PRODUZ eventos; NÃO decide nem
                     # dispara alerta/HA (isso é N2–N4, a cargo de AlertRuleEngine).
-                    thumb_path = self._capture_thumbnail(
-                        storage_frame, None, time.time(), thumb_keep, thumb_days
-                    )
                     now = time.time()
                     event = self.build_candidate_event(
                         detections, identity_info, identity_label, zone_name,
                         zone_classification, zone_schedule, now, fall, loitering,
-                        direction, thumb_path, no_motion=False,
+                        direction, None, no_motion=False,
                     )
+                    thumb_path = self._capture_thumbnail(
+                        storage_frame, None, time.time(), thumb_keep, thumb_days,
+                        event_id=event.event_id,
+                    )
+                    event.thumbnail_path = thumb_path
                     self.event_bus.enqueue(event)
                     # Movimento/atividade real foi emitido: autoriza um
                     # futuro "sem movimento" (se ficar quieto depois).
@@ -420,7 +422,7 @@ class CameraWorker:
 
                 # Thumbnail history: captura com dedup durante movimento contínuo
                 now_thumb = time.time()
-                self._capture_thumbnail(storage_frame, None, now_thumb, thumb_keep, thumb_days)
+                self._capture_thumbnail(storage_frame, None, now_thumb, thumb_keep, thumb_days, event_id=None)
             else:
                 # No motion: after NO_MOTION_ALERT_SECONDS without any occurrence, send "sem movimento"
                 if should_send_no_motion(
