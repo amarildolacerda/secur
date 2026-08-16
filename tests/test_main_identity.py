@@ -1,5 +1,5 @@
 import numpy as np
-from secur.main import decide_worker_event, should_capture_thumbnail
+from src.main import decide_worker_event, should_capture_thumbnail
 
 
 def test_decide_worker_event_known():

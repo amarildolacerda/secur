@@ -7,8 +7,8 @@ import numpy as np
 # Ensure repo root is importable
 repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root))
-from secur.app import create_app
-from secur.identity import IdentityRecognizer
+from src.app import create_app
+from src.identity import IdentityRecognizer
 
 # stub embedder: returns a fixed normalized vector
 def make_stub(vec):

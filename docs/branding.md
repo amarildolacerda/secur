@@ -39,7 +39,7 @@
 
 ## Relação com o projeto (Secur)
 
-- **Secur** = nome técnico do projeto/codinome (repo, pacote Python, branch).
+- **Secur** = nome técnico/codinome (CLI `secur`, tópicos MQTT/HA). O código-fonte vive em `src/`.
 - **Tucuxi Monitor** = nome comercial do produto (marketing, site, dashboard, documentação pública).
 
 Sugestão: o dashboard/README podem exibir "Tucuxi Monitor" como nome do produto, mantendo "Secur" no código.

@@ -1,8 +1,8 @@
 import time
 from datetime import datetime
 
-from secur.config import ALERT_COOLDOWN_SECONDS
-from secur.main import filter_detections_by_classes, get_cooldown_for_event, is_within_schedule
+from src.config import ALERT_COOLDOWN_SECONDS
+from src.main import filter_detections_by_classes, get_cooldown_for_event, is_within_schedule
 
 
 def _epoch_at(hour, minute):
@@ -53,12 +53,12 @@ def test_get_cooldown_for_event_fallback():
 
 
 def test_get_cooldown_for_event_specific():
-    from secur.config import ALERT_COOLDOWN_BY_EVENT
+    from src.config import ALERT_COOLDOWN_BY_EVENT
     assert get_cooldown_for_event("intruder_detected") == ALERT_COOLDOWN_BY_EVENT["intruder_detected"]
 
 
 def test_circular_frame_buffer_keeps_newest():
-    from secur.main import CircularFrameBuffer
+    from src.main import CircularFrameBuffer
     buf = CircularFrameBuffer(maxlen=3)
     for i in range(5):
         buf.push(i)
@@ -66,37 +66,37 @@ def test_circular_frame_buffer_keeps_newest():
 
 
 def test_circular_frame_buffer_empty():
-    from secur.main import CircularFrameBuffer
+    from src.main import CircularFrameBuffer
     buf = CircularFrameBuffer(maxlen=3)
     assert buf.frames() == []
 
 def test_resolve_retention_default_when_no_policy():
-    from secur.main import resolve_retention
+    from src.main import resolve_retention
     assert resolve_retention(None, "thumbnails", 30) == (30, None)
     assert resolve_retention({}, "thumbnails", 30) == (30, None)
 
 
 def test_resolve_retention_policy_values():
-    from secur.main import resolve_retention
+    from src.main import resolve_retention
     policy = {"thumbnails": 5, "clips": 3, "days": 7}
     assert resolve_retention(policy, "thumbnails", 30) == (5, 7)
     assert resolve_retention(policy, "clips", 20) == (3, 7)
 
 
 def test_resolve_retention_partial_policy():
-    from secur.main import resolve_retention
+    from src.main import resolve_retention
     policy = {"days": 2}
     assert resolve_retention(policy, "thumbnails", 30) == (30, 2)
 
 
 def test_resolve_retention_zero_keep_is_respected():
-    from secur.main import resolve_retention
+    from src.main import resolve_retention
     policy = {"thumbnails": 0}
     assert resolve_retention(policy, "thumbnails", 30) == (0, None)
 
 
 def test_is_privacy_mode_on():
-    from secur.config import is_privacy_mode_on
+    from src.config import is_privacy_mode_on
     assert is_privacy_mode_on("true") is True
     assert is_privacy_mode_on("True") is True
     assert is_privacy_mode_on("false") is False
@@ -104,7 +104,7 @@ def test_is_privacy_mode_on():
 
 
 def test_worker_identity_enabled_respects_privacy_mode():
-    from secur.main import CameraWorker
+    from src.main import CameraWorker
 
     class FakeStorage:
         def __init__(self):
@@ -128,7 +128,7 @@ def test_worker_identity_enabled_respects_privacy_mode():
 
 
 def test_worker_identity_enabled_without_recognizer():
-    from secur.main import CameraWorker
+    from src.main import CameraWorker
 
     class FakeStorage:
         def get_setting(self, key, default=None):
@@ -143,7 +143,7 @@ def test_worker_identity_enabled_without_recognizer():
     )
     assert worker.identity_enabled() is False
 
-from secur.main import decide_worker_event
+from src.main import decide_worker_event
 
 
 def test_decide_worker_event_outside_schedule_suppresses_non_identity():
@@ -209,7 +209,7 @@ def test_decide_worker_event_snapshot_and_motion_fallbacks():
 
 
 def test_get_cooldown_for_event_behavior_events():
-    from secur.config import ALERT_COOLDOWN_BY_EVENT
+    from src.config import ALERT_COOLDOWN_BY_EVENT
     assert get_cooldown_for_event("loitering") == ALERT_COOLDOWN_BY_EVENT["loitering"]
     assert get_cooldown_for_event("direction_change") == ALERT_COOLDOWN_BY_EVENT["direction_change"]
     assert get_cooldown_for_event("fall_detected") == ALERT_COOLDOWN_BY_EVENT["fall_detected"]

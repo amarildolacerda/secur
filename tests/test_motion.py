@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from secur.motion import MotionDetector
+from src.motion import MotionDetector
 
 
 def test_motion_detector_no_motion():

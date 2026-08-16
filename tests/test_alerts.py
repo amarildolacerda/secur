@@ -2,8 +2,8 @@ import json
 import os
 import pytest
 import requests
-from secur.alerts import AlertService, telegram_handler, mqtt_handler, home_assistant_handler
-from secur.notifications import CHANNELS, EVENT_TYPES, DEFAULT_ROUTING, is_enabled
+from src.alerts import AlertService, telegram_handler, mqtt_handler, home_assistant_handler
+from src.notifications import CHANNELS, EVENT_TYPES, DEFAULT_ROUTING, is_enabled
 
 
 def test_alert_service_calls_handlers(monkeypatch):
@@ -28,7 +28,7 @@ def test_telegram_handler_skips_without_config(monkeypatch):
     def fake_post(*args, **kwargs):
         raise AssertionError("requests.post should not be called")
 
-    monkeypatch.setattr("secur.alerts.requests.post", fake_post)
+    monkeypatch.setattr("src.alerts.requests.post", fake_post)
     telegram_handler({"camera_id": "1", "event_type": "motion_detected"})
 
 
@@ -50,7 +50,7 @@ def test_telegram_handler_sends_message(monkeypatch):
         called["timeout"] = timeout
         return DummyResponse()
 
-    monkeypatch.setattr("secur.alerts.requests.post", fake_post)
+    monkeypatch.setattr("src.alerts.requests.post", fake_post)
 
     telegram_handler({"camera_id": "1", "zone": "entrada", "event_type": "motion_detected", "details": "detalhe"})
 
@@ -79,7 +79,7 @@ def test_mqtt_handler_publishes(monkeypatch):
         captured["qos"] = qos
         captured["retain"] = retain
 
-    monkeypatch.setattr("secur.alerts.publish.single", fake_publish_single)
+    monkeypatch.setattr("src.alerts.publish.single", fake_publish_single)
     payload = {"camera_id": "1", "event_type": "motion_detected"}
     mqtt_handler(payload)
 
@@ -96,7 +96,7 @@ def test_home_assistant_handler_skips_without_token(monkeypatch):
     def fake_post(*args, **kwargs):
         raise AssertionError("requests.post should not be called")
 
-    monkeypatch.setattr("secur.alerts.requests.post", fake_post)
+    monkeypatch.setattr("src.alerts.requests.post", fake_post)
     home_assistant_handler({"camera_id": "1", "event_type": "motion_detected"})
 
 
@@ -120,7 +120,7 @@ def test_home_assistant_handler_sends_event(monkeypatch):
         called["timeout"] = timeout
         return DummyResponse()
 
-    monkeypatch.setattr("secur.alerts.requests.post", fake_post)
+    monkeypatch.setattr("src.alerts.requests.post", fake_post)
     payload = {"camera_id": "1", "event_type": "motion_detected"}
     home_assistant_handler(payload)
 
@@ -216,7 +216,7 @@ def test_alert_service_skips_no_motion_for_telegram(monkeypatch):
     def fake_post(*args, **kwargs):
         raise AssertionError("requests.post should not be called for no_motion")
 
-    monkeypatch.setattr("secur.alerts.requests.post", fake_post)
+    monkeypatch.setattr("src.alerts.requests.post", fake_post)
 
     service = AlertService()
     service.register_handler(telegram_handler)
@@ -225,7 +225,7 @@ def test_alert_service_skips_no_motion_for_telegram(monkeypatch):
 
 
 def test_event_store_handler_records_event(monkeypatch):
-    from secur.alerts import event_store_handler
+    from src.alerts import event_store_handler
 
     recorded = {}
 
@@ -303,7 +303,7 @@ def test_alert_service_returns_none_without_store_handler():
 
 
 def test_format_message_full_context():
-    from secur.alerts import _format_message
+    from src.alerts import _format_message
     payload = {
         "camera_id": "1",
         "zone": "Sala",
@@ -327,7 +327,7 @@ def test_format_message_full_context():
 
 
 def test_format_message_minimal():
-    from secur.alerts import _format_message
+    from src.alerts import _format_message
     text = _format_message({"camera_id": "1", "zone": "entrada", "event_type": "motion_detected"})
     assert "Sem detalhes adicionais" in text
     assert "privativa" not in text
@@ -355,7 +355,7 @@ def test_telegram_handler_sends_photo(monkeypatch, tmp_path):
         called["timeout"] = timeout
         return DummyResponse()
 
-    monkeypatch.setattr("secur.alerts.requests.post", fake_post)
+    monkeypatch.setattr("src.alerts.requests.post", fake_post)
     telegram_handler({
         "camera_id": "1", "zone": "entrada", "event_type": "motion_detected",
         "details": "detalhe", "thumbnail_path": str(thumb),
@@ -385,7 +385,7 @@ def test_telegram_handler_falls_back_to_text_when_thumbnail_missing(monkeypatch)
         called["files"] = files
         return DummyResponse()
 
-    monkeypatch.setattr("secur.alerts.requests.post", fake_post)
+    monkeypatch.setattr("src.alerts.requests.post", fake_post)
     telegram_handler({
         "camera_id": "1", "zone": "entrada", "event_type": "motion_detected",
         "details": "detalhe", "thumbnail_path": "/tmp/nao-existe.jpg",
@@ -415,7 +415,7 @@ def test_telegram_handler_photo_failure_falls_back_to_text(monkeypatch, tmp_path
             raise requests.exceptions.ConnectionError("upload failed")
         return DummyResponse()
 
-    monkeypatch.setattr("secur.alerts.requests.post", fake_post)
+    monkeypatch.setattr("src.alerts.requests.post", fake_post)
     telegram_handler({
         "camera_id": "1", "zone": "entrada", "event_type": "motion_detected",
         "details": "detalhe", "thumbnail_path": str(thumb),

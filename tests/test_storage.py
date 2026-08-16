@@ -1,5 +1,5 @@
 from pathlib import Path
-from secur.storage import EventStorage
+from src.storage import EventStorage
 
 
 def test_storage_crud(tmp_path):

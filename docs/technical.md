@@ -1,6 +1,6 @@
 # Tucuxi Monitor — Referência técnica
 
-> Nome técnico do pacote: **secur** (código-fonte, importações, comandos). O nome comercial é Tucuxi Monitor.
+> Código-fonte em `src/` (importações: `from src.main import main`). O comando CLI continua `secur`. O nome comercial é Tucuxi Monitor.
 
 ## Visão geral
 

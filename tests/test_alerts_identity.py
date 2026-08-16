@@ -1,5 +1,5 @@
-import secur.alerts as alerts
-from secur.notifications import DEFAULT_ROUTING
+import src.alerts as alerts
+from src.notifications import DEFAULT_ROUTING
 
 
 def _payload(event_type, zone_classification="privativa", identity="João", known=True, category="person"):

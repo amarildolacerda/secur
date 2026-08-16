@@ -1,5 +1,5 @@
 import numpy as np
-from secur.identity import (
+from src.identity import (
     IdentityRecognizer,
     cosine_similarity,
     decide_event,
@@ -22,10 +22,10 @@ def test_cosine_similarity_basic():
 
 
 def test_recognize_known_and_unknown(tmp_path, monkeypatch):
-    import secur.config as cfg
+    import src.config as cfg
     monkeypatch.setattr(cfg, "IDENTITY_EMBEDDINGS_DIR", tmp_path / "emb")
     (tmp_path / "emb").mkdir(exist_ok=True)
-    from secur.storage import EventStorage
+    from src.storage import EventStorage
     db = EventStorage(tmp_path / "events.db")
     rec = IdentityRecognizer(db, face_embedder=_stub_embedder([1, 0, 0]), reid_embedder=_stub_embedder([0, 1, 0]),
                              threshold=0.6, enabled=True)

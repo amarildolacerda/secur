@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from secur.camera import CameraStream
+from src.camera import CameraStream
 
 
 def write_test_video(path):

@@ -7,8 +7,8 @@ RED->GREEN: cobre o helper `_worker_healthy` e o uso em `status()`.
 
 import time
 
-from secur.config import WORKER_HEALTHY_TIMEOUT_SECONDS
-from secur.main import CameraWorker, _worker_healthy
+from src.config import WORKER_HEALTHY_TIMEOUT_SECONDS
+from src.main import CameraWorker, _worker_healthy
 
 
 def _make_worker():
