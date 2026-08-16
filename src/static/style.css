@@ -1023,6 +1023,17 @@ tr.event-info td {
   text-align: center;
 }
 
+.thumb-detail-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-2, var(--surface));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--text);
+}
+
 .thumb-detail-meta {
   display: flex;
   gap: 16px;

@@ -180,10 +180,9 @@ function onSnapshotError(cameraId, el) {
 // o <img> em si não dá acesso). null = sem info ainda.
 const snapshotTimes = {};
 
-function ageLabel(capturedIso) {
-  const captured = new Date(capturedIso).getTime();
-  if (!Number.isFinite(captured)) return '—';
-  const seconds = Math.max(0, Math.floor((Date.now() - captured) / 1000));
+function ageLabelFromMs(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  const seconds = Math.floor(ms / 1000);
   if (seconds < 5) return 'agora';
   if (seconds < 60) return `há ${seconds}s`;
   const m = Math.floor(seconds / 60);
@@ -192,6 +191,12 @@ function ageLabel(capturedIso) {
   if (h < 24) return `há ${h}h`;
   const d = Math.floor(h / 24);
   return `há ${d}d`;
+}
+
+function ageLabel(capturedIso) {
+  const captured = new Date(capturedIso).getTime();
+  if (!Number.isFinite(captured)) return '—';
+  return ageLabelFromMs(Date.now() - captured);
 }
 
 function refreshSnapshotAges() {
@@ -765,6 +770,34 @@ function openThumbDetail(url, timestamp, eventType, level, disposition, dropped,
   const img = document.getElementById('thumb-detail-img');
   const meta = document.getElementById('thumb-detail-meta');
 
+  // Atalhos de teclado: + zoom in, - zoom out, Esc fecha.
+  // Registra uma vez por dialog aberto (overlay._keysWired) para nao empilhar.
+  if (!overlay._keysWired) {
+    overlay._keysWired = true;
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeThumbDetail();
+        return;
+      }
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        thumbZoomState.scale = Math.min(8, thumbZoomState.scale * 1.2);
+        applyThumbZoom();
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        thumbZoomState.scale = Math.max(0.2, thumbZoomState.scale / 1.2);
+        applyThumbZoom();
+      } else if (e.key === '0') {
+        e.preventDefault();
+        resetThumbZoom();
+      }
+    });
+  }
+  // Garante que o overlay receba keydown (precisa de tabindex).
+  if (!overlay.hasAttribute('tabindex')) overlay.setAttribute('tabindex', '-1');
+  overlay.focus();
+
   title.textContent = extra.camera ? `${extra.camera} — Detalhe` : 'Detalhe do evento';
   img.src = url;
   // Dimensoes naturais para o zoom usar pixel-perfect (escala 1 = tamanho real)
@@ -785,10 +818,15 @@ function openThumbDetail(url, timestamp, eventType, level, disposition, dropped,
   const droppedLabel = dropped ? '<span class="badge badge-off">descartado</span>' : '';
   const lvlBadge = lvlLabel ? `<span class="badge badge-info">${lvlLabel}</span>` : '';
 
+  // Idade do evento ("uptime" da imagem): quanto tempo passou desde a
+  // captura. Importante para o operador entender se o frame ainda
+  // representa a realidade ou se ja e antigo.
+  const ageMs = Date.now() - new Date(timestamp).getTime();
+  const ageLabel = ageMs >= 0 ? ageLabelFromMs(ageMs) : '—';
   meta.innerHTML = `
     ${extra.camera ? `<span><strong>Câmera:</strong> ${extra.camera}</span>` : ''}
     ${extra.zone ? `<span><strong>Zona:</strong> ${extra.zone}</span>` : ''}
-    <span><strong>Data:</strong> ${new Date(timestamp).toLocaleString()}</span>
+    <span><strong>Data:</strong> ${new Date(timestamp).toLocaleString()} <em>(${ageLabel})</em></span>
     ${eventType ? `<span><strong>Tipo:</strong> ${eventType}</span>` : ''}
     ${lvlBadge}
     ${dispLabel}
