@@ -1247,6 +1247,239 @@ tr.event-info td {
   color: var(--muted);
 }
 
+/* ---------- Settings config collapsible ---------- */
+/* Barra clicável full-width do painel "Configurações em uso" */
+#settings-config-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+#settings-config-toggle:hover {
+  border-color: var(--primary-strong);
+  background: var(--primary-focus);
+}
+
+#settings-config-toggle:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-focus);
+}
+
+#settings-config-toggle.is-open {
+  border-color: var(--primary-strong);
+}
+
+.config-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.config-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--primary-focus);
+  color: var(--primary);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.config-toggle-chevron {
+  color: var(--muted);
+  font-size: 0.7rem;
+  transition: transform 0.2s ease;
+}
+
+#settings-config-toggle.is-open .config-toggle-chevron {
+  transform: rotate(180deg);
+}
+
+/* Grade de grupos: cards responsivos (1 coluna em telas estreitas) */
+.settings-config-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+/* Card de grupo */
+.config-module-group {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.config-module-group:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 4px 12px rgba(16, 24, 40, 0.06);
+}
+
+.config-module-group h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.config-module-group h4::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  flex-shrink: 0;
+}
+
+.config-group-count {
+  margin-left: auto;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-focus);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  letter-spacing: 0;
+}
+
+/* Lista chave → valor, com separadores por linha */
+.settings-config-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  gap: 0;
+  margin: 0;
+}
+
+.settings-config-list dt,
+.settings-config-list dd {
+  border-top: 1px solid var(--border);
+  padding: 9px 12px;
+  min-width: 0;
+}
+
+.settings-config-list dt:first-child,
+.settings-config-list dd:nth-child(2) {
+  border-top: none;
+}
+
+.settings-config-list dt {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.settings-config-list dd {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+/* Hover na linha inteira (rótulo + valor) */
+.settings-config-list dt:hover,
+.settings-config-list dt:hover + dd {
+  background: var(--primary-focus);
+}
+
+/* Valores por tipo */
+.config-value-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.config-value-text {
+  color: var(--text);
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.config-value-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.config-value-badge.is-on {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--success);
+}
+
+.config-value-badge.is-off {
+  background: rgba(107, 114, 128, 0.12);
+  color: var(--muted);
+}
+
+/* Entrada suave do painel ao abrir */
+#settings-config.animate-in {
+  animation: configPanelIn 0.25s ease;
+}
+
+@keyframes configPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsivo: rótulo acima do valor em telas estreitas */
+@media (max-width: 480px) {
+  .settings-config-list {
+    grid-template-columns: 1fr;
+  }
+  .settings-config-list dd {
+    justify-content: flex-start;
+    border-top: none;
+    padding-top: 0;
+  }
+}
+
 /* Dashboard redesign (Fase 5) */
 #camera-tiles {
   margin-top: 12px;

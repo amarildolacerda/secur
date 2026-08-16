@@ -115,3 +115,22 @@ def test_ingest_enqueues(client, monkeypatch):
     r2 = client.post("/api/ingest", json={})
     assert r2.status_code == 400
 
+
+
+def test_api_config_endpoint(client):
+    """Testa se /api/config retorna parâmetros esperados sem erro 500."""
+    resp = client.get("/api/config")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert "motion" in data
+    assert "alerts" in data
+    assert "detector" in data
+    assert "identity" in data
+    assert "thumbnails" in data
+    assert "clips" in data
+    assert "tracking" in data
+    assert "behavior" in data
+    assert "privacy_mode" in data
+    # Verifica alguns valores específicos
+    assert data["motion"]["min_area_px"] == 5000
+    assert data["alerts"]["no_motion_alert_seconds"] == 60

@@ -136,6 +136,57 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
     def api_system_status():
         return jsonify(build_system_status(camera_manager))
 
+    @app.route("/api/config")
+    def api_config():
+        """Parâmetros de configuração efetivos (read-only) para o painel 'Configurações em uso'."""
+        from src import config as cfg
+        return jsonify({
+            "motion": {
+                "min_area_px": cfg.MOTION_MIN_AREA,
+                "frame_wait_seconds": cfg.FRAME_WAIT_SECONDS,
+                "worker_healthy_timeout_seconds": cfg.WORKER_HEALTHY_TIMEOUT_SECONDS,
+            },
+            "alerts": {
+                "no_motion_alert_seconds": cfg.NO_MOTION_ALERT_SECONDS,
+                "cooldown_seconds": cfg.ALERT_COOLDOWN_SECONDS,
+                "cooldown_by_event": cfg.ALERT_COOLDOWN_BY_EVENT,
+            },
+            "detector": {
+                "model_path": cfg.DETECTOR_MODEL_PATH or "não configurado",
+                "confidence": cfg.DETECTOR_CONFIDENCE,
+                "iou": cfg.DETECTOR_IOU,
+                "classes": cfg.DETECTOR_CLASSES,
+            },
+            "identity": {
+                "enabled": cfg.IDENTITY_ENABLED,
+                "face_model_path": cfg.IDENTITY_FACE_MODEL_PATH or "não configurado",
+                "reid_model_path": cfg.IDENTITY_REID_MODEL_PATH or "não configurado",
+                "match_threshold": cfg.IDENTITY_MATCH_THRESHOLD,
+            },
+            "thumbnails": {
+                "interval_seconds": cfg.THUMBNAIL_INTERVAL_SECONDS,
+                "diff_threshold": cfg.THUMBNAIL_DIFF_THRESHOLD,
+                "history_size": cfg.THUMBNAIL_HISTORY_SIZE,
+            },
+            "clips": {
+                "pre_seconds": cfg.CLIP_PRE_SECONDS,
+                "post_seconds": cfg.CLIP_POST_SECONDS,
+                "fps": cfg.CLIP_FPS,
+                "history_size": cfg.CLIP_HISTORY_SIZE,
+            },
+            "tracking": {
+                "iou_threshold": cfg.TRACK_IOU_THRESHOLD,
+                "max_age_seconds": cfg.TRACK_MAX_AGE_SECONDS,
+            },
+            "behavior": {
+                "loitering_seconds": cfg.LOITERING_SECONDS,
+                "loitering_max_distance": cfg.LOITERING_MAX_DISTANCE,
+                "loitering_labels": cfg.LOITERING_LABELS,
+                "fall_aspect_ratio": cfg.FALL_ASPECT_RATIO,
+            },
+            "privacy_mode": cfg.PRIVACY_MODE,
+        })
+
     @app.route("/workers")
     def workers():
         return jsonify({
