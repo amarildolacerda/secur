@@ -4,6 +4,15 @@ import os
 import time
 import threading
 import cv2
+
+# Carrega variáveis do .env ANTES de importar config (que lê via os.getenv),
+# para que DETECTOR_MODEL_PATH e demais configs do .env tenham efeito.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 from .config import (
     DEFAULT_CAMERAS,
     DETECTOR_CLASSES,
@@ -156,6 +165,10 @@ class CameraWorker:
         tracker = IoUTracker(iou_threshold=TRACK_IOU_THRESHOLD, max_age_seconds=TRACK_MAX_AGE_SECONDS)
         last_motion_time = None
         no_motion_alerted = False
+        # True apenas quando um evento de movimento/atividade foi efetivamente
+        # emitido desde o último "sem movimento". Evita "sem movimento" repetido
+        # por ruído do detector que não gera evento real.
+        motion_reported = False
         last_alert_time = {}
         frame_buffer = CircularFrameBuffer(maxlen=max(1, int(CLIP_PRE_SECONDS * CLIP_FPS)))
         clip_writer = None
@@ -330,6 +343,9 @@ class CameraWorker:
                                 recognition_method=identity_info.get("method") if identity_info else None,
                                 thumbnail_path=thumb_path,
                             )
+                            # Movimento/atividade real foi emitido: autoriza um
+                            # futuro "sem movimento" (se ficar quieto depois).
+                            motion_reported = True
                             # Start clip recording: pre-event buffer + post-event frames
                             # Guard: only start a new recording if no clip is already active;
                             # otherwise the active writer/path/event would be overwritten
@@ -389,17 +405,34 @@ class CameraWorker:
                 self._capture_thumbnail(storage_frame, event_type, now_thumb, thumb_keep, thumb_days)
             else:
                 # No motion: after NO_MOTION_ALERT_SECONDS without any occurrence, send "sem movimento"
-                if (last_motion_time is not None
-                        and not no_motion_alerted
-                        and (time.time() - last_motion_time) >= NO_MOTION_ALERT_SECONDS):
+                if should_send_no_motion(
+                    last_motion_time, motion_reported, no_motion_alerted,
+                    time.time(), NO_MOTION_ALERT_SECONDS,
+                ):
                     details = f"Sem movimento há {int(NO_MOTION_ALERT_SECONDS)}s na câmera {self.camera['name']}"
                     self.alerts.send(
                         self.camera["id"], zone_name, "no_motion",
                         details, zone_classification,
                     )
                     no_motion_alerted = True
+                    motion_reported = False
 
             time.sleep(FRAME_WAIT_SECONDS)
+
+
+def should_send_no_motion(last_motion_time, motion_reported, no_motion_alerted, now, threshold):
+    """Decide se deve emitir 'sem movimento'.
+
+    Só deve ocorrer se houve um evento de movimento/atividade efetivamente
+    emitido desde o último 'sem movimento' (motion_reported), evitando
+    repetições causadas por ruído do detector que não gera evento real.
+    """
+    return (
+        last_motion_time is not None
+        and motion_reported
+        and not no_motion_alerted
+        and (now - last_motion_time) >= threshold
+    )
 
 
 def decide_worker_event(detections, identity_info, zone_classification, camera_name, label=None,

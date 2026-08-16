@@ -7,6 +7,7 @@ from .storage import EventStorage
 from .masking import frame_for_storage
 from .config import is_privacy_mode_on
 from .notifications import CHANNELS, EVENT_TYPES
+from .status import build_system_status
 import base64
 import numpy as np
 from typing import Optional
@@ -128,6 +129,10 @@ def create_app(camera_manager=None, db_path=None, alerts=None):
             status_payload["active_workers"] = len(status_payload["worker_status"])
 
         return jsonify(status_payload)
+
+    @app.route("/api/system-status")
+    def api_system_status():
+        return jsonify(build_system_status(camera_manager))
 
     @app.route("/workers")
     def workers():

@@ -247,6 +247,56 @@ function setupOfflineToggle() {
   });
 }
 
+function statusBadgeClass(item) {
+  if (!item.configured) return 'badge-off';
+  return item.operational ? 'badge-ok' : 'badge-warn';
+}
+
+function statusBadgeLabel(item) {
+  if (!item.configured) return 'Inativo';
+  return item.operational ? 'Operacional' : 'Configurado';
+}
+
+function renderSystemStatus() {
+  const container = document.getElementById('system-status-cards');
+  if (!container) return;
+  fetch('/api/system-status')
+    .then(r => r.json())
+    .then(data => {
+      const groups = data.modules || [];
+      container.innerHTML = groups.map(g => {
+        const cards = g.items.map(it => `
+          <div class="card">
+            <h3>${g.group}</h3>
+            <p><strong>${it.name}</strong></p>
+            <p>${it.detail || ''}</p>
+            <span class="badge ${statusBadgeClass(it)}">${statusBadgeLabel(it)}</span>
+          </div>`).join('');
+        return cards;
+      }).join('');
+    })
+    .catch(() => {
+      container.innerHTML = '<div class="card"><p>Falha ao carregar status</p></div>';
+    });
+}
+
+let systemStatusTimer = null;
+function setupSystemStatusLink() {
+  const link = document.getElementById('nav-system-status');
+  if (!link) return;
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    setActiveSection('system-status');
+    renderSystemStatus();
+    if (systemStatusTimer) clearInterval(systemStatusTimer);
+    systemStatusTimer = setInterval(() => {
+      const sec = document.getElementById('system-status');
+      if (sec && !sec.classList.contains('hidden-panel')) renderSystemStatus();
+      else if (systemStatusTimer) { clearInterval(systemStatusTimer); systemStatusTimer = null; }
+    }, 15000);
+  });
+}
+
 /* ========== Live Player ========== */
 
 let livePlayerInterval = null;
@@ -1613,7 +1663,8 @@ setupZoneForm();
 setupSettings();
 setupEventFilters();
 setupOfflineToggle();
-  setupIdentityForm();
+setupSystemStatusLink();
+setupIdentityForm();
 const emptyAddCamera = document.getElementById('empty-add-camera');
 if (emptyAddCamera) {
   emptyAddCamera.addEventListener('click', () => {

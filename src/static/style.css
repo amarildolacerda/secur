@@ -1005,6 +1005,22 @@ tr.event-info td {
   font-weight: 600;
 }
 
+/* System status badges */
+.badge-ok {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--success);
+}
+
+.badge-warn {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--warn);
+}
+
+.badge-off {
+  background: rgba(107, 114, 128, 0.12);
+  color: var(--muted);
+}
+
 /* Dashboard redesign (Fase 5) */
 #camera-tiles {
   margin-top: 12px;

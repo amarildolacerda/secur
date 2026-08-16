@@ -11,11 +11,15 @@ Fornecer orientações claras sobre como dividir tarefas entre agentes de projet
 - Responsável por documentar requisitos, casos de uso e arquitetura.
 - Deve focar em clareza, escopo do MVP e diferenciação entre desenvolvimento em Linux e deploy no Raspberry Pi.
 - Deve acompanhar alterações no `SPEC.md` e `README.md`.
+- Para melhorar os SPEC, fazer pesquisa para indicar melhorias ou recursos que poderiam melhorar a socitalação apresentando como opção para incluisão no scopo;
+- Sempre que precisar tomar uma decisão sobre ordem de execução, primeiro analisar valor para usuario, ações que reduzem custos e deixam valor perseptivel para usuário tem maior relevância;
 
 ### 2. Agente de implementação
 - Responsável por criar a estrutura do projeto em Python e componentes principais.
 - Deve priorizar modularidade, testes e compatibilidade com Linux e Raspberry Pi.
 - Deve gerar códigos de captura de vídeo, inferência com IA, persistência e backend web.
+- Usar subagents para implemenação;
+- separar paginas para reduzir tempo de carga do dashboard;
 
 ### 3. Agente de testes e validação
 - Responsável por escrever e rodar testes automatizados.
