@@ -191,6 +191,7 @@ from dataclasses import dataclass, field
 @dataclass
 class CameraEvent:
     camera_id: str
+    device_type: str = "camera"   # 'camera' | 'sensor' | 'device' (origem heterogênea)
     zone: str = None
     zone_classification: str = None
     timestamp: float = field(default_factory=time.time)
@@ -335,6 +336,8 @@ RULES = [
      "then": {"alert": ["telegram"], "disposition": "alert"}},
     {"when": {"no_motion": True},
      "then": {"alert": ["telegram"], "disposition": "alert"}},
+    {"when": {"event_type": ["flood", "water_leak", "sensor_alert"]},
+     "then": {"alert": ["telegram", "mqtt", "ha"], "disposition": "alert"}},
 ]
 
 
@@ -746,7 +749,7 @@ git commit -m "feat: wire EventQueue + AlertRuleEngine + CameraManager.request_c
 - Modify: `src/app.py` (rota `/api/ingest`)
 
 **Interfaces:**
-- `POST /api/ingest` aceita JSON `{camera_id, zone?, detections?, event_type?, details?, thumbnail_path?, identity_name?, ...}`; valida `camera_id`; cria `CameraEvent(level=1, source="edge", ...)` e `event_bus.enqueue(event)`. Retorna 202 ou 400.
+- `POST /api/ingest` é **genérico** (câmeras E dispositivos/sensores): aceita JSON `{camera_id (id de origem), device_type?, zone?, event_type?, details?, detections?, thumbnail_path?, identity_name?, ...}`; valida `camera_id`; cria `CameraEvent(level=1, source="edge", device_type=payload.get("device_type","camera"), ...)` e `event_bus.enqueue(event)`. Retorna 202 ou 400. Para sensores (ex.: alagamento), `device_type="sensor"` e `event_type` (ex.: `"flood"`) é o sinal; `detections` pode vir vazio.
 
 - [ ] **Step 1: Teste**
 
@@ -756,6 +759,9 @@ def test_ingest_enqueues(client, monkeypatch):
     monkeypatch.setattr(client.application, "event_bus", type("B", (), {"enqueue": q.append})())
     r = client.post("/api/ingest", json={"camera_id": "5", "detections": [{"label":"person"}]})
     assert r.status_code == 202 and q and q[0].source == "edge" and q[0].level == 1
+    # sensor heterogêneo (alagamento)
+    r3 = client.post("/api/ingest", json={"camera_id": "flood-1", "device_type": "sensor", "event_type": "flood", "details": "nivel alto"})
+    assert r3.status_code == 202 and q[-1].device_type == "sensor" and q[-1].event_type == "flood"
     r2 = client.post("/api/ingest", json={})
     assert r2.status_code == 400
 ```
@@ -781,6 +787,7 @@ def api_ingest():
     from src.events import CameraEvent
     event = CameraEvent(
         camera_id=str(camera_id),
+        device_type=payload.get("device_type", "camera"),
         zone=payload.get("zone"),
         zone_classification=payload.get("zone_classification"),
         level=1,
