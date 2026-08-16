@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class EventStorage:
     def __init__(self, db_path: Path = DB_PATH):
         # When running under pytest, ensure a fresh DB to avoid cross-test pollution
-        self.db_path = db_path
+        self.db_path = Path(db_path)
         try:
             running_pytest = "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules
         except Exception:
@@ -45,7 +45,11 @@ class EventStorage:
                     camera_id TEXT NOT NULL,
                     zone TEXT,
                     event_type TEXT NOT NULL,
-                    details TEXT
+                    details TEXT,
+                    level INTEGER DEFAULT 0,
+                    dropped INTEGER DEFAULT 0,
+                    source TEXT DEFAULT 'local',
+                    disposition TEXT
                 )
                 """
             )
@@ -121,6 +125,9 @@ class EventStorage:
                 cols = [r[1] for r in cursor.fetchall()]
                 if 'clip_path' not in cols:
                     cursor.execute("ALTER TABLE events ADD COLUMN clip_path TEXT")
+                for col, ddl in (("level", "INTEGER DEFAULT 0"), ("dropped", "INTEGER DEFAULT 0"), ("source", "TEXT DEFAULT 'local'"), ("disposition", "TEXT")):
+                    if col not in cols:
+                        cursor.execute(f"ALTER TABLE events ADD COLUMN {col} {ddl}")
             except Exception:
                 pass
             cursor.execute(
@@ -166,24 +173,48 @@ class EventStorage:
             )
             self.connection.commit()
 
-    def add_event(self, camera_id: str, zone: str, event_type: str, details: str = None):
+    def add_event(self, camera_id, zone, event_type, details=None, level=0, source="local", dropped=False):
         timestamp = datetime.now(timezone.utc).isoformat()
         with self.lock:
             cursor = self.connection.cursor()
             cursor.execute(
-                "INSERT INTO events (timestamp, camera_id, zone, event_type, details) VALUES (?, ?, ?, ?, ?)",
-                (timestamp, camera_id, zone, event_type, details),
+                "INSERT INTO events (timestamp, camera_id, zone, event_type, details, level, dropped, source) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (timestamp, camera_id, zone, event_type, details, level, 1 if dropped else 0, source),
             )
             self.connection.commit()
             return cursor.lastrowid
 
-    def list_events(self, limit: int = 100):
+    def update_event_level(self, event_id, level, event_type=None, details=None, disposition=None):
         with self.lock:
             cursor = self.connection.cursor()
-            cursor.execute(
-                "SELECT id, timestamp, camera_id, zone, event_type, details, clip_path FROM events ORDER BY id DESC LIMIT ?",
-                (limit,),
-            )
+            sets, params = ["level = ?"], [level]
+            if event_type is not None:
+                sets.append("event_type = ?"); params.append(event_type)
+            if details is not None:
+                sets.append("details = ?"); params.append(details)
+            if disposition is not None:
+                sets.append("disposition = ?"); params.append(disposition)
+            params.append(event_id)
+            cursor.execute(f"UPDATE events SET {', '.join(sets)} WHERE id = ?", params)
+            self.connection.commit()
+            return cursor.rowcount > 0
+
+    def list_events(self, limit=100, level=None, camera_id=None, source=None):
+        with self.lock:
+            cursor = self.connection.cursor()
+            sql = ("SELECT id, timestamp, camera_id, zone, event_type, details, clip_path, level, dropped, source "
+                   "FROM events WHERE 1=1")
+            params = []
+            if level is not None:
+                sql += " AND level = ?"; params.append(level)
+            if camera_id is not None:
+                sql += " AND camera_id = ?"; params.append(str(camera_id))
+            if source is not None:
+                sql += " AND source = ?"; params.append(source)
+            sql += " ORDER BY id DESC LIMIT ?"
+            params.append(limit)
+            cursor.execute(sql, params)
             return [dict(row) for row in cursor.fetchall()]
 
     def add_camera(self, name: str, source: str, zone: str = None, alert_classes=None, exclusion_zones=None, mask_polygons=None):
