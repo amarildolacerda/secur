@@ -14,8 +14,11 @@ services:
       - DETECTOR_MODEL_PATH=/app/data/models/detector.onnx
       - MOTION_MIN_AREA=5000
       - FRAME_WAIT_SECONDS=0.1
-      - TELEGRAM_BOT_TOKEN=
-      - TELEGRAM_CHAT_ID=
+      # TELEGRAM_BOT_TOKEN/CHAT_ID vem do .env montado em /app/.env
+      # (via volume .:/app). Não definir aqui como string vazia, senão
+      # load_dotenv() nao sobrescreve (python-dotenv tem override=False
+      # por padrao) e o status do sistema mostra 'token nao configurado'
+      # mesmo com o .env correto.
       - MQTT_BROKER_URL=192.168.1.12
       - MQTT_BROKER_PORT=1883
       - MQTT_USERNAME=kzuca
