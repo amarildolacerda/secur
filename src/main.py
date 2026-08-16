@@ -82,6 +82,9 @@ class CameraWorker:
         self.last_frame_time = None
         self._last_thumb_time = None
         self._last_saved_thumb = None
+        self._last_saved_thumb_path = None
+        self._latest_frame = None
+        self._latest_frame_time = None
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
         # Estado de gravação de clipe (instância p/ start_clip e o loop contínuo)
@@ -113,6 +116,10 @@ class CameraWorker:
             "running": self.thread.is_alive(),
             "healthy": _worker_healthy(self.last_frame_time, time.time(), WORKER_HEALTHY_TIMEOUT_SECONDS),
         }
+
+    def get_latest_frame(self):
+        """Retorna (frame_mascarado, timestamp_epoch) do último frame, ou (None, None)."""
+        return self._latest_frame, self._latest_frame_time
 
     def _should_save_thumbnail(self, frame, now):
         """Decisão única de captura de thumbnail (evento e history):
@@ -150,7 +157,13 @@ class CameraWorker:
             return None
         self._last_thumb_time = now
         self._last_saved_thumb = _thumbnail_mini(storage_frame)
+        self._last_saved_thumb_path = str(path)
         return str(path)
+
+    def _latest_thumbnail_path(self):
+        """Último path de thumbnail salvo (mesmo se o dedup bloqueou uma captura nova).
+        Usado para o alerta do Telegram quando _capture_thumbnail retorna None."""
+        return self._last_saved_thumb_path
 
     def build_candidate_event(self, detections, identity_info, identity_label, zone_name,
                               zone_classification, zone_schedule, now, fall, loitering, direction,
@@ -265,6 +278,8 @@ class CameraWorker:
             # snapshot) usa o frame mascarado; a detecção abaixo usa `frame` original.
             storage_frame = frame_for_storage(frame, self.camera.get("mask_polygons"))
             self._frame = frame
+            self._latest_frame = storage_frame
+            self._latest_frame_time = time.time()
 
             now = time.time()
 
@@ -399,7 +414,7 @@ class CameraWorker:
                         storage_frame, None, time.time(), thumb_keep, thumb_days,
                         event_id=event.event_id,
                     )
-                    event.thumbnail_path = thumb_path
+                    event.thumbnail_path = thumb_path or self._latest_thumbnail_path()
                     self.event_bus.enqueue(event)
                     # Movimento/atividade real foi emitido: autoriza um
                     # futuro "sem movimento" (se ficar quieto depois).
@@ -596,6 +611,13 @@ class CameraManager:
     def get_status(self):
         with self.lock:
             return [worker.status() for worker in self.workers.values()]
+
+    def get_latest_frame(self, camera_id):
+        with self.lock:
+            worker = self.workers.get(camera_id)
+        if worker is None:
+            return None, None
+        return worker.get_latest_frame()
 
     def request_clip(self, camera_id, event_id):
         """Pede ao worker da câmera que grave o clipe do evento (janela

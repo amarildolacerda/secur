@@ -143,6 +143,21 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
             "active_workers": len(camera_manager.get_status()) if camera_manager is not None else 0,
         })
 
+    @app.route("/api/dashboard")
+    def api_dashboard():
+        cameras = storage.list_cameras()
+        events = storage.list_events(limit=100)
+        zones = storage.list_zones()
+        n0_events = storage.list_events(level=0, limit=100)
+        worker_status = camera_manager.get_status() if camera_manager is not None else []
+        return jsonify({
+            "cameras": cameras,
+            "events": events,
+            "zones": zones,
+            "n0_events": n0_events,
+            "worker_status": worker_status,
+        })
+
     @app.route("/camera/<int:camera_id>/snapshot")
     def camera_snapshot(camera_id):
         import logging
@@ -152,6 +167,23 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         camera = storage.get_camera(camera_id)
         if not camera:
             return jsonify({"error": "Câmera não encontrada"}), 404
+
+        # Fast path: serve the worker's latest in-memory frame (no new capture).
+        if camera_manager is not None:
+            frame, ts = camera_manager.get_latest_frame(camera_id)
+            if frame is not None:
+                try:
+                    out = frame_for_storage(frame, camera.get("mask_polygons"))
+                    ok, jpg = cv2.imencode(".jpg", out)
+                    if ok:
+                        captured_iso = datetime.fromtimestamp(ts, timezone.utc).isoformat()
+                        return Response(
+                            jpg.tobytes(),
+                            mimetype="image/jpeg",
+                            headers={"Cache-Control": "no-store", "X-Snapshot-Time": captured_iso},
+                        )
+                except Exception:
+                    pass  # fall through to VideoCapture below
 
         source = camera["source"]
         log.info("Snapshot requested for camera %s (source=%s)", camera_id, source)
@@ -284,6 +316,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
             {"path": "/health", "method": "GET", "description": "Service health check"},
             {"path": "/status", "method": "GET", "description": "Service and worker summary"},
             {"path": "/workers", "method": "GET", "description": "Current worker status"},
+            {"path": "/api/dashboard", "method": "GET", "description": "Payload agregado do dashboard (câmeras, eventos, zonas, N0, status dos workers)"},
             {"path": "/camera/<id>/snapshot", "method": "GET", "description": "Capture a current frame preview"},
             {"path": "/cameras", "method": "GET", "description": "List cameras"},
             {"path": "/cameras", "method": "POST", "description": "Add a new camera"},
