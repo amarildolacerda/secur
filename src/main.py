@@ -53,7 +53,8 @@ from .masking import frame_for_storage
 from .alerts import AlertService, telegram_handler, mqtt_handler, home_assistant_handler, mqtt_register_device
 from .app import create_app
 from .storage import EventStorage
-from .identity import IdentityRecognizer, decide_event, RECOGNITION_LABELS, build_recognizer
+from .identity import IdentityRecognizer, RECOGNITION_LABELS, build_recognizer
+from .event_rules import decide_worker_event, _unpack_worker_decision
 from .notifications import DEFAULT_ROUTING
 from .tracking import IoUTracker
 from .behavior import check_loitering, check_direction_crossing, check_fall
@@ -433,52 +434,6 @@ def should_send_no_motion(last_motion_time, motion_reported, no_motion_alerted, 
         and not no_motion_alerted
         and (now - last_motion_time) >= threshold
     )
-
-
-def decide_worker_event(detections, identity_info, zone_classification, camera_name, label=None,
-                        in_schedule=True, fall=False, loitering=None, direction=None, now=None):
-    """Decide o evento do frame (Fase 3: comportamento/anomalia).
-
-    Prioridade: identidade (intruder_detected/identity_recognized) > queda >
-    loitering > direção > snapshot > movimento. Fora do horário
-    (in_schedule=False), apenas eventos de identidade válidos passam:
-    intruder_detected (desconhecido em zona privativa/segurança, prioridade)
-    e identity_recognized (conhecido); os demais retornam None (suprimido).
-    """
-    if identity_info is not None:
-        decision = decide_event(identity_info, zone_classification, camera_name, label)
-        if decision is not None:
-            if not in_schedule and decision[0] == "unknown_detected":
-                return None
-            return decision
-    if not in_schedule:
-        return None
-    if fall:
-        return ("fall_detected", f"Possível queda de pessoa na câmera {camera_name}", None, None, None, None)
-    if loitering is not None:
-        seconds = int(now - loitering["first_seen"]) if now is not None else 0
-        track_label = loitering.get("label", "Objeto")
-        return ("loitering", f"{track_label} na mesma região há {seconds}s (câmera {camera_name})",
-                None, None, track_label, None)
-    if direction is not None:
-        return ("direction_change", f"Movimento {direction} detectado na câmera {camera_name}",
-                None, None, None, None)
-    if detections:
-        return ("snapshot_info", format_detections(detections), None, None, None, None)
-    return ("motion_detected", f"Movimento detectado na câmera {camera_name}", None, None, None, None)
-
-
-def _unpack_worker_decision(decision):
-    """Desempacota a decisão de evento de forma segura no worker.
-
-    decide_worker_event retorna None (supressão: fora do horário sem
-    identidade válida). Desempacotar None direto lançaria TypeError por
-    frame — log spam, thumbnails congeladas e cadência degradada (regressão
-    Fase 3). None vira tupla de None; decisão real passa intacta.
-    """
-    if decision is None:
-        return (None, None, None, None, None, None)
-    return decision
 
 
 def format_detections(detections):
