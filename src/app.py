@@ -184,6 +184,13 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
                 "loitering_labels": cfg.LOITERING_LABELS,
                 "fall_aspect_ratio": cfg.FALL_ASPECT_RATIO,
             },
+            "event_pruning": {
+                "enabled": cfg.EVENT_PRUNE_ENABLED,
+                "dropped_days": cfg.EVENT_PRUNE_DROPPED_DAYS,
+                "suppressed_days": cfg.EVENT_PRUNE_SUPPRESSED_DAYS,
+                "normal_days": cfg.EVENT_PRUNE_NORMAL_DAYS,
+                "interval_seconds": cfg.EVENT_PRUNE_INTERVAL_SECONDS,
+            },
             "privacy_mode": cfg.PRIVACY_MODE,
         })
 

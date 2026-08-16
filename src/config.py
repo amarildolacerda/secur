@@ -100,6 +100,17 @@ CLIPS_DIR = DATA_DIR / "clips"
 CLIPS_DIR.mkdir(exist_ok=True)
 CLIP_HISTORY_SIZE = int(os.getenv("CLIP_HISTORY_SIZE", "20"))
 
+# Event pruning (auto-cleanup de eventos N1 dropped e N3 suppressed/cooldown)
+EVENT_PRUNE_ENABLED = os.getenv("EVENT_PRUNE_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+# Dias para manter eventos dropped (N1 descartados)
+EVENT_PRUNE_DROPPED_DAYS = int(os.getenv("EVENT_PRUNE_DROPPED_DAYS", "7"))
+# Dias para manter eventos suppressed/cooldown (N3)
+EVENT_PRUNE_SUPPRESSED_DAYS = int(os.getenv("EVENT_PRUNE_SUPPRESSED_DAYS", "30"))
+# Dias para manter eventos normais (N4 alertas) - 0 = não apaga
+EVENT_PRUNE_NORMAL_DAYS = int(os.getenv("EVENT_PRUNE_NORMAL_DAYS", "0"))
+# Intervalo de execução do prune (segundos)
+EVENT_PRUNE_INTERVAL_SECONDS = int(os.getenv("EVENT_PRUNE_INTERVAL_SECONDS", "3600"))
+
 # Fase 3 — comportamento/anomalia (tracking)
 TRACK_IOU_THRESHOLD = float(os.getenv("TRACK_IOU_THRESHOLD", "0.3"))
 TRACK_MAX_AGE_SECONDS = float(os.getenv("TRACK_MAX_AGE_SECONDS", "2.0"))
