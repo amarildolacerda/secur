@@ -4,8 +4,8 @@ import json
 import numpy as np
 import pytest
 
-from secur.app import create_app
-from secur.identity import IdentityRecognizer
+from src.app import create_app
+from src.identity import IdentityRecognizer
 
 
 def _stub_embedder(value):
@@ -26,8 +26,8 @@ def _tiny_jpeg_b64():
 
 @pytest.fixture
 def app(tmp_path, monkeypatch):
-    import secur.config as cfg
-    import secur.storage as storage_mod
+    import src.config as cfg
+    import src.storage as storage_mod
     emb_dir = tmp_path / "emb"
     emb_dir.mkdir(exist_ok=True)
     monkeypatch.setattr(cfg, "IDENTITY_EMBEDDINGS_DIR", emb_dir)

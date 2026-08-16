@@ -1,7 +1,7 @@
 import json
 import pytest
-from secur.app import create_app
-from secur.camera import CameraStream
+from src.app import create_app
+from src.camera import CameraStream
 
 
 @pytest.fixture
@@ -87,7 +87,7 @@ def test_add_camera_accepts_valid_source(client, monkeypatch):
 
 
 def test_camera_thumbnails_route(client, monkeypatch):
-    from secur.camera import CameraStream
+    from src.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
     resp = client.post("/cameras", json={"name": "Cam", "source": "source://x", "zone": "entrada"})
     assert resp.status_code == 201
@@ -137,7 +137,7 @@ def test_put_routing_refreshes_in_memory_alert_service(tmp_path):
     deve valer imediatamente no envio real. O AlertService decide o envio usando o
     routing em memória (snapshot do boot, main.py) — o PUT precisa recarregá-lo,
     senão as mensagens continuam chegando até o restart do servidor."""
-    from secur.alerts import AlertService
+    from src.alerts import AlertService
 
     sent = []
     handler = lambda payload: sent.append(payload)
@@ -175,7 +175,7 @@ def test_put_routing_refreshes_in_memory_alert_service(tmp_path):
 
 
 def test_add_camera_with_alert_classes(client, monkeypatch):
-    from secur.camera import CameraStream
+    from src.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
     response = client.post(
         "/cameras",
@@ -192,7 +192,7 @@ def test_add_camera_with_alert_classes(client, monkeypatch):
 
 
 def test_add_camera_rejects_invalid_alert_classes(client, monkeypatch):
-    from secur.camera import CameraStream
+    from src.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
     response = client.post(
         "/cameras",
@@ -209,7 +209,7 @@ def test_api_classes(client):
 
 
 def test_camera_clips_route(client, monkeypatch):
-    from secur.camera import CameraStream
+    from src.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
     resp = client.post("/cameras", json={"name": "Cam", "source": "source://x", "zone": "entrada"})
     cam_id = resp.json["id"]
@@ -243,8 +243,8 @@ def clip_env(tmp_path, monkeypatch):
     to a fresh file the app never sees). To seed clips the app must serve, the
     app is built around the same storage instance the test mutates.
     """
-    from secur.app import create_app
-    from secur.storage import EventStorage
+    from src.app import create_app
+    from src.storage import EventStorage
 
     db_path = tmp_path / "test.db"
     storage = EventStorage(db_path)
@@ -252,14 +252,14 @@ def clip_env(tmp_path, monkeypatch):
     def _shared_event_storage(db_path=None):
         return storage
 
-    monkeypatch.setattr("secur.app.EventStorage", _shared_event_storage)
+    monkeypatch.setattr("src.app.EventStorage", _shared_event_storage)
     app = create_app(db_path=db_path)
     app.config.update({"TESTING": True})
     return app.test_client(), storage
 
 
 def test_clip_video_route_200(clip_env, tmp_path, monkeypatch):
-    from secur.camera import CameraStream
+    from src.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
     client, storage = clip_env
     resp = client.post("/cameras", json={"name": "Cam", "source": "source://x", "zone": "entrada"})
@@ -277,7 +277,7 @@ def test_clip_video_route_200(clip_env, tmp_path, monkeypatch):
 
 
 def test_delete_camera_removes_clips_and_thumbnails(clip_env, tmp_path, monkeypatch):
-    from secur.camera import CameraStream
+    from src.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
     client, storage = clip_env
     resp = client.post("/cameras", json={"name": "Cam", "source": "source://x", "zone": "entrada"})
@@ -301,7 +301,7 @@ def test_delete_camera_removes_clips_and_thumbnails(clip_env, tmp_path, monkeypa
 
 
 def test_add_camera_with_mask_polygons(client, monkeypatch):
-    from secur.camera import CameraStream
+    from src.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
     polygons = [[{"x": 0, "y": 0}, {"x": 100, "y": 0}, {"x": 100, "y": 100}]]
     response = client.post(
@@ -314,7 +314,7 @@ def test_add_camera_with_mask_polygons(client, monkeypatch):
 
 
 def test_add_camera_rejects_invalid_mask_polygons(client, monkeypatch):
-    from secur.camera import CameraStream
+    from src.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
     response = client.post(
         "/cameras",
@@ -325,7 +325,7 @@ def test_add_camera_rejects_invalid_mask_polygons(client, monkeypatch):
 
 
 def test_update_camera_mask_polygons(client, monkeypatch):
-    from secur.camera import CameraStream
+    from src.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
     resp = client.post("/cameras", json={"name": "Cam", "source": "valid-source", "zone": "entrada"})
     cam_id = resp.json["id"]
@@ -344,7 +344,7 @@ def test_update_camera_mask_polygons(client, monkeypatch):
 
 
 def test_add_camera_rejects_malformed_mask_polygons(client, monkeypatch):
-    from secur.camera import CameraStream
+    from src.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
     bad_cases = [
         [[{"x": 0}]],                       # falta y
@@ -366,7 +366,7 @@ def test_add_camera_rejects_malformed_mask_polygons(client, monkeypatch):
 def test_snapshot_route_applies_mask_polygons(client, monkeypatch):
     import cv2
     import numpy as np
-    from secur.camera import CameraStream
+    from src.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
 
     class FakeCapture:
@@ -387,7 +387,7 @@ def test_snapshot_route_applies_mask_polygons(client, monkeypatch):
         def release(self):
             pass
 
-    monkeypatch.setattr("secur.app.cv2.VideoCapture", FakeCapture)
+    monkeypatch.setattr("src.app.cv2.VideoCapture", FakeCapture)
 
     resp = client.post(
         "/cameras",
@@ -411,7 +411,7 @@ def test_snapshot_route_applies_mask_polygons(client, monkeypatch):
 def test_snapshot_route_without_mask_keeps_frame(client, monkeypatch):
     import cv2
     import numpy as np
-    from secur.camera import CameraStream
+    from src.camera import CameraStream
     monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
 
     class FakeCapture:
@@ -432,7 +432,7 @@ def test_snapshot_route_without_mask_keeps_frame(client, monkeypatch):
         def release(self):
             pass
 
-    monkeypatch.setattr("secur.app.cv2.VideoCapture", FakeCapture)
+    monkeypatch.setattr("src.app.cv2.VideoCapture", FakeCapture)
 
     resp = client.post("/cameras", json={"name": "Cam", "source": "source://x", "zone": "entrada"})
     cam_id = resp.json["id"]

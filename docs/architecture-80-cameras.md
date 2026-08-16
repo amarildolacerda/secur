@@ -234,7 +234,7 @@ Exports/permanentes em diretório separado, fora da retenção.
 > Estratégia strangler: extrair, não reescrever. Cada fase mantém o sistema funcionando.
 
 ### Fase A — Worker de borda (triagem leve: N0-N1)
-- Extrair `CameraWorker` para `secur/worker.py` executável em **modo borda**: movimento (N0) + pré-seleção heurística (N1: área do blob, posição, duração, exclusões/máscaras) + captura seletiva de frames candidatos (ROI), **sem detecção IA**.
+- Extrair `CameraWorker` para `src/worker.py` executável em **modo borda**: movimento (N0) + pré-seleção heurística (N1: área do blob, posição, duração, exclusões/máscaras) + captura seletiva de frames candidatos (ROI), **sem detecção IA**.
 - Envia candidatos via MQTT/HTTPS para a central (ou enfileira local se offline).
 - Config via API central (`GET /api/cameras` por node); registro de nós com heartbeat.
 

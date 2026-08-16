@@ -1,4 +1,4 @@
-from secur import config
+from src import config
 
 
 def test_identity_config_defaults():

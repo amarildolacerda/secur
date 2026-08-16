@@ -2,7 +2,7 @@
 (supressão fora do horário / sem identidade válida) e o worker não pode
 lançar TypeError ao desempacotar a decisão (Fase 3)."""
 
-from secur.main import _unpack_worker_decision, decide_worker_event
+from src.main import _unpack_worker_decision, decide_worker_event
 
 
 def test_worker_unpacks_none_outside_schedule():

@@ -1,7 +1,7 @@
 import json
 import pytest
-from secur.app import create_app
-from secur.storage import EventStorage
+from src.app import create_app
+from src.storage import EventStorage
 
 
 @pytest.fixture
@@ -147,7 +147,7 @@ def test_delete_zone_not_found(client):
 
 
 def test_home_assistant_fires_for_privativa_motion(monkeypatch):
-    from secur.alerts import home_assistant_handler
+    from src.alerts import home_assistant_handler
 
     monkeypatch.setenv("HOME_ASSISTANT_TOKEN", "tok")
     monkeypatch.setenv("HOME_ASSISTANT_URL", "http://ha")
@@ -162,7 +162,7 @@ def test_home_assistant_fires_for_privativa_motion(monkeypatch):
         fired.append(json)
         return FakeResponse()
 
-    import secur.alerts as alerts_mod
+    import src.alerts as alerts_mod
     original = alerts_mod.requests.post
     alerts_mod.requests.post = fake_post
     try:
@@ -181,7 +181,7 @@ def test_home_assistant_fires_for_privativa_motion(monkeypatch):
 
 
 def test_home_assistant_fires_for_seguranca_motion(monkeypatch):
-    from secur.alerts import home_assistant_handler
+    from src.alerts import home_assistant_handler
 
     monkeypatch.setenv("HOME_ASSISTANT_TOKEN", "tok")
     monkeypatch.setenv("HOME_ASSISTANT_URL", "http://ha")
@@ -196,7 +196,7 @@ def test_home_assistant_fires_for_seguranca_motion(monkeypatch):
         fired.append(json)
         return FakeResponse()
 
-    import secur.alerts as alerts_mod
+    import src.alerts as alerts_mod
     original = alerts_mod.requests.post
     alerts_mod.requests.post = fake_post
     try:
@@ -214,7 +214,7 @@ def test_home_assistant_fires_for_seguranca_motion(monkeypatch):
 
 
 def test_home_assistant_skips_publica_motion():
-    from secur.alerts import home_assistant_handler
+    from src.alerts import home_assistant_handler
 
     fired = []
 
@@ -226,7 +226,7 @@ def test_home_assistant_skips_publica_motion():
         fired.append(json)
         return FakeResponse()
 
-    import secur.alerts as alerts_mod
+    import src.alerts as alerts_mod
     original = alerts_mod.requests.post
     alerts_mod.requests.post = fake_post
     try:
@@ -283,7 +283,7 @@ def test_update_zone_with_schedule(client):
 
 
 def test_home_assistant_fires_object_detected_any_zone(monkeypatch):
-    from secur.alerts import home_assistant_handler
+    from src.alerts import home_assistant_handler
 
     monkeypatch.setenv("HOME_ASSISTANT_TOKEN", "tok")
     monkeypatch.setenv("HOME_ASSISTANT_URL", "http://ha")
@@ -298,7 +298,7 @@ def test_home_assistant_fires_object_detected_any_zone(monkeypatch):
         fired.append(json)
         return FakeResponse()
 
-    import secur.alerts as alerts_mod
+    import src.alerts as alerts_mod
     original = alerts_mod.requests.post
     alerts_mod.requests.post = fake_post
     try:

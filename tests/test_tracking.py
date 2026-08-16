@@ -1,4 +1,4 @@
-from secur.tracking import bbox_iou, bbox_centroid, IoUTracker
+from src.tracking import bbox_iou, bbox_centroid, IoUTracker
 
 
 def test_bbox_iou_identical():

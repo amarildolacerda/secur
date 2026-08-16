@@ -1,5 +1,5 @@
 import numpy as np
-from secur.masking import apply_mask_blur, frame_for_storage
+from src.masking import apply_mask_blur, frame_for_storage
 
 POLYGONS = [[{"x": 40, "y": 40}, {"x": 60, "y": 40}, {"x": 60, "y": 60}, {"x": 40, "y": 60}]]
 

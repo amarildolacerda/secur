@@ -1,4 +1,4 @@
-from secur.app import create_app
+from src.app import create_app
 import json
 app = create_app()
 client = app.test_client()

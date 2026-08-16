@@ -1,12 +1,12 @@
 import numpy as np
-from secur.storage import EventStorage
+from src.storage import EventStorage
 
 
 def test_known_identities_crud(tmp_path, monkeypatch):
-    import secur.config as cfg
+    import src.config as cfg
     monkeypatch.setattr(cfg, "IDENTITY_EMBEDDINGS_DIR", tmp_path / "emb")
     (tmp_path / "emb").mkdir(exist_ok=True)
-    from secur import storage as storage_mod
+    from src import storage as storage_mod
     monkeypatch.setattr(storage_mod, "IDENTITY_EMBEDDINGS_DIR", tmp_path / "emb")
 
     db = EventStorage(tmp_path / "events.db")

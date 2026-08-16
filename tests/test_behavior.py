@@ -1,4 +1,4 @@
-from secur.behavior import check_loitering
+from src.behavior import check_loitering
 
 
 def _track(first_seen, label="person", centroid=(10.0, 10.0), first_centroid=(10.0, 10.0)):
@@ -39,7 +39,7 @@ def test_check_loitering_filters_labels():
     tracks = [_track(first_seen=100.0, label="person")]
     assert check_loitering(tracks, 130.0, 30, 80, labels={"person", "car"}) is tracks[0]
 
-from secur.behavior import check_direction_crossing
+from src.behavior import check_direction_crossing
 
 
 def test_direction_crossing_vertical_entering():
@@ -71,7 +71,7 @@ def test_direction_crossing_no_prev_centroid():
     line = {"axis": "vertical", "x": 100.0}
     assert check_direction_crossing(None, (150.0, 60.0), line) is None
 
-from secur.behavior import check_fall
+from src.behavior import check_fall
 
 
 def test_check_fall_lying_person():

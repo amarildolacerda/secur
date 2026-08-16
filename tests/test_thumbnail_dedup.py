@@ -10,9 +10,9 @@ import importlib
 
 import numpy as np
 
-main_mod = importlib.import_module("secur.main")
-from secur.config import THUMBNAIL_DIFF_THRESHOLD, THUMBNAIL_INTERVAL_SECONDS
-from secur.main import CameraWorker, frames_similar
+main_mod = importlib.import_module("src.main")
+from src.config import THUMBNAIL_DIFF_THRESHOLD, THUMBNAIL_INTERVAL_SECONDS
+from src.main import CameraWorker, frames_similar
 
 
 def _frame(fill=100, obj=None):
