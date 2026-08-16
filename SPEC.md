@@ -107,6 +107,25 @@ Construir um sistema de vigilância inteligente inicialmente desenvolvido em PC/
 5. Expansão
    - Suportar até 8 câmeras.
    - Adicionar treinamentos customizados e integração com automação residencial.
+6. Recursos candidatos (inspirados no Frigate NVR)
+   - Backlog avaliado no README (seção Roadmap) e em docs/research-user-wants.md; marcar os pertinentes antes de planejar a próxima fase.
+   - CPU-leve (alta prioridade): filtros de score, máscaras por classe, objetos estacionários, re-streaming RTSP, exports, gravação 24/7 com retenção em camadas, pre-roll, PWA/push, retenção por espaço em disco.
+   - Média prioridade: review items, UI de revisão simplificada + ações em lote, armar/desarmar por horário, permissões/view-only, birdseye, detecção de áudio.
+   - Backlog: autotracking PTZ, LPR, face dedicada, WebRTC/go2rtc, two-way audio, portaria remota/app do morador, semantic search (não roda no Pi).
+7. Escala 80 câmeras (condomínio — fibra óptica)
+   - Proposta de dimensionamento em docs/architecture-80-cameras.md; validar com o projeto real antes de implementar.
+   - **Gravação 24/7 e retenção ficam nos NVRs existentes. A borda só faz triagem leve (movimento + candidatos). A central de análise decide a providência: informar / alertar / perigo eminente.**
+   - Arquitetura distribuída: nós de borda (triagem leve) + central de análise (IA, tracking, identidade, regras, decisão) + PostgreSQL + MQTT como backbone + integração ONVIF/RTSP com NVRs.
+   - **Triagem em níveis (funil N0-N4):** N0 movimento e N1 pré-seleção na borda; N2 detecção rápida, N3 análise completa e N4 decisão de providência (informar/alertar/perigo eminente) na central.
+   - Fases: A) nó de borda (triagem N0-N1); B) transporte de candidatos; C) central de análise e decisão (N2-N4); D) integração com NVR e evidência; E) resiliência/HA.
+8. Situações monitoráveis (além de intrusão)
+   - Visão (central N2-N4): fogo/fumaça, objeto abandonado em circulação, aglomeração, veículo obstruindo, vandalismo, porta aberta.
+   - Sensores via MQTT/HA (candidatos já confirmados): alagamento/vazamento, fumaça/calor/CO, contato de porta.
+   - Matriz completa (fontes, níveis, eventos, providências) em docs/architecture-80-cameras.md (seção 1.2).
+   - Alta circulação (shopping/rodoviária/varejo): bagagem abandonada, aglomeração/densidade, filas, footfall (analytics), queda em escada/elevador, superlotação de elevador, furto na portaria/encomenda, movimento suspeito na garagem, self-checkout fraud.
+   - Pesquisa de desejos em docs/research-monitoring-venues.md; matriz ampliada em docs/architecture-80-cameras.md (seção 1.3).
+
+
 
 ---
 

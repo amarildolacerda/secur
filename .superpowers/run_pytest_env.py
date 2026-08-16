@@ -2,7 +2,7 @@ from pathlib import Path
 import os, subprocess, sys
 
 env = os.environ.copy()
-env_file = Path('c:/git/secur/.env')
+env_file = Path('c:/git/tucuxi/.env')
 if env_file.exists():
     for line in env_file.read_text().splitlines():
         line = line.strip()
