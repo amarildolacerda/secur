@@ -1,8 +1,10 @@
+import logging
 import queue
 import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from typing import Protocol
 
 
 @dataclass
@@ -36,13 +38,13 @@ class CameraEvent:
     event_id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
 
-class EventQueue:
-    def enqueue(self, event: CameraEvent): ...
+class EventQueue(Protocol):
+    def enqueue(self, event: "CameraEvent"): ...
     def subscribe(self, handler): ...
     def start(self): ...
 
 
-class LocalEventQueue(EventQueue):
+class LocalEventQueue:
     def __init__(self):
         self._q = queue.Queue()
         self._handlers = []
@@ -70,6 +72,5 @@ class LocalEventQueue(EventQueue):
                 try:
                     h(event)
                 except Exception:
-                    import logging
                     logging.getLogger("events").exception("Handler falhou ao processar evento")
             self._q.task_done()
