@@ -100,12 +100,12 @@ function createCameraCard(camera, offline = false, lastEventTs = null, n0Count =
     : 'Sem eventos';
 
   return `
-    <div class="card camera-card${offline ? ' camera-card-offline' : ''}">
+    <div class="card camera-card${offline ? ' camera-card-offline' : ''}" data-camera-id="${camera.id}">
       <div class="camera-card-header">
         <strong>${camera.name}</strong>
-        <span class="camera-badge">ID ${camera.id}</span> ${n0Badge}
+        <span class="camera-badge">ID ${camera.id}</span> <span class="n0-badge-slot">${n0Badge}</span>
       </div>
-      <p>Zona: ${zoneLabel} ${offlineBadge}</p>
+      <p class="camera-zone">Zona: ${zoneLabel} ${offlineBadge}</p>
       <p class="camera-source">Fonte: ${camera.source}</p>
       <p class="camera-card-time">Último evento: ${lastEventLabel}</p>
       <div
@@ -368,9 +368,82 @@ function renderCameraTiles(cameras, workerStatus, lastEventMap = new Map(), n0By
   const offlineCameras = workerStatus ? cameras.filter(c => !activeIds.has(c.id)) : [];
   const onlineCameras = workerStatus ? cameras.filter(c => activeIds.has(c.id)) : cameras;
 
-  tilesContainer.innerHTML = onlineCameras.map(c => createCameraCard(c, false, lastEventMap.get(c.id), n0ByCamera.get(String(c.id)) || 0)).join('');
+  // Diff minimo: nao recriar cards que ja estao no DOM. innerHTML='' a cada
+  // 5s causava flick do layout (recalculo de altura do grid), re-fetch do
+  // snapshot (img novo) e re-animacao do loading pulse. Agora so atualizamos
+  // os campos dinamicos (badges, texto) e mantemos o <img> existente.
+  const existing = new Map();
+  tilesContainer.querySelectorAll('.camera-card[data-camera-id]').forEach(el => {
+    existing.set(String(el.dataset.cameraId), el);
+  });
+  const fragment = document.createDocumentFragment();
+  onlineCameras.forEach(c => {
+    const key = String(c.id);
+    const n0Count = n0ByCamera.get(key) || 0;
+    const existingEl = existing.get(key);
+    if (existingEl) {
+      // Atualiza so o que muda entre polls (N0 badge, offline badge, ultimo evento)
+      updateCameraCard(existingEl, c, false, lastEventMap.get(c.id), n0Count);
+      existing.delete(key);
+      return;
+    }
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = createCameraCard(c, false, lastEventMap.get(c.id), n0Count);
+    fragment.appendChild(wrapper.firstElementChild);
+  });
+  // Reposiciona: ordem pode mudar (sortCamerasByLastEvent). Estrategia simples:
+  // re-anexa na ordem correta, removendo os antigos do DOM antes.
+  const newChildren = Array.from(fragment.children);
+  tilesContainer.innerHTML = '';
+  newChildren.forEach(el => tilesContainer.appendChild(el));
+  // Cards que existiam mas nao estao mais online (viraram offline): mantemos
+  // no DOM e marcamos como offline via updateCameraCard (updateOfflineSection
+  // cuida deles separadamente).
+  existing.forEach(el => tilesContainer.appendChild(el));
+
   updateOfflineSection(cameras, workerStatus, lastEventMap, n0ByCamera);
   observeSnapshots();
+}
+
+// Atualizacao incremental: badges, offline, ultimo evento. NAO toca no <img>
+// nem recria o wrapper — preserva o snapshot carregado e evita flick a cada
+// poll de 5s (sem isso, innerHTML='' destruiria todos os cards e re-dispararia
+// fetch do snapshot + re-animacao do loading pulse).
+function updateCameraCard(el, camera, offline, lastEventTs, n0Count) {
+  const faultOffline = cameraFaultState[camera.id] && cameraFaultState[camera.id].status === 'offline';
+  const isOffline = offline || faultOffline;
+  el.classList.toggle('camera-card-offline', isOffline);
+
+  // N0 badge (slot reservado no header)
+  const n0Slot = el.querySelector('.n0-badge-slot');
+  if (n0Slot) {
+    n0Slot.innerHTML = n0Count > 0
+      ? `<span class="badge badge-info" title="Eventos N0 (captura) desta câmera">N0: ${n0Count}</span>`
+      : '';
+  }
+
+  // Offline badge (ao final do parágrafo de zona)
+  const zoneP = el.querySelector('.camera-zone');
+  if (zoneP) {
+    let offlineBadge = zoneP.querySelector('.badge-offline');
+    if (isOffline && !offlineBadge) {
+      offlineBadge = document.createElement('span');
+      offlineBadge.className = 'badge-offline';
+      offlineBadge.textContent = 'Offline';
+      zoneP.appendChild(document.createTextNode(' '));
+      zoneP.appendChild(offlineBadge);
+    } else if (!isOffline && offlineBadge) {
+      offlineBadge.remove();
+    }
+  }
+
+  const timeEl = el.querySelector('.camera-card-time');
+  if (timeEl) {
+    const label = lastEventTs
+      ? new Date(lastEventTs).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : 'Sem eventos';
+    timeEl.textContent = `Último evento: ${label}`;
+  }
 }
 
 // Câmeras offline ocultas por padrão (otimização de espaço): aparece apenas o

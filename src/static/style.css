@@ -226,7 +226,11 @@ body {
   margin-left: 200px;
   flex: 1;
   padding: 2px;
-  padding-bottom: 2px;
+  /* Padding-bottom compensa o .app-footer (position: fixed, ~40px) para
+     que o ultimo card da grade de cameras nao fique escondido atras dele.
+     Sem isso, a ultima camera aparece sobreposta pelo footer (que mostra
+     uptime/status) e o layout "pisca" quando o grid e recriado a cada 5s. */
+  padding-bottom: 80px;
 }
 
 #page {
