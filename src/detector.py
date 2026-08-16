@@ -6,6 +6,9 @@ from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
+# Tamanho de entrada usado pelo blob e pela escala das bounding boxes.
+INPUT_SIZE = 640
+
 
 class ObjectDetector:
     def __init__(
@@ -41,30 +44,58 @@ class ObjectDetector:
             return []
 
         height, width = frame.shape[:2]
-        blob = cv2.dnn.blobFromImage(frame, 1 / 255.0, (640, 640), swapRB=True, crop=False)
+        blob = cv2.dnn.blobFromImage(frame, 1 / 255.0, (INPUT_SIZE, INPUT_SIZE), swapRB=True, crop=False)
         self.model.setInput(blob)
         outputs = self.model.forward()
 
         if isinstance(outputs, tuple):
             outputs = outputs[0]
 
+        arr = np.squeeze(outputs)
+        # YOLOv8 exporta (84, 8400): features na primeira dimensão -> transpõe para (N, feat).
+        # YOLOv5 exporta (N, 85): features na última dimensão -> mantém.
+        if arr.ndim == 2 and arr.shape[1] > arr.shape[0]:
+            arr = arr.T
+        if arr.ndim != 2:
+            return []
+
+        return self._parse_output(arr, width, height)
+
+    def _parse_output(self, arr, width, height):
         detections = []
         boxes = []
         confidences = []
         class_ids = []
 
-        for detection in outputs[0]:
-            scores = detection[5:]
-            class_id = int(np.argmax(scores))
-            confidence = float(scores[class_id] * detection[4])
-            if confidence < self.confidence_threshold:
-                continue
+        feat = arr.shape[1]
+        scale_x = width / INPUT_SIZE
+        scale_y = height / INPUT_SIZE
 
-            cx, cy, w, h = detection[:4]
-            x = int((cx - w / 2) * width)
-            y = int((cy - h / 2) * height)
-            w = int(w * width)
-            h = int(h * height)
+        for d in arr:
+            if feat == 84:
+                # YOLOv8: [cx, cy, w, h, score_0..score_79] (sem objectness; coords em pixels do input)
+                scores = d[4:]
+                class_id = int(np.argmax(scores))
+                confidence = float(scores[class_id])
+                if confidence < self.confidence_threshold:
+                    continue
+                cx, cy, w, h = d[0], d[1], d[2], d[3]
+                x = int((cx - w / 2) * scale_x)
+                y = int((cy - h / 2) * scale_y)
+                w = int(w * scale_x)
+                h = int(h * scale_y)
+            else:
+                # YOLOv5: [cx, cy, w, h, objectness, score_0..score_79] (coords normalizadas)
+                scores = d[5:]
+                class_id = int(np.argmax(scores))
+                confidence = float(scores[class_id] * d[4])
+                if confidence < self.confidence_threshold:
+                    continue
+                cx, cy, w, h = d[0], d[1], d[2], d[3]
+                x = int((cx - w / 2) * width)
+                y = int((cy - h / 2) * height)
+                w = int(w * width)
+                h = int(h * height)
 
             boxes.append([x, y, w, h])
             confidences.append(confidence)

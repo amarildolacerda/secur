@@ -226,7 +226,11 @@ body {
   margin-left: 200px;
   flex: 1;
   padding: 2px;
-  padding-bottom: 2px;
+  /* Padding-bottom compensa o .app-footer (position: fixed, ~40px) para
+     que o ultimo card da grade de cameras nao fique escondido atras dele.
+     Sem isso, a ultima camera aparece sobreposta pelo footer (que mostra
+     uptime/status) e o layout "pisca" quando o grid e recriado a cada 5s. */
+  padding-bottom: 80px;
 }
 
 #page {
@@ -512,10 +516,19 @@ tbody tr:last-child td {
 }
 
 .checkbox-group {
+  /* Os 80 checkboxes de classes viram paineis colapsaveis (details/summary).
+     Antes: flex-wrap num form de 500px -> tela toda, nao cabia.
+     Agora: altura limitada + scroll por secao, busca por texto. */
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
+  flex-direction: column;
+  gap: 6px;
   padding: 6px 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  background: var(--surface-2);
 }
 
 .checkbox-inline {
@@ -531,6 +544,93 @@ tbody tr:last-child td {
 
 .checkbox-inline input[type="checkbox"] {
   accent-color: var(--primary);
+}
+
+/* Barra de acoes: busca + todas/limpar, fixa no topo do checkbox-group */
+.class-filter-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+  z-index: 1;
+}
+
+.class-filter-actions input[type="search"] {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Cada categoria colapsavel */
+.class-group {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 0;
+}
+
+.class-group:last-child {
+  border-bottom: none;
+}
+
+.class-group summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  user-select: none;
+  list-style: none;
+}
+
+.class-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.class-group summary::before {
+  content: '▸';
+  font-size: 0.7rem;
+  transition: transform 0.15s;
+  color: var(--muted);
+}
+
+.class-group[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.class-group-label {
+  flex: 1;
+}
+
+.class-group-count {
+  background: var(--surface);
+  color: var(--muted);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill, 999px);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.class-group-toggle {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+}
+
+.class-group-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 0 4px 16px;
 }
 
 .form-actions {
@@ -567,11 +667,13 @@ tbody tr:last-child td {
 }
 
 .dialog-card {
-  width: min(500px, 100%);
+  width: min(640px, 100%);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 24px;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .live-player-card {
@@ -686,6 +788,22 @@ tbody tr:last-child td {
   margin-top: 10px;
   object-fit: cover;
   border: 1px solid var(--border);
+}
+
+/* Idade do frame: cantinho inferior direito do preview, mostra há quanto
+   tempo o frame atual foi capturado. Atualiza a cada 1s (refreshSnapshotAges). */
+.snapshot-age {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill, 999px);
+  font-weight: 500;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
 }
 
 .camera-preview-wrapper {
@@ -935,6 +1053,114 @@ tr.event-info td {
   text-align: center;
   padding: 16px;
 }
+
+/* Thumbnail detail dialog */
+.thumb-detail-card {
+  max-width: 900px;
+  width: 90%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Controles de zoom no header do dialog */
+.thumb-detail-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.thumb-detail-controls button {
+  min-width: 28px;
+  font-weight: 600;
+}
+
+#thumb-detail-zoom-label {
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Viewport com scroll: a imagem e renderizada em tamanho natural via
+   transform; quando o zoom e 1x ela cabe no viewport (object-fit: contain
+   implicito pela ausencia de transform). cursor:grab sinaliza arrastavel. */
+.thumb-detail-viewport {
+  width: 100%;
+  height: 70vh;
+  overflow: auto;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.thumb-detail-viewport.grabbing {
+  cursor: grabbing;
+}
+
+.thumb-detail-viewport img {
+  display: block;
+  /* Sem transform: imagem cabe no viewport (object-fit-like via flex). */
+  max-width: 100%;
+  max-height: 100%;
+  /* Com transform: imagem extrapola o viewport; usuario da scroll/pan. */
+  transform-origin: top left;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.thumb-detail-hint {
+  font-size: 0.72rem;
+  color: var(--muted-subtle);
+  margin: 6px 0 0;
+  text-align: center;
+}
+
+.thumb-detail-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-2, var(--surface));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--text);
+}
+
+.thumb-detail-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.thumb-detail-meta .badge {
+  margin-left: 4px;
+}
+
+/* Phase badges in thumb history */
+.thumb-phase-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+.thumb-phase-n0 { background: rgba(107, 114, 128, 0.15); color: var(--muted); }
+.thumb-phase-n1 { background: rgba(59, 130, 246, 0.15); color: var(--info); }
+.thumb-phase-n2 { background: rgba(245, 158, 11, 0.15); color: var(--warning, #f59e0b); }
+.thumb-phase-n3 { background: rgba(245, 158, 11, 0.25); color: var(--warning, #f59e0b); }
+.thumb-phase-n4 { background: rgba(220, 38, 38, 0.15); color: var(--danger); }
+.thumb-phase-dropped { background: rgba(107, 114, 128, 0.15); color: var(--muted-subtle); text-decoration: line-through; }
 .camera-card-actions {
   margin-top: 8px;
   display: flex;
@@ -1005,21 +1231,58 @@ tr.event-info td {
   font-weight: 600;
 }
 
+/* System status badges */
+.badge-ok {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--success);
+}
+
+.badge-warn {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--warn);
+}
+
+.badge-off {
+  background: rgba(107, 114, 128, 0.12);
+  color: var(--muted);
+}
+
 /* Dashboard redesign (Fase 5) */
 #camera-tiles {
   margin-top: 12px;
 }
 
-/* Camera grid responsivo — auto-fit colapsa colunas vazias e distribui os
-   cards pela largura disponível. Track com min 280px e max 420px: em telas
-   grandes (~1920px) ~3 câmeras por linha (~420px cada), centradas quando
-   não preenchem toda a largura; com mais câmeras as colunas se ajustam
-   entre 280-420px (ex: 4 → ~400px, 8 → 5 colunas de ~318px no 1920px,
-   4x2 no 1440px). */
+/* Camera grid responsivo:
+   - auto-fit colapsa colunas vazias e distribui pela largura
+   - min 320px e max 1fr: com 1 camera, ela estica ate a largura util
+     (~1720px no 1920px com sidebar 200px); com 4-5 cameras, cada track
+     fica ~360-420px (denso mas confortavel); com 80 cameras, vira grid
+     denso de ~12 colunas
+   - justify-content: center mantem o conjunto centrado quando sobra espaco
+   - :has() comeca a ser suportado (Chrome 105+, Safari 15.4+, Firefox 121+);
+     fallback gracioso se nao houver suporte (1-3 cards continuam
+     justificados a esquerda em vez de centralizados). */
 #camera-tiles,
 #camera-offline-list {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 420px));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   justify-content: center;
+  /* Largura maxima de cada track: 720px. Sem isso, 1 camera em tela 4K
+     esticaria ate 3500px e a imagem do preview perderia resolucao. */
+  max-width: calc(720px * 5);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Quando ha 1-3 cameras: cada card ocupa ate 720px e fica centralizado,
+   aproveitando bem a tela sem ficar gigante. :has() e o seletor que faz
+   o grid "saber" quantos filhos tem. */
+#camera-tiles:has(.card:nth-child(1):last-child),
+#camera-tiles:has(.card:nth-child(2):last-child),
+#camera-tiles:has(.card:nth-child(3):last-child),
+#camera-offline-list:has(.card:nth-child(1):last-child),
+#camera-offline-list:has(.card:nth-child(2):last-child),
+#camera-offline-list:has(.card:nth-child(3):last-child) {
+  grid-template-columns: repeat(auto-fit, minmax(420px, 720px));
 }
 
 #camera-tiles .card,
@@ -1139,6 +1402,27 @@ tr.event-info td {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.event-card-n3 {
+  border: 2px solid var(--warning, #f59e0b);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.2);
+}
+
+.event-card-n4 {
+  border: 2px solid var(--danger, #dc2626);
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.2);
+}
+
+.event-card-n3 .event-card-header,
+.event-card-n4 .event-card-header {
+  background: rgba(245, 158, 11, 0.06);
+  margin: -10px -12px 0;
+  padding: 10px 12px;
+}
+
+.event-card-n4 .event-card-header {
+  background: rgba(220, 38, 38, 0.06);
 }
 
 .event-thumb {

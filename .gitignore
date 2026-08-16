@@ -6,3 +6,6 @@ __pycache__/
 venv/
 .data/
 data/
+
+# deepwork state (git-local)
+.slim/deepwork/

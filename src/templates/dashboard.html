@@ -57,7 +57,7 @@
                 </div>
             </div>
         </nav>
-        <div class="footer-nav">v0.2.0</div>
+        <div class="footer-nav"><a href="#" id="nav-system-status">v0.2.0</a></div>
     </aside>
 
     <div class="main">
@@ -276,6 +276,14 @@
                     <select id="filter-camera" class="chip-select"><option value="">Todas as câmeras</option></select>
                     <select id="filter-zone" class="chip-select"><option value="">Todas as zonas</option></select>
                     <select id="filter-type" class="chip-select"><option value="">Todos os tipos</option></select>
+                    <select id="filter-level" class="chip-select">
+                        <option value="">Todos os níveis</option>
+                        <option value="0">N0 (captura)</option>
+                        <option value="1">N1 (triagem)</option>
+                        <option value="2">N2 (detecção)</option>
+                        <option value="3">N3 (análise)</option>
+                        <option value="4">N4 (providência)</option>
+                    </select>
                     <select id="filter-since" class="chip-select">
                         <option value="">Todo o período</option>
                         <option value="1">Última hora</option>
@@ -353,6 +361,11 @@
                     </table>
                 </div>
             </section>
+
+            <section class="panel hidden-panel" id="system-status">
+                <h2>Status do sistema</h2>
+                <div id="system-status-cards" class="grid"></div>
+            </section>
         </div>
     </div>
 
@@ -410,7 +423,29 @@
         </div>
     </div>
 
+    <!-- Thumbnail Detail Modal (com zoom/pan) -->
+    <div id="thumb-detail-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
+        <div class="dialog-card thumb-detail-card">
+            <div class="dialog-header">
+                <h3 id="thumb-detail-title">Detalhe</h3>
+                <div class="thumb-detail-controls">
+                    <button type="button" class="button-mini" id="thumb-detail-zoom-out" title="Diminuir zoom (-)">−</button>
+                    <span id="thumb-detail-zoom-label">100%</span>
+                    <button type="button" class="button-mini" id="thumb-detail-zoom-in" title="Aumentar zoom (+)">+</button>
+                    <button type="button" class="button-mini" id="thumb-detail-zoom-reset" title="Restaurar zoom (0)">1:1</button>
+                </div>
+                <button type="button" class="button-close" aria-label="Fechar" onclick="closeThumbDetail()">×</button>
+            </div>
+            <div id="thumb-detail-viewport" class="thumb-detail-viewport">
+                <img id="thumb-detail-img" src="" alt="Thumbnail ampliado" draggable="false" />
+            </div>
+            <p class="thumb-detail-hint">Scroll para zoom · arrastar para mover · duplo-clique 1x↔2x · <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> reset · <kbd>Esc</kbd> fechar</p>
+            <div id="thumb-detail-meta" class="thumb-detail-meta"></div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+    <script src="/static/camera_fault.js"></script>
     <script src="/static/dashboard.js"></script>
 </body>
 </html>

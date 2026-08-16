@@ -2,7 +2,7 @@ version: '3.9'
 services:
   secur:
     build: .
-    container_name: secur_app
+    container_name: security_app
     ports:
       - "0.0.0.0:8000:8000"
     volumes:
@@ -11,7 +11,7 @@ services:
     environment:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8000
-      - DETECTOR_MODEL_PATH=
+      - DETECTOR_MODEL_PATH=/app/data/models/detector.onnx
       - MOTION_MIN_AREA=5000
       - FRAME_WAIT_SECONDS=0.1
       - TELEGRAM_BOT_TOKEN=
@@ -20,7 +20,7 @@ services:
       - MQTT_BROKER_PORT=1883
       - MQTT_USERNAME=kzuca
       - MQTT_PASSWORD=123
-      - MQTT_TOPIC=homeassistant/secur/alert
+      - MQTT_TOPIC=homeassistant/security/alert
       - HOME_ASSISTANT_URL=http://192.168.1.12:8123
       - HOME_ASSISTANT_TOKEN=${HOME_ASSISTANT_TOKEN}
-      - HOME_ASSISTANT_EVENT_TYPE=secur_alert
+      - HOME_ASSISTANT_EVENT_TYPE=security_alert

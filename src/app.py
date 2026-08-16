@@ -1,12 +1,14 @@
 import cv2
 import os
 import time
+from datetime import datetime, timezone
 from flask import Flask, jsonify, render_template, request, Response, send_file
 from .camera import CameraStream
 from .storage import EventStorage
 from .masking import frame_for_storage
 from .config import is_privacy_mode_on
 from .notifications import CHANNELS, EVENT_TYPES
+from .status import build_system_status
 import base64
 import numpy as np
 from typing import Optional
@@ -91,8 +93,9 @@ except Exception:
     IdentityRecognizer = None
 
 
-def create_app(camera_manager=None, db_path=None, alerts=None):
+def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
     app = Flask(__name__, template_folder="templates", static_folder="static")
+    app.event_bus = event_bus
     storage = EventStorage(db_path) if db_path is not None else EventStorage()
     # recognizer_factory hook: tests or callers may set app.recognizer_factory = lambda storage: recognizer
     def _make_recognizer() -> Optional[object]:
@@ -128,6 +131,10 @@ def create_app(camera_manager=None, db_path=None, alerts=None):
             status_payload["active_workers"] = len(status_payload["worker_status"])
 
         return jsonify(status_payload)
+
+    @app.route("/api/system-status")
+    def api_system_status():
+        return jsonify(build_system_status(camera_manager))
 
     @app.route("/workers")
     def workers():
@@ -195,7 +202,17 @@ def create_app(camera_manager=None, db_path=None, alerts=None):
             return jsonify({"error": "Falha ao codificar imagem"}), 500
 
         log.info("Snapshot OK for camera %s", camera_id)
-        return Response(jpg.tobytes(), mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
+        # X-Snapshot-Time = ISO 8601 (UTC) do momento da captura do frame,
+        # para o dashboard mostrar "capturado há Xs" e envelhecer dinamicamente.
+        captured_iso = datetime.now(timezone.utc).isoformat()
+        return Response(
+            jpg.tobytes(),
+            mimetype="image/jpeg",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Snapshot-Time": captured_iso,
+            },
+        )
 
     @app.route("/camera/<int:camera_id>/thumbnails")
     def camera_thumbnails(camera_id):
@@ -210,6 +227,10 @@ def create_app(camera_manager=None, db_path=None, alerts=None):
                 "timestamp": it["timestamp"],
                 "event_type": it["event_type"],
                 "url": f"/thumbnails/{it['id']}/image",
+                "event_id": it.get("event_id"),
+                "level": it.get("event_level"),
+                "disposition": it.get("event_disposition"),
+                "dropped": bool(it.get("event_dropped")) if it.get("event_dropped") is not None else None,
             })
         return jsonify(out)
 
@@ -364,8 +385,48 @@ def create_app(camera_manager=None, db_path=None, alerts=None):
 
     @app.route("/events")
     def events():
-        items = storage.list_events(limit=100)
+        level = request.args.get("level", type=int)
+        camera_id = request.args.get("camera_id")
+        items = storage.list_events(limit=100, level=level, camera_id=camera_id)
         return jsonify(items)
+
+    @app.route("/api/ingest", methods=["POST"])
+    def api_ingest():
+        """Borda remota (câmeras E dispositivos/sensores) entra na fila em N1.
+
+        Genérico: aceita JSON {camera_id (id de origem), device_type?, zone?,
+        event_type?, details?, detections?, thumbnail_path?, identity_name?, ...}.
+        Para sensores (ex.: alagamento), device_type="sensor" e event_type
+        (ex.: "flood") é o sinal; detections pode vir vazio.
+        """
+        bus = getattr(app, "event_bus", None)
+        if bus is None:
+            return jsonify({"error": "event bus indisponivel"}), 503
+        payload = request.get_json(silent=True) or {}
+        camera_id = payload.get("camera_id")
+        if not camera_id:
+            return jsonify({"error": "camera_id obrigatorio"}), 400
+        from .events import CameraEvent
+        event = CameraEvent(
+            camera_id=str(camera_id),
+            device_type=payload.get("device_type", "camera"),
+            zone=payload.get("zone"),
+            zone_classification=payload.get("zone_classification"),
+            level=1,
+            source="edge",
+            event_type=payload.get("event_type"),
+            details=payload.get("details"),
+            identity_name=payload.get("identity_name"),
+            known=payload.get("known"),
+            category=payload.get("category"),
+            recognition_method=payload.get("recognition_method"),
+            thumbnail_path=payload.get("thumbnail_path"),
+            detections=payload.get("detections") or [],
+            camera_name=payload.get("camera_name"),
+            alert_classes=payload.get("alert_classes"),
+        )
+        bus.enqueue(event)
+        return jsonify({"status": "enqueued", "event_id": event.event_id}), 202
 
     @app.route("/zones")
     def zones():

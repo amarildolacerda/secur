@@ -12,16 +12,19 @@ logger = logging.getLogger(__name__)
 
 class AlertService:
     def __init__(self, storage=None):
+        # `storage` é mantido apenas por compatibilidade de assinatura: o
+        # AlertService NÃO persiste mais eventos (quem persiste é o
+        # AlertRuleEngine). Um storage passado aqui é ignorado.
         self.handlers = []
         if storage is not None:
-            self.register_handler(event_store_handler(storage))
+            logger.debug("AlertService: storage ignorado (persistencia via AlertRuleEngine)")
 
     def register_handler(self, handler):
         self.handlers.append(handler)
 
     def send(self, camera_id, zone, event_type, details=None, zone_classification=None,
              identity=None, known=None, recognition_method=None, category=None, routing=None,
-             thumbnail_path=None, clip_path=None):
+             thumbnail_path=None, clip_path=None, routing_channels=None):
         payload = {
             "camera_id": camera_id,
             "zone": zone,
@@ -40,6 +43,11 @@ class AlertService:
         event_id = None
         for handler in self.handlers:
             channel = getattr(handler, "channel", None)
+            # Filtro da regra (ex.: N4 restringe aos canais decididos): um
+            # canal só dispara se estiver na lista da regra QUANDO a regra
+            # fornecer a lista. None = sem restrição de regra.
+            if routing_channels is not None and channel is not None and channel not in routing_channels:
+                continue
             if channel is not None and routing is not None and not is_enabled(routing, channel, event_type):
                 continue
             try:
@@ -49,22 +57,6 @@ class AlertService:
             except Exception:
                 logger.exception("Alert handler failed: %s", handler.__name__)
         return event_id
-
-
-def event_store_handler(storage):
-    """Handler que grava o evento na tabela interna (dashboard). Nunca filtrado por routing."""
-    def handler(payload: Dict):
-        try:
-            return storage.add_event(
-                payload.get("camera_id"),
-                payload.get("zone"),
-                payload.get("event_type"),
-                payload.get("details"),
-            )
-        except Exception:
-            logger.exception("Falha ao gravar evento na tabela interna")
-            return None
-    return handler
 
 
 def telegram_handler(payload: Dict):

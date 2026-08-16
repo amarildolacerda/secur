@@ -37,7 +37,7 @@ class _FakeStorage:
         self.added = []
         self.pruned = []
 
-    def add_camera_thumbnail(self, camera_id, path, event_type):
+    def add_camera_thumbnail(self, camera_id, path, event_type, event_id=None):
         self.added.append((camera_id, path, event_type))
 
     def prune_camera_thumbnails(self, camera_id, keep=None, max_age_days=None):
