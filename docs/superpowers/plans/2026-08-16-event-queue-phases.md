@@ -45,7 +45,7 @@
 - `update_event_level(event_id, level, event_type=None, details=None, disposition=None) -> bool`.
 - `list_events(limit=100, level=None, camera_id=None, source=None) -> list[dict]`.
 
-- [ ] **Step 1: Escrever o teste falhando**
+- [x] **Step 1: Escrever o teste falhando**
 
 ```python
 def test_events_level_columns(tmp_path):
@@ -59,12 +59,12 @@ def test_events_level_columns(tmp_path):
     assert s.list_events(level=9) == []
 ```
 
-- [ ] **Step 2: Rodar para confirmar falha**
+- [x] **Step 2: Rodar para confirmar falha**
 
 Run: `py -3 -m pytest tests/test_events.py::test_events_level_columns -q`
 Expected: FAIL (coluna `level` inexistente / assinatura antiga).
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 Em `src/storage.py`, no bloco de migração de `events` (~linha 118), adicionar:
 ```python
@@ -133,12 +133,12 @@ def update_event_level(self, event_id, level, event_type=None, details=None, dis
         return cursor.rowcount > 0
 ```
 
-- [ ] **Step 4: Rodar para confirmar sucesso**
+- [x] **Step 4: Rodar para confirmar sucesso**
 
 Run: `py -3 -m pytest tests/test_events.py::test_events_level_columns -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/storage.py tests/test_events.py
@@ -158,7 +158,7 @@ git commit -m "feat(storage): colunas level/dropped/source em events e filtros"
 - `EventQueue` (Protocol): `enqueue(event)`, `subscribe(handler)`, `start()`.
 - `LocalEventQueue` implementa com `queue.Queue` + thread consumer.
 
-- [ ] **Step 1: Escrever o teste falhando**
+- [x] **Step 1: Escrever o teste falhando**
 
 ```python
 def test_local_queue_delivers():
@@ -173,12 +173,12 @@ def test_local_queue_delivers():
     assert received and received[0].camera_id == "1"
 ```
 
-- [ ] **Step 2: Rodar para confirmar falha**
+- [x] **Step 2: Rodar para confirmar falha**
 
 Run: `py -3 -m pytest tests/test_events.py::test_local_queue_delivers -q`
 Expected: FAIL (módulo inexistente).
 
-- [ ] **Step 3: Implementar `src/events.py`**
+- [x] **Step 3: Implementar `src/events.py`**
 
 ```python
 import queue
@@ -258,12 +258,12 @@ class LocalEventQueue(EventQueue):
             self._q.task_done()
 ```
 
-- [ ] **Step 4: Rodar para confirmar sucesso**
+- [x] **Step 4: Rodar para confirmar sucesso**
 
 Run: `py -3 -m pytest tests/test_events.py::test_local_queue_delivers -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/events.py tests/test_events.py
@@ -283,7 +283,7 @@ git commit -m "feat(events): CameraEvent e EventQueue (LocalEventQueue)"
 - `_unpack_worker_decision(decision) -> tuple` (idêntico a `main.py:471-481`).
 - `COOLDOWNS: dict[str, int]` (mapeamento de `get_cooldown_for_event` existente em `main.py`).
 
-- [ ] **Step 1: Escrever teste (decide)**
+- [x] **Step 1: Escrever teste (decide)**
 
 ```python
 from src.event_rules import decide_worker_event, _unpack_worker_decision
@@ -294,12 +294,12 @@ def test_unpack_none():
     assert _unpack_worker_decision(None) == (None,)*6
 ```
 
-- [ ] **Step 2: Rodar (falha esperada por import)**
+- [x] **Step 2: Rodar (falha esperada por import)**
 
 Run: `py -3 -m pytest tests/test_events.py::test_decide_fall tests/test_events.py::test_unpack_none -q`
 Expected: FAIL (`src.event_rules` não existe).
 
-- [ ] **Step 3: Implementar `src/event_rules.py`**
+- [x] **Step 3: Implementar `src/event_rules.py`**
 
 Copiar **verbalmente** `decide_worker_event` (de `main.py:438-468`) e `_unpack_worker_decision` (de `main.py:471-481`). No topo, importar `decide_event` e `format_detections` do mesmo módulo que `main.py` os importa (ver `import` em `main.py`; tipicamente `from .rules import decide_event, format_detections` ou similar — confirmar e usar o caminho correto). Adicionar:
 
@@ -362,12 +362,12 @@ def evaluate_rules(event_type, zone_classification, no_motion):
 
 Em `main.py`, remover as duas funções e (se nada mais as usar) ajustar; o worker não as chamará mais (quem chama `decide_worker_event` é `AlertRuleEngine`).
 
-- [ ] **Step 4: Rodar**
+- [x] **Step 4: Rodar**
 
 Run: `py -3 -m pytest tests/test_events.py::test_decide_fall tests/test_events.py::test_unpack_none -q`
 Expected: PASS. `py -3 -c "import src.main"` deve importar sem erro de nome.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/event_rules.py src/main.py tests/test_events.py
@@ -387,7 +387,7 @@ git commit -m "refactor: mover decide_worker_event para src/event_rules.py"
 - `start_clip(self, event_id)` (extrai gravação de clipe de `run()`).
 - O worker NÃO chama `self.alerts.send` nem inicia clipe direto; chama `self.event_bus.enqueue(event)`.
 
-- [ ] **Step 1: Teste (worker emite, não alerta)**
+- [x] **Step 1: Teste (worker emite, não alerta)**
 
 ```python
 def test_worker_emits_not_alerts(monkeypatch):
@@ -402,12 +402,12 @@ def test_worker_emits_not_alerts(monkeypatch):
 ```
 (Implementar com um worker mínimo ou testar a função `build_candidate_event` se extraída. Ver abaixo.)
 
-- [ ] **Step 2: Rodar (falha esperada)**
+- [x] **Step 2: Rodar (falha esperada)**
 
 Run: `py -3 -m pytest tests/test_events.py::test_worker_emits_not_alerts -q`
 Expected: FAIL.
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 Em `CameraWorker.__init__`, adicionar `self.event_bus = event_bus`.
 
@@ -501,12 +501,12 @@ def start_clip(self, event_id):
 ```
 (renomear os atributos de instância `clip_writer/...` para `self._clip_writer/...` conforme o `run()` usa; manter consistência com o loop de escrita em `run()`.)
 
-- [ ] **Step 4: Rodar**
+- [x] **Step 4: Rodar**
 
 Run: `py -3 -m pytest tests/test_events.py::test_worker_emits_not_alerts -q` e `py -3 -c "import src.main"`
 Expected: PASS; import limpo.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main.py tests/test_events.py
@@ -526,7 +526,7 @@ git commit -m "refactor(worker): emitir CameraEvent (N0/N1); remover alerts.send
 - `handle(event: CameraEvent)` — persiste N0/N1, decide N2–N3, alerta/HA N4, solicita clipe; isola exceções.
 - Depende de `decide_worker_event`, `_unpack_worker_decision`, `get_cooldown_for_event` (de `src.event_rules`), e `camera_manager.request_clip` (Task 7).
 
-- [ ] **Step 1: Teste (cooldown + alerts mock + dropped)**
+- [x] **Step 1: Teste (cooldown + alerts mock + dropped)**
 
 ```python
 def test_engine_decides_and_alerts(monkeypatch):
@@ -548,12 +548,12 @@ def test_engine_decides_and_alerts(monkeypatch):
 ```
 (Verificar chamadas de `alerts.send` via mock contador.)
 
-- [ ] **Step 2: Rodar (falha esperada)**
+- [x] **Step 2: Rodar (falha esperada)**
 
 Run: `py -3 -m pytest tests/test_events.py::test_engine_decides_and_alerts -q`
 Expected: FAIL.
 
-- [ ] **Step 3: Implementar `src/alert_rules.py`**
+- [x] **Step 3: Implementar `src/alert_rules.py`**
 
 ```python
 import time
@@ -621,12 +621,12 @@ class AlertRuleEngine:
         self.storage.update_event_level(event_id, 4, event_type=event_type, details=details, disposition=disposition)
 ```
 
-- [ ] **Step 4: Rodar**
+- [x] **Step 4: Rodar**
 
 Run: `py -3 -m pytest tests/test_events.py::test_engine_decides_and_alerts -q`
 Expected: PASS (1 alerta, 2º suprimido por cooldown).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/alert_rules.py tests/test_events.py
@@ -644,11 +644,11 @@ git commit -m "feat(alerts): AlertRuleEngine consome fila e decide N2-N4"
 **Interfaces:**
 - `AlertService.send(payload..., routing_channels: list[str] = None)` continua com a assinatura, mas **não persiste** (quem persiste é `AlertRuleEngine`). `routing_channels`, quando fornecido (pela regra N4), restringe quais handlers/dispositivos disparam — ainda respeitando o `routing` de configuração (um canal só dispara se habilitado NA config E na regra).
 
-- [ ] **Step 1: Garantir que nenhum caller depende do retorno de `add_event` via alerts.send**
+- [x] **Step 1: Garantir que nenhum caller depende do retorno de `add_event` via alerts.send**
 
 Run: `py -3 -c "import src.app"` e checar que `event_store_handler` não é registrado.
 
-- [ ] **Step 2: Remover handler + aceitar routing_channels**
+- [x] **Step 2: Remover handler + aceitar routing_channels**
 
 Em `src/alerts.py`, apagar a função `event_store_handler` (linha 54-67).
 
@@ -661,12 +661,12 @@ E adicionar `routing_channels=None` ao parâmetro de `send` (linha 22).
 
 Em `src/app.py`, onde os handlers são montados (ex.: `handlers=[event_store_handler(storage), telegram_handler, mqtt_handler, ha_handler]`), remover `event_store_handler(storage)`.
 
-- [ ] **Step 3: Rodar**
+- [x] **Step 3: Rodar**
 
 Run: `py -3 -m pytest -q` (ignore falhas de `test_docker_integration` se ausente Docker)
 Expected: suíte passa (eventos agora persistem via `AlertRuleEngine`).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/alerts.py src/app.py
@@ -685,7 +685,7 @@ git commit -m "refactor(alerts): send vira so notificacao; persistencia no Alert
 - `CameraManager.request_clip(camera_id, event_id)` → chama `worker.start_clip(event_id)`.
 - `main()` cria `event_bus = LocalEventQueue()`, `engine = AlertRuleEngine(storage, alerts, camera_manager)`, `event_bus.subscribe(engine.handle)`, `event_bus.start()`, e passa `event_bus` ao construir `CameraWorker`.
 
-- [ ] **Step 1: Teste (request_clip chama worker)**
+- [x] **Step 1: Teste (request_clip chama worker)**
 
 ```python
 def test_request_clip(monkeypatch):
@@ -700,12 +700,12 @@ def test_request_clip(monkeypatch):
     assert called == [99]
 ```
 
-- [ ] **Step 2: Rodar (falha esperada)**
+- [x] **Step 2: Rodar (falha esperada)**
 
 Run: `py -3 -m pytest tests/test_events.py::test_request_clip -q`
 Expected: FAIL.
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 Em `CameraManager` (após `get_status`, ~linha 641), adicionar:
 ```python
@@ -729,12 +729,12 @@ E ao construir cada `CameraWorker` (linha 630), passar `event_bus=event_bus`.
 
 Em `create_app` (`src/app.py`), adicionar parâmetro `event_bus=None` e guardá-lo em `app.event_bus` para uso em `/api/ingest`. Em `main()` (linha 685), passar `event_bus=event_bus`.
 
-- [ ] **Step 4: Rodar**
+- [x] **Step 4: Rodar**
 
 Run: `py -3 -m pytest tests/test_events.py::test_request_clip -q` e `py -3 -c "import src.app; import src.main"`
 Expected: PASS; imports limpos.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main.py src/app.py tests/test_events.py
@@ -751,7 +751,7 @@ git commit -m "feat: wire EventQueue + AlertRuleEngine + CameraManager.request_c
 **Interfaces:**
 - `POST /api/ingest` é **genérico** (câmeras E dispositivos/sensores): aceita JSON `{camera_id (id de origem), device_type?, zone?, event_type?, details?, detections?, thumbnail_path?, identity_name?, ...}`; valida `camera_id`; cria `CameraEvent(level=1, source="edge", device_type=payload.get("device_type","camera"), ...)` e `event_bus.enqueue(event)`. Retorna 202 ou 400. Para sensores (ex.: alagamento), `device_type="sensor"` e `event_type` (ex.: `"flood"`) é o sinal; `detections` pode vir vazio.
 
-- [ ] **Step 1: Teste**
+- [x] **Step 1: Teste**
 
 ```python
 def test_ingest_enqueues(client, monkeypatch):
@@ -766,12 +766,12 @@ def test_ingest_enqueues(client, monkeypatch):
     assert r2.status_code == 400
 ```
 
-- [ ] **Step 2: Rodar (falha esperada)**
+- [x] **Step 2: Rodar (falha esperada)**
 
 Run: `py -3 -m pytest tests/test_events.py::test_ingest_enqueues -q`
 Expected: FAIL (rota inexistente).
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 Em `src/app.py`, dentro de `create_app`:
 ```python
@@ -807,12 +807,12 @@ def api_ingest():
     return jsonify({"status": "enqueued", "event_id": event.event_id}), 202
 ```
 
-- [ ] **Step 4: Rodar**
+- [x] **Step 4: Rodar**
 
 Run: `py -3 -m pytest tests/test_events.py::test_ingest_enqueues -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/app.py tests/test_events.py
@@ -832,7 +832,7 @@ git commit -m "feat(api): POST /api/ingest para borda remota (entra em N1)"
 - `GET /events?level=<int>` → `storage.list_events(level=...)`.
 - Dashboard mostra badge de nível por evento; filtro por nível; Visão geral mostra contagem N0 da câmera.
 
-- [ ] **Step 1: Teste (endpoint filtra nível)**
+- [x] **Step 1: Teste (endpoint filtra nível)**
 
 ```python
 def test_events_level_filter(client):
@@ -841,7 +841,7 @@ def test_events_level_filter(client):
 ```
 (Se não houver fixture, pular teste automático e validar manualmente; cobrir `list_events(level=)` no Task 1.)
 
-- [ ] **Step 2: `/events` com filtro**
+- [x] **Step 2: `/events` com filtro**
 
 Em `src/app.py` (rota `/events`, linha 370):
 ```python
@@ -852,7 +852,7 @@ def events():
     return jsonify(items)
 ```
 
-- [ ] **Step 3: Select de nível no HTML**
+- [x] **Step 3: Select de nível no HTML**
 
 Em `src/templates/dashboard.html`, na barra de filtros de eventos (onde estão `filter-camera`/`filter-type`), adicionar:
 ```html
@@ -866,7 +866,7 @@ Em `src/templates/dashboard.html`, na barra de filtros de eventos (onde estão `
 </select>
 ```
 
-- [ ] **Step 4: JS — filtro e badge**
+- [x] **Step 4: JS — filtro e badge**
 
 Em `dashboard.js`:
 - `readFilterState()` — adicionar `level: document.getElementById('filter-level')?.value || ''`.
@@ -884,12 +884,12 @@ const levelBadge = `<span class="badge badge-info">${lvlLabel}</span>`;
 e inserir `${levelBadge} ${droppedBadge}` no markup do evento (junto ao `event-type`).
 - `renderEventsSection` (linha 1622) — passar `level` na busca: `fetchData('/events?level=' + (readFilterState().level||''))` e, na Visão geral, mostrar indicador N0: para cada câmera, `storage.list_events(limit=100, level=0, camera_id=camera.id).length` (via um novo endpoint leve ou reuso de `/events?level=0&camera_id=` — adicionar `camera_id` ao `/events` também).
 
-- [ ] **Step 5: Verificar sintaxe**
+- [x] **Step 5: Verificar sintaxe**
 
 Run: `node --check src/static/dashboard.js` (se Node indisponível, revisar manualmente).
 Run: `py -3 -c "import src.app"`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app.py src/templates/dashboard.html src/static/dashboard.js
