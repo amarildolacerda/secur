@@ -516,10 +516,19 @@ tbody tr:last-child td {
 }
 
 .checkbox-group {
+  /* Os 80 checkboxes de classes viram paineis colapsaveis (details/summary).
+     Antes: flex-wrap num form de 500px -> tela toda, nao cabia.
+     Agora: altura limitada + scroll por secao, busca por texto. */
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
+  flex-direction: column;
+  gap: 6px;
   padding: 6px 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  background: var(--surface-2);
 }
 
 .checkbox-inline {
@@ -535,6 +544,93 @@ tbody tr:last-child td {
 
 .checkbox-inline input[type="checkbox"] {
   accent-color: var(--primary);
+}
+
+/* Barra de acoes: busca + todas/limpar, fixa no topo do checkbox-group */
+.class-filter-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+  z-index: 1;
+}
+
+.class-filter-actions input[type="search"] {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Cada categoria colapsavel */
+.class-group {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 0;
+}
+
+.class-group:last-child {
+  border-bottom: none;
+}
+
+.class-group summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  user-select: none;
+  list-style: none;
+}
+
+.class-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.class-group summary::before {
+  content: '▸';
+  font-size: 0.7rem;
+  transition: transform 0.15s;
+  color: var(--muted);
+}
+
+.class-group[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.class-group-label {
+  flex: 1;
+}
+
+.class-group-count {
+  background: var(--surface);
+  color: var(--muted);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill, 999px);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.class-group-toggle {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+}
+
+.class-group-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 0 4px 16px;
 }
 
 .form-actions {
@@ -571,11 +667,13 @@ tbody tr:last-child td {
 }
 
 .dialog-card {
-  width: min(500px, 100%);
+  width: min(640px, 100%);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 24px;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .live-player-card {

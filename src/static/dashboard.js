@@ -1614,6 +1614,30 @@ function populateZoneDropdown(zones, selectedZone) {
   });
 }
 
+// Agrupa classes por categoria para paineis colapsaveis. Antes eram 80
+// checkboxes em flex-wrap dentro do form (ocupavam a tela toda e nao cabiam
+// no dialog de 500px). Agora: <details> por categoria, default expandido
+// para as categorias mais relevantes (pessoas, veiculos, animais). Botoes
+// de acao rapida: selecionar/limpar categoria, e busca por texto.
+const ALERT_CLASS_GROUPS = [
+  { key: 'all', label: 'Todas as classes (limpar filtro)', classes: null },
+  { key: 'person', label: 'Pessoas', classes: ['person'] },
+  { key: 'vehicle', label: 'Veículos', classes: ['bicycle','car','motorcycle','airplane','bus','train','truck','boat'] },
+  { key: 'outdoor', label: 'Externo', classes: ['traffic light','fire hydrant','stop sign','parking meter','bench'] },
+  { key: 'animal', label: 'Animais', classes: ['bird','cat','dog','horse','sheep','cow','elephant','bear','zebra','giraffe'] },
+  { key: 'accessory', label: 'Acessórios pessoais', classes: ['backpack','umbrella','handbag','tie','suitcase'] },
+  { key: 'sports', label: 'Esportes', classes: ['frisbee','skis','snowboard','sports ball','kite','baseball bat','baseball glove','skateboard','surfboard','tennis racket'] },
+  { key: 'food', label: 'Alimentos / cozinha', classes: ['bottle','wine glass','cup','fork','knife','spoon','bowl','banana','apple','sandwich','orange','broccoli','carrot','hot dog','pizza','donut','cake'] },
+  { key: 'furniture', label: 'Móveis / Eletro', classes: ['chair','couch','potted plant','bed','dining table','toilet','tv','laptop','mouse','remote','keyboard','cell phone','microwave','oven','toaster','sink','refrigerator'] },
+  { key: 'misc', label: 'Outros', classes: ['book','clock','vase','scissors','teddy bear','hair drier','toothbrush'] },
+];
+
+function _buildClassCheckbox(cls, selectedSet) {
+  const checked = selectedSet.has(cls) ? 'checked' : '';
+  const escaped = cls.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  return `<label class="checkbox-inline"><input type="checkbox" value="${escaped}" ${checked} /> ${escaped}</label>`;
+}
+
 async function populateAlertClasses(selected) {
   const container = document.getElementById('camera-alert-classes');
   if (!container) return;
@@ -1623,11 +1647,80 @@ async function populateAlertClasses(selected) {
     classes = data.classes || [];
   } catch (e) { return; }
   const selectedSet = new Set(selected || []);
-  container.innerHTML = classes.map(cls => `
-    <label class="checkbox-inline">
-      <input type="checkbox" value="${cls}" ${selectedSet.has(cls) ? 'checked' : ''} /> ${cls}
-    </label>
-  `).join('');
+
+  // Agrupa pelo ALERT_CLASS_GROUPS; classes desconhecidas vao para "Outros".
+  const knownKeys = new Set();
+  ALERT_CLASS_GROUPS.forEach(g => g.classes && g.classes.forEach(c => knownKeys.add(c)));
+  const miscClasses = classes.filter(c => !knownKeys.has(c));
+
+  const sections = ALERT_CLASS_GROUPS
+    .filter(g => !g.classes || g.classes.some(c => classes.includes(c)))
+    .map((g, idx) => {
+      // Primeira secao abre por default (pessoas + veiculos, os mais uteis).
+      const open = idx === 1 || idx === 2 ? 'open' : '';
+      const groupClasses = g.classes ? g.classes.filter(c => classes.includes(c)) : [];
+      const checkboxes = groupClasses.map(c => _buildClassCheckbox(c, selectedSet)).join('');
+      return `
+        <details class="class-group" ${open}>
+          <summary>
+            <span class="class-group-label">${g.label}</span>
+            <span class="class-group-count">${groupClasses.length}</span>
+            <button type="button" class="button-mini class-group-toggle" data-group="${g.key}">inverter</button>
+          </summary>
+          <div class="class-group-body">${checkboxes}</div>
+        </details>
+      `;
+    }).join('');
+
+  // Classes que nao estao em nenhum grupo vao em uma secao "Nao categorizadas".
+  const orphanSection = miscClasses.length
+    ? `<details class="class-group"><summary><span class="class-group-label">Não categorizadas</span><span class="class-group-count">${miscClasses.length}</span></summary><div class="class-group-body">${miscClasses.map(c => _buildClassCheckbox(c, selectedSet)).join('')}</div></details>`
+    : '';
+
+  container.innerHTML = `
+    <div class="class-filter-actions">
+      <input type="search" id="class-filter-search" placeholder="Filtrar classes..." />
+      <button type="button" class="button-mini" id="class-filter-all">Todas</button>
+      <button type="button" class="button-mini" id="class-filter-none">Limpar</button>
+    </div>
+    ${sections}
+    ${orphanSection}
+  `;
+
+  // Eventos dos botoes de acao rapida
+  const allBtn = container.querySelector('#class-filter-all');
+  const noneBtn = container.querySelector('#class-filter-none');
+  const search = container.querySelector('#class-filter-search');
+  allBtn && allBtn.addEventListener('click', () => {
+    container.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = true; cb.dispatchEvent(new Event('change')); });
+  });
+  noneBtn && noneBtn.addEventListener('click', () => {
+    container.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = false; cb.dispatchEvent(new Event('change')); });
+  });
+  search && search.addEventListener('input', () => {
+    const term = search.value.trim().toLowerCase();
+    container.querySelectorAll('.class-group').forEach(d => {
+      const labels = d.querySelectorAll('label.checkbox-inline');
+      let visibleCount = 0;
+      labels.forEach(l => {
+        const text = l.textContent.toLowerCase();
+        const show = !term || text.includes(term);
+        l.style.display = show ? '' : 'none';
+        if (show) visibleCount++;
+      });
+      d.querySelector('.class-group-count').textContent = visibleCount;
+      // Abre secoes com resultados
+      d.style.display = visibleCount > 0 ? '' : 'none';
+    });
+  });
+  // Botao "inverter" por secao
+  container.querySelectorAll('.class-group-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const det = btn.closest('details');
+      det.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); });
+    });
+  });
 }
 
 /* ========== Messages ========== */
