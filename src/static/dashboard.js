@@ -7,6 +7,12 @@ const localThumbnails = {};
 // cada render/poll — a visibilidade da seção offline é derivada dela).
 let showOfflineCameras = false;
 
+const SNAPSHOT_RETRY_INTERVAL_MS = CameraFault.FAULT_DEFAULTS.retryIntervalMs;
+const SNAPSHOT_OFFLINE_RETRY_INTERVAL_MS = CameraFault.FAULT_DEFAULTS.offlineRetryIntervalMs;
+const SNAPSHOT_OFFLINE_THRESHOLD_MS = CameraFault.FAULT_DEFAULTS.offlineThresholdMs;
+// id -> { status:'retrying'|'offline', firstFailAt, timer }
+const cameraFaultState = {};
+
 function formatUptime(ms) {
   const s = Math.floor(ms / 1000);
   const d = Math.floor(s / 86400);
@@ -79,6 +85,8 @@ function setupSidebarNavigation() {
 }
 
 function createCameraCard(camera, offline = false, lastEventTs = null) {
+  const faultOffline = cameraFaultState[camera.id] && cameraFaultState[camera.id].status === 'offline';
+  offline = offline || faultOffline;
   const zoneLabel = camera.zone || '-';
   const imgId = `snapshot-${camera.id}`;
   const offlineBadge = offline
@@ -107,8 +115,8 @@ function createCameraCard(camera, offline = false, lastEventTs = null) {
           id="${imgId}"
           class="camera-preview"
           alt="Preview da câmera"
-          onload="this.parentElement.classList.remove('loading'); this.parentElement.classList.remove('error');"
-          onerror="this.parentElement.classList.remove('loading'); this.parentElement.classList.add('error'); this.style.display='none'; this.nextElementSibling.style.display='flex';"
+          onload="onSnapshotLoad(${camera.id}, this)"
+          onerror="onSnapshotError(${camera.id}, this)"
         />
         <div class="camera-preview-error" style="display:none;">
           <span>Falha ao carregar preview</span>
@@ -131,6 +139,88 @@ function retrySnapshot(cameraId) {
     img.style.display = '';
     img.nextElementSibling.style.display = 'none';
     img.src = `/camera/${cameraId}/snapshot?ts=${Date.now()}`;
+  }
+}
+
+function retrySnapshotNow(cameraId) {
+  const img = document.getElementById(`snapshot-${cameraId}`);
+  if (!img) return;
+  const wrapper = img.parentElement;
+  wrapper.classList.add('loading');
+  wrapper.classList.remove('error');
+  img.style.display = '';
+  img.nextElementSibling.style.display = 'none';
+  img.src = `/camera/${cameraId}/snapshot?ts=${Date.now()}`;
+}
+
+function onSnapshotError(cameraId, el) {
+  const wrapper = el.parentElement;
+  wrapper.classList.remove('loading');
+  wrapper.classList.add('error');
+  const img = el;
+  img.style.display = 'none';
+  img.nextElementSibling.style.display = 'flex';
+
+  const prev = cameraFaultState[cameraId] || null;
+  const { state } = CameraFault.transitionFault(prev, 'error', Date.now());
+  cameraFaultState[cameraId] = state;
+  scheduleSnapshotRetry(cameraId);
+  refreshSnapshotFallback(cameraId);
+}
+
+function onSnapshotLoad(cameraId, el) {
+  const wrapper = el.parentElement;
+  wrapper.classList.remove('loading');
+  wrapper.classList.remove('error');
+  const t = cameraFaultState[cameraId];
+  if (t && t.timer) clearTimeout(t.timer);
+  delete cameraFaultState[cameraId];
+  refreshSnapshotFallback(cameraId);
+}
+
+function scheduleSnapshotRetry(cameraId) {
+  const state = cameraFaultState[cameraId];
+  if (!state || state.timer) return;
+  const interval = CameraFault.nextRetryIntervalMs(state);
+  state.timer = setTimeout(() => {
+    state.timer = null;
+    const res = CameraFault.transitionFault(state, 'error', Date.now());
+    cameraFaultState[cameraId] = res.state;
+    if (res.offline) refreshSnapshotFallback(cameraId);
+    if (res.reload) retrySnapshotNow(cameraId);
+    if (res.state && res.state.status === 'offline') {
+      // já offline: segue sondando no intervalo lento (auto-recuperação)
+      scheduleSnapshotRetry(cameraId);
+    } else if (res.state) {
+      scheduleSnapshotRetry(cameraId);
+    }
+  }, interval);
+}
+
+function markSnapshotOffline(cameraId) {
+  const state = cameraFaultState[cameraId];
+  if (!state) return;
+  state.status = 'offline';
+  refreshSnapshotFallback(cameraId);
+  scheduleSnapshotRetry(cameraId);
+}
+
+function refreshSnapshotFallback(cameraId) {
+  const img = document.getElementById(`snapshot-${cameraId}`);
+  if (!img) return;
+  const wrapper = img.parentElement;
+  const fallback = wrapper.querySelector('.camera-preview-error');
+  if (!fallback) return;
+  const state = cameraFaultState[cameraId];
+  const msg = fallback.querySelector('span');
+  if (msg) {
+    if (state && state.status === 'offline') {
+      msg.textContent = 'Sem resposta (offline)';
+    } else if (state && state.status === 'retrying') {
+      msg.textContent = 'Tentando novamente…';
+    } else {
+      msg.textContent = 'Falha ao carregar preview';
+    }
   }
 }
 
