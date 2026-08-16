@@ -688,6 +688,22 @@ tbody tr:last-child td {
   border: 1px solid var(--border);
 }
 
+/* Idade do frame: cantinho inferior direito do preview, mostra há quanto
+   tempo o frame atual foi capturado. Atualiza a cada 1s (refreshSnapshotAges). */
+.snapshot-age {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill, 999px);
+  font-weight: 500;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
 .camera-preview-wrapper {
   position: relative;
   min-height: 80px;

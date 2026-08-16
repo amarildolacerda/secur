@@ -1,6 +1,7 @@
 import cv2
 import os
 import time
+from datetime import datetime, timezone
 from flask import Flask, jsonify, render_template, request, Response, send_file
 from .camera import CameraStream
 from .storage import EventStorage
@@ -201,7 +202,17 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
             return jsonify({"error": "Falha ao codificar imagem"}), 500
 
         log.info("Snapshot OK for camera %s", camera_id)
-        return Response(jpg.tobytes(), mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
+        # X-Snapshot-Time = ISO 8601 (UTC) do momento da captura do frame,
+        # para o dashboard mostrar "capturado há Xs" e envelhecer dinamicamente.
+        captured_iso = datetime.now(timezone.utc).isoformat()
+        return Response(
+            jpg.tobytes(),
+            mimetype="image/jpeg",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Snapshot-Time": captured_iso,
+            },
+        )
 
     @app.route("/camera/<int:camera_id>/thumbnails")
     def camera_thumbnails(camera_id):

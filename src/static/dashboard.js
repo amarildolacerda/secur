@@ -121,6 +121,7 @@ function createCameraCard(camera, offline = false, lastEventTs = null, n0Count =
           onload="onSnapshotLoad(${camera.id}, this)"
           onerror="onSnapshotError(${camera.id}, this)"
         />
+        <span class="snapshot-age" data-camera-id="${camera.id}" hidden>--</span>
         <div class="camera-preview-error" style="display:none;">
           <span>Falha ao carregar preview</span>
           <button class="button-mini" onclick="event.stopPropagation(); retrySnapshot(${camera.id})">Tentar novamente</button>
@@ -162,6 +163,9 @@ function onSnapshotError(cameraId, el) {
   wrapper.classList.add('error');
   const img = el;
   img.style.display = 'none';
+  // Falha no frame: a idade do anterior não é mais válida
+  const ageSpan = wrapper.querySelector('.snapshot-age');
+  if (ageSpan) ageSpan.hidden = true;
   img.nextElementSibling.style.display = 'flex';
 
   const prev = cameraFaultState[cameraId] || null;
@@ -169,6 +173,58 @@ function onSnapshotError(cameraId, el) {
   cameraFaultState[cameraId] = state;
   scheduleSnapshotRetry(cameraId);
   refreshSnapshotFallback(cameraId);
+}
+
+// Snapshot ages: cameraId -> ISO timestamp de captura do último frame.
+// Preenchido em onSnapshotLoad via XHR (XMLHttpRequest expõe getResponseHeader;
+// o <img> em si não dá acesso). null = sem info ainda.
+const snapshotTimes = {};
+
+function ageLabel(capturedIso) {
+  const captured = new Date(capturedIso).getTime();
+  if (!Number.isFinite(captured)) return '—';
+  const seconds = Math.max(0, Math.floor((Date.now() - captured) / 1000));
+  if (seconds < 5) return 'agora';
+  if (seconds < 60) return `há ${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `há ${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.floor(h / 24);
+  return `há ${d}d`;
+}
+
+function refreshSnapshotAges() {
+  document.querySelectorAll('.snapshot-age[data-camera-id]').forEach(span => {
+    const id = span.dataset.cameraId;
+    const ts = snapshotTimes[id];
+    if (!ts) return;
+    span.textContent = `📷 ${ageLabel(ts)}`;
+    span.title = `Frame capturado em ${new Date(ts).toLocaleString('pt-BR')}`;
+    span.hidden = false;
+  });
+}
+// Tick único global — 1s é granular o bastante para o usuário não ver o número
+// "parado" e barato o bastante para 80 câmeras.
+if (!window._snapshotAgeTimer) {
+  window._snapshotAgeTimer = setInterval(refreshSnapshotAges, 1000);
+}
+
+function fetchSnapshotTime(cameraId, srcUrl) {
+  // XHR separado do <img> para ler o header X-Snapshot-Time. O <img> já
+  // consumiu sua resposta sem expor headers; aqui só queremos o instante.
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', srcUrl);
+    xhr.onload = function () {
+      const ts = xhr.getResponseHeader('X-Snapshot-Time');
+      if (ts) {
+        snapshotTimes[cameraId] = ts;
+        refreshSnapshotAges();
+      }
+    };
+    xhr.send();
+  } catch (e) { /* sem header: span fica oculto */ }
 }
 
 function onSnapshotLoad(cameraId, el) {
@@ -179,6 +235,8 @@ function onSnapshotLoad(cameraId, el) {
   if (t && t.timer) clearTimeout(t.timer);
   delete cameraFaultState[cameraId];
   refreshSnapshotFallback(cameraId);
+  // Pede o timestamp do frame (header X-Snapshot-Time do /camera/<id>/snapshot)
+  fetchSnapshotTime(cameraId, el.currentSrc || el.src);
 }
 
 function scheduleSnapshotRetry(cameraId) {
