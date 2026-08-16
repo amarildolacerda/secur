@@ -57,6 +57,7 @@ class AlertRuleEngine:
             identity=identity_name, known=known, category=category,
             recognition_method=event.recognition_method, thumbnail_path=event.thumbnail_path,
             routing_channels=channels,
+            timestamp=event.timestamp,
         )
         self.camera_manager.request_clip(event.camera_id, event_id)
         self.storage.update_event_level(event_id, 4, event_type=event_type, details=details, disposition=disposition)
