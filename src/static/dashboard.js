@@ -161,6 +161,7 @@ function onSnapshotError(cameraId, el) {
   const wrapper = el.parentElement;
   wrapper.classList.remove('loading');
   wrapper.classList.add('error');
+  el.dataset.loading = '';
   const img = el;
   img.style.display = 'none';
   // Falha no frame: a idade do anterior não é mais válida
@@ -240,6 +241,7 @@ function onSnapshotLoad(cameraId, el) {
   if (t && t.timer) clearTimeout(t.timer);
   delete cameraFaultState[cameraId];
   refreshSnapshotFallback(cameraId);
+  el.dataset.loading = '';
   // Pede o timestamp do frame (header X-Snapshot-Time do /camera/<id>/snapshot)
   fetchSnapshotTime(cameraId, el.currentSrc || el.src);
 }
@@ -314,12 +316,47 @@ function observeSnapshots() {
   });
 }
 
+// Re-baixa o snapshot de uma camera so quando o frame ja e velho (>30s) ou
+// o usuario fez hover pedindo frame fresco. Antes re-baixava TODAS as
+// cameras a cada poll de 5s, causando:
+//  - flick visual (imagem pisca a cada recarga)
+//  - 'imagem some' quando o stream demora: <img> fica vazio entre o request
+//    antigo e o novo, e o badge mostra 'agora' indefinidamente
+//  - carga desnecessaria no servidor (openCV VideoCapture 80x a cada 5s)
+const SNAPSHOT_MAX_AGE_MS = 30000;
+
+function refreshSnapshot(cameraId, force = false) {
+  const img = document.getElementById(`snapshot-${cameraId}`);
+  if (!img || img.dataset.loading === '1') return;
+  const wrapper = img.parentElement;
+  if (wrapper.classList.contains('error')) return;
+  const ts = snapshotTimes[String(cameraId)];
+  if (!force && ts && (Date.now() - new Date(ts).getTime()) < SNAPSHOT_MAX_AGE_MS) return;
+  img.dataset.loading = '1';
+  img.src = `/camera/${cameraId}/snapshot?ts=${Date.now()}`;
+}
+
+// Poll: so re-baixa cameras com snapshot velho. Sem isso a imagem some.
 function updateVisibleSnapshots(cameras) {
   cameras.forEach(camera => {
     const img = document.getElementById(`snapshot-${camera.id}`);
-    if (img && img.dataset.loaded && img.parentElement.classList.contains('in-viewport') && !img.parentElement.classList.contains('error')) {
-      img.src = `/camera/${camera.id}/snapshot?ts=${Date.now()}`;
-    }
+    if (!img || !img.dataset.loaded) return;
+    const wrapper = img.parentElement;
+    if (!wrapper || !wrapper.classList.contains('in-viewport')) return;
+    if (wrapper.classList.contains('error')) return;
+    refreshSnapshot(camera.id, false);
+  });
+}
+
+// Hook de hover: usuario quer frame fresco ao interagir com o card.
+function setupHoverFreshSnapshots() {
+  if (window._hoverFreshWired) return;
+  window._hoverFreshWired = true;
+  document.addEventListener('mouseover', (e) => {
+    const wrapper = e.target.closest('.camera-preview-wrapper');
+    if (!wrapper) return;
+    const cameraId = wrapper.dataset.cameraId;
+    if (cameraId) refreshSnapshot(cameraId, true);
   });
 }
 
@@ -2186,6 +2223,7 @@ function openEventThumbDialog(card, imgSrc) {
   );
 }
 setupEventCardThumbPreview();
+setupHoverFreshSnapshots();
 
 setInterval(() => {
   renderDashboard();
