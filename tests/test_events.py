@@ -33,6 +33,26 @@ def test_local_queue_delivers():
     assert received and received[0].camera_id == "1"
 
 
+def test_engine_decides_and_alerts(monkeypatch):
+    from src.alert_rules import AlertRuleEngine
+    from src.events import CameraEvent
+    calls = []
+    alerts = type("A", (), {"send": lambda *a, **k: calls.append(1)})()
+    stor = type("S", (), {
+        "add_event": lambda *a, **k: 7,
+        "update_event_level": lambda *a, **k: True,
+    })()
+    cm = type("CM", (), {"request_clip": lambda *a, **k: None})()
+    eng = AlertRuleEngine(stor, alerts, cm)
+    ev = CameraEvent(camera_id="1", source="local", detections=[{"label": "person", "bbox": {}}])
+    ev.timestamp = 1.0
+    eng.handle(ev)          # 1º: alerta
+    ev2 = CameraEvent(camera_id="1", source="local", detections=[{"label": "person", "bbox": {}}])
+    ev2.timestamp = 2.0     # dentro do cooldown
+    eng.handle(ev2)         # não deve alertar de novo (cooldown)
+    assert len(calls) == 1
+
+
 def test_worker_emits_not_alerts():
     import src.events as ev_mod
     sent = []
