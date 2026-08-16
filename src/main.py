@@ -4,14 +4,6 @@ import time
 import threading
 import cv2
 
-# Carrega variáveis do .env ANTES de importar config (que lê via os.getenv),
-# para que DETECTOR_MODEL_PATH e demais configs do .env tenham efeito.
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except Exception:
-    pass
-
 from .config import (
     DEFAULT_CAMERAS,
     DETECTOR_CLASSES,

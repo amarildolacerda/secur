@@ -1,6 +1,17 @@
 import os
 from pathlib import Path
 
+# Carrega .env ANTES de qualquer leitura de os.getenv(), para que tanto o
+# módulo main quanto o app (create_app) e o status vejam as mesmas variáveis.
+# Antes, só main.py chamava load_dotenv() — chamar /api/system-status via
+# flask run ou testes mostrava Telegram como "nao configurado" mesmo com
+# TELEGRAM_BOT_TOKEN no .env.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)

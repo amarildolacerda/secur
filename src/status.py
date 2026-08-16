@@ -16,8 +16,11 @@ def _probe_telegram(token):
     try:
         import urllib.request
         import json
+        # urllib.request.Request NAO aceita timeout como kwarg — timeout vai
+        # apenas em urlopen. Bug antigo: a chamada explodia antes de
+        # efetivamente testar o bot, mostrando "Falha: ..." em vez de "ok".
         req = urllib.request.Request(
-            f"https://api.telegram.org/bot{token}/getMe", timeout=3
+            f"https://api.telegram.org/bot{token}/getMe"
         )
         with urllib.request.urlopen(req, timeout=3) as r:
             data = json.load(r)
@@ -47,7 +50,6 @@ def _probe_ha(url, token):
         req = urllib.request.Request(
             f"{url.rstrip('/')}/api/",
             headers={"Authorization": f"Bearer {token}"} if token else {},
-            timeout=3,
         )
         with urllib.request.urlopen(req, timeout=3) as r:
             return r.status == 200, f"HTTP {r.status}"
