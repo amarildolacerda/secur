@@ -965,12 +965,62 @@ tr.event-info td {
   flex-direction: column;
 }
 
-.thumb-detail-card img {
+/* Controles de zoom no header do dialog */
+.thumb-detail-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.thumb-detail-controls button {
+  min-width: 28px;
+  font-weight: 600;
+}
+
+#thumb-detail-zoom-label {
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Viewport com scroll: a imagem e renderizada em tamanho natural via
+   transform; quando o zoom e 1x ela cabe no viewport (object-fit: contain
+   implicito pela ausencia de transform). cursor:grab sinaliza arrastavel. */
+.thumb-detail-viewport {
   width: 100%;
-  max-height: 70vh;
-  object-fit: contain;
+  height: 70vh;
+  overflow: auto;
   background: var(--surface-2);
   border-radius: var(--radius-sm);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.thumb-detail-viewport.grabbing {
+  cursor: grabbing;
+}
+
+.thumb-detail-viewport img {
+  display: block;
+  /* Sem transform: imagem cabe no viewport (object-fit-like via flex). */
+  max-width: 100%;
+  max-height: 100%;
+  /* Com transform: imagem extrapola o viewport; usuario da scroll/pan. */
+  transform-origin: top left;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.thumb-detail-hint {
+  font-size: 0.72rem;
+  color: var(--muted-subtle);
+  margin: 6px 0 0;
+  text-align: center;
 }
 
 .thumb-detail-meta {

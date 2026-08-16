@@ -423,14 +423,23 @@
         </div>
     </div>
 
-    <!-- Thumbnail Detail Modal -->
+    <!-- Thumbnail Detail Modal (com zoom/pan) -->
     <div id="thumb-detail-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
         <div class="dialog-card thumb-detail-card">
             <div class="dialog-header">
                 <h3 id="thumb-detail-title">Detalhe</h3>
+                <div class="thumb-detail-controls">
+                    <button type="button" class="button-mini" id="thumb-detail-zoom-out" title="Diminuir zoom (-)">−</button>
+                    <span id="thumb-detail-zoom-label">100%</span>
+                    <button type="button" class="button-mini" id="thumb-detail-zoom-in" title="Aumentar zoom (+)">+</button>
+                    <button type="button" class="button-mini" id="thumb-detail-zoom-reset" title="Restaurar zoom (0)">1:1</button>
+                </div>
                 <button type="button" class="button-close" aria-label="Fechar" onclick="closeThumbDetail()">×</button>
             </div>
-            <img id="thumb-detail-img" src="" alt="Thumbnail ampliado" />
+            <div id="thumb-detail-viewport" class="thumb-detail-viewport">
+                <img id="thumb-detail-img" src="" alt="Thumbnail ampliado" draggable="false" />
+            </div>
+            <p class="thumb-detail-hint">Scroll para zoom · arrastar para mover · duplo-clique para 1:1</p>
             <div id="thumb-detail-meta" class="thumb-detail-meta"></div>
         </div>
     </div>

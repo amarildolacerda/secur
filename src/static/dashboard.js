@@ -653,14 +653,131 @@ function openThumbHistory(cameraId, cameraName) {
     });
 }
 
-function openThumbDetail(url, timestamp, eventType, level, disposition, dropped) {
+// Estado do zoom/pan. Resetado a cada openThumbDetail para nao carregar
+// zoom de um item antigo em outro.
+const thumbZoomState = { scale: 1, x: 0, y: 0, dragging: false, dragStartX: 0, dragStartY: 0, originX: 0, originY: 0 };
+
+function applyThumbZoom() {
+  const img = document.getElementById('thumb-detail-img');
+  const label = document.getElementById('thumb-detail-zoom-label');
+  if (!img) return;
+  img.style.transform = `translate(${thumbZoomState.x}px, ${thumbZoomState.y}px) scale(${thumbZoomState.scale})`;
+  img.style.width = img.dataset.naturalWidth ? `${img.dataset.naturalWidth}px` : '';
+  img.style.height = img.dataset.naturalHeight ? `${img.dataset.naturalHeight}px` : '';
+  if (label) label.textContent = `${Math.round(thumbZoomState.scale * 100)}%`;
+}
+
+function resetThumbZoom() {
+  thumbZoomState.scale = 1;
+  thumbZoomState.x = 0;
+  thumbZoomState.y = 0;
+  applyThumbZoom();
+}
+
+function setupThumbDetailZoom() {
+  const viewport = document.getElementById('thumb-detail-viewport');
+  const img = document.getElementById('thumb-detail-img');
+  const btnIn = document.getElementById('thumb-detail-zoom-in');
+  const btnOut = document.getElementById('thumb-detail-zoom-out');
+  const btnReset = document.getElementById('thumb-detail-zoom-reset');
+  if (!viewport || !img) return;
+  if (viewport._zoomWired) return; // evita re-bind a cada open
+  viewport._zoomWired = true;
+
+  // Wheel: zoom centrado no cursor. deltaY>0 afasta, <0 aproxima.
+  viewport.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+    const newScale = Math.max(0.2, Math.min(8, thumbZoomState.scale * factor));
+    // Ajusta x/y para que o ponto sob o cursor nao "pule".
+    const ratio = newScale / thumbZoomState.scale;
+    thumbZoomState.x = cx - ratio * (cx - thumbZoomState.x);
+    thumbZoomState.y = cy - ratio * (cy - thumbZoomState.y);
+    thumbZoomState.scale = newScale;
+    applyThumbZoom();
+  }, { passive: false });
+
+  // Drag pan: so ativo se scale > 1 (senao nao extrapola o viewport).
+  viewport.addEventListener('mousedown', (e) => {
+    if (thumbZoomState.scale <= 1) return;
+    thumbZoomState.dragging = true;
+    thumbZoomState.dragStartX = e.clientX;
+    thumbZoomState.dragStartY = e.clientY;
+    thumbZoomState.originX = thumbZoomState.x;
+    thumbZoomState.originY = thumbZoomState.y;
+    viewport.classList.add('grabbing');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!thumbZoomState.dragging) return;
+    thumbZoomState.x = thumbZoomState.originX + (e.clientX - thumbZoomState.dragStartX);
+    thumbZoomState.y = thumbZoomState.originY + (e.clientY - thumbZoomState.dragStartY);
+    applyThumbZoom();
+  });
+  window.addEventListener('mouseup', () => {
+    thumbZoomState.dragging = false;
+    viewport.classList.remove('grabbing');
+  });
+
+  // Duplo-clique: 1x se esta zoomed, senao 2x no ponto clicado.
+  viewport.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    if (thumbZoomState.scale > 1) {
+      resetThumbZoom();
+    } else {
+      const newScale = 2;
+      const ratio = newScale / thumbZoomState.scale;
+      thumbZoomState.x = cx - ratio * (cx - thumbZoomState.x);
+      thumbZoomState.y = cy - ratio * (cy - thumbZoomState.y);
+      thumbZoomState.scale = newScale;
+      applyThumbZoom();
+    }
+  });
+
+  // Botoes
+  btnIn && btnIn.addEventListener('click', () => {
+    const newScale = Math.min(8, thumbZoomState.scale * 1.2);
+    thumbZoomState.x = viewport.clientWidth / 2 - (newScale / thumbZoomState.scale) * (viewport.clientWidth / 2 - thumbZoomState.x);
+    thumbZoomState.y = viewport.clientHeight / 2 - (newScale / thumbZoomState.scale) * (viewport.clientHeight / 2 - thumbZoomState.y);
+    thumbZoomState.scale = newScale;
+    applyThumbZoom();
+  });
+  btnOut && btnOut.addEventListener('click', () => {
+    const newScale = Math.max(0.2, thumbZoomState.scale / 1.2);
+    const ratio = newScale / thumbZoomState.scale;
+    thumbZoomState.x = viewport.clientWidth / 2 - ratio * (viewport.clientWidth / 2 - thumbZoomState.x);
+    thumbZoomState.y = viewport.clientHeight / 2 - ratio * (viewport.clientHeight / 2 - thumbZoomState.y);
+    thumbZoomState.scale = newScale;
+    applyThumbZoom();
+  });
+  btnReset && btnReset.addEventListener('click', resetThumbZoom);
+}
+
+function openThumbDetail(url, timestamp, eventType, level, disposition, dropped, extra = {}) {
   const overlay = document.getElementById('thumb-detail-overlay');
   const title = document.getElementById('thumb-detail-title');
   const img = document.getElementById('thumb-detail-img');
   const meta = document.getElementById('thumb-detail-meta');
 
-  title.textContent = 'Detalhe do evento';
+  title.textContent = extra.camera ? `${extra.camera} — Detalhe` : 'Detalhe do evento';
   img.src = url;
+  // Dimensoes naturais para o zoom usar pixel-perfect (escala 1 = tamanho real)
+  img.onload = () => {
+    img.dataset.naturalWidth = img.naturalWidth;
+    img.dataset.naturalHeight = img.naturalHeight;
+    resetThumbZoom();
+  };
+  if (img.complete) {
+    img.dataset.naturalWidth = img.naturalWidth;
+    img.dataset.naturalHeight = img.naturalHeight;
+    resetThumbZoom();
+  }
 
   const lvl = level !== '' && level !== null && level !== undefined ? Number(level) : null;
   const lvlLabel = lvl !== null ? (['N0', 'N1', 'N2', 'N3', 'N4'][lvl] || ('N' + lvl)) : null;
@@ -669,13 +786,18 @@ function openThumbDetail(url, timestamp, eventType, level, disposition, dropped)
   const lvlBadge = lvlLabel ? `<span class="badge badge-info">${lvlLabel}</span>` : '';
 
   meta.innerHTML = `
+    ${extra.camera ? `<span><strong>Câmera:</strong> ${extra.camera}</span>` : ''}
+    ${extra.zone ? `<span><strong>Zona:</strong> ${extra.zone}</span>` : ''}
     <span><strong>Data:</strong> ${new Date(timestamp).toLocaleString()}</span>
     ${eventType ? `<span><strong>Tipo:</strong> ${eventType}</span>` : ''}
     ${lvlBadge}
     ${dispLabel}
     ${droppedLabel}
+    ${extra.details ? `<span><strong>Detalhes:</strong> ${extra.details}</span>` : ''}
   `;
 
+  setupThumbDetailZoom();
+  resetThumbZoom();
   overlay.classList.remove('hidden-panel');
 }
 
@@ -979,8 +1101,21 @@ function renderEventCards(events, alertTypes) {
     if (lvl === 3) cardClass += ' event-card-n3';
     if (lvl === 4) cardClass += ' event-card-n4';
     card.className = cardClass;
+    // Data-attrs para o click delegado (openEventThumbDialog) abrir o dialog
+    // com metadados do evento. Sem isso, o dialog mostraria apenas a imagem.
+    card.dataset.eventId = event.id;
+    card.dataset.timestamp = event.timestamp;
+    card.dataset.eventType = event.event_type || '';
+    card.dataset.level = lvl;
+    card.dataset.disposition = event.disposition || '';
+    card.dataset.dropped = event.dropped ? '1' : '0';
+    card.dataset.cameraId = event.camera_id || '';
+    card.dataset.cameraName = event.camera_name || event.camera_id || '';
+    card.dataset.zone = event.zone || '';
+    card.dataset.details = event.details || '';
     const thumb = document.createElement('div');
     thumb.className = 'event-thumb event-thumb-empty';
+    thumb.style.cursor = 'pointer';
     thumb.innerHTML = '&#x1F4F7;';
     card.appendChild(thumb);
     const body = document.createElement('div');
@@ -1005,6 +1140,10 @@ function renderEventCards(events, alertTypes) {
         img.src = url;
         img.alt = 'thumbnail';
         img.loading = 'lazy';
+        img.style.cursor = 'zoom-in';
+        // O <img> e inserido dentro do card; o listener delegado em
+        // #events-grid (installado em setupEventCardThumbPreview) cuida
+        // do click para abrir o dialog ampliado.
         thumb.replaceWith(img);
       }
     });
@@ -1974,6 +2113,42 @@ if (emptyAddCamera) {
   });
 }
 document.getElementById('clip-history-close').addEventListener('click', closeClipHistory);
+// Delegated click: ao clicar no .event-thumb dentro de #events-grid,
+// abre o mesmo dialog usado pelo historico de thumbnails da camera. Reaproveita
+// openThumbDetail para mostrar a imagem com zoom/pan e os metadados do evento.
+function setupEventCardThumbPreview() {
+  const grid = document.getElementById('events-grid');
+  if (!grid || grid._thumbPreviewWired) return;
+  grid._thumbPreviewWired = true;
+  grid.addEventListener('click', (e) => {
+    const thumb = e.target.closest('.event-thumb');
+    if (!thumb || !thumb.tagName || thumb.tagName.toLowerCase() !== 'img') return;
+    const card = thumb.closest('.event-card');
+    if (!card) return;
+    // Recupera os dados do card. Foi salvo como data-attrs no card durante
+    // renderEventCards; se nao estiver (createEventCard legado), busca do
+    // card-content textual como fallback.
+    openEventThumbDialog(card, thumb.src);
+  });
+}
+function openEventThumbDialog(card, imgSrc) {
+  const meta = {
+    camera: card.dataset.cameraName || card.dataset.cameraId || '',
+    zone: card.dataset.zone || '',
+    details: card.dataset.details || '',
+  };
+  openThumbDetail(
+    imgSrc,
+    card.dataset.timestamp || new Date().toISOString(),
+    card.dataset.eventType || '',
+    card.dataset.level != null ? Number(card.dataset.level) : null,
+    card.dataset.disposition || '',
+    card.dataset.dropped === '1',
+    meta,
+  );
+}
+setupEventCardThumbPreview();
+
 setInterval(() => {
   renderDashboard();
   renderStatusFooter();
