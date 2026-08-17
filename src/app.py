@@ -216,6 +216,28 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         )
         return jsonify({"deleted": deleted})
 
+    @app.route("/api/events/<int:event_id>/retain", methods=["PUT"])
+    def api_event_retain(event_id):
+        """Toggle retain flag on an event."""
+        data = request.get_json(silent=True) or {}
+        retain = data.get("retain")
+        if retain is None:
+            return jsonify({"error": "retain (bool) é obrigatório"}), 400
+        try:
+            with storage.lock:
+                cursor = storage.connection.cursor()
+                cursor.execute(
+                    "UPDATE events SET retained = ? WHERE id = ?",
+                    (1 if retain else 0, event_id)
+                )
+                storage.connection.commit()
+                if cursor.rowcount == 0:
+                    return jsonify({"error": "Evento não encontrado"}), 404
+            return jsonify({"status": "ok", "retained": bool(retain)})
+        except Exception:
+            logger.exception("Erro ao atualizar retain")
+            return jsonify({"error": "Erro interno"}), 500
+
     @app.route("/workers")
     def workers():
         return jsonify({

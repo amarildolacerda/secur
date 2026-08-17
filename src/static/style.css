@@ -1714,3 +1714,23 @@ tr.event-info td {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Retain checkbox */
+.retain-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.retain-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.retain-checkbox:hover {
+  color: var(--text);
+}

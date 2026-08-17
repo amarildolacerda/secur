@@ -125,7 +125,7 @@ class EventStorage:
                 cols = [r[1] for r in cursor.fetchall()]
                 if 'clip_path' not in cols:
                     cursor.execute("ALTER TABLE events ADD COLUMN clip_path TEXT")
-                for col, ddl in (("level", "INTEGER DEFAULT 0"), ("dropped", "INTEGER DEFAULT 0"), ("source", "TEXT DEFAULT 'local'"), ("disposition", "TEXT")):
+                for col, ddl in (("level", "INTEGER DEFAULT 0"), ("dropped", "INTEGER DEFAULT 0"), ("source", "TEXT DEFAULT 'local'"), ("disposition", "TEXT"), ("retained", "INTEGER DEFAULT 0")):
                     if col not in cols:
                         cursor.execute(f"ALTER TABLE events ADD COLUMN {col} {ddl}")
             except Exception:
@@ -612,8 +612,8 @@ class EventStorage:
             
             # Helper: get event IDs to be deleted, then remove associated thumbnails/clips
             def _collect_and_delete_event_ids(where_sql, params):
-                """Returns list of event IDs that match the condition."""
-                cursor.execute(f"SELECT id FROM events WHERE {where_sql}", params)
+                """Returns list of event IDs that match the condition (excluding retained)."""
+                cursor.execute(f"SELECT id FROM events WHERE {where_sql} AND retained = 0", params)
                 return [row["id"] for row in cursor.fetchall()]
             
             def _delete_orphaned_media(event_ids):

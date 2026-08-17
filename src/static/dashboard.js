@@ -1386,6 +1386,7 @@ function renderEventCards(events, alertTypes) {
     card.dataset.cameraName = event.camera_name || event.camera_id || '';
     card.dataset.zone = event.zone || '';
     card.dataset.details = event.details || '';
+    card.dataset.retained = event.retained ? '1' : '0';
     const thumb = document.createElement('div');
     thumb.className = 'event-thumb event-thumb-empty';
     thumb.style.cursor = 'pointer';
@@ -1395,11 +1396,16 @@ function renderEventCards(events, alertTypes) {
     body.className = 'event-card-body';
     const lvlLabel = ['N0', 'N1', 'N2', 'N3', 'N4'][lvl] || ('N' + lvl);
     const droppedBadge = event.dropped ? '<span class="badge badge-off">descartado N1</span>' : '';
+    const retainedBadge = event.retained ? '<span class="badge badge-ok">retido</span>' : '';
     const levelBadge = `<span class="badge badge-info">${lvlLabel}</span>`;
     body.innerHTML = `
       <div class="event-card-header">
-        <span class="event-type">${event.event_type} ${alertTypes.has(event.event_type) ? '<span class="badge badge-alert">alerta</span>' : '<span class="badge badge-info">info</span>'} ${levelBadge} ${droppedBadge}</span>
+        <span class="event-type">${event.event_type} ${alertTypes.has(event.event_type) ? '<span class="badge badge-alert">alerta</span>' : '<span class="badge badge-info">info</span>'} ${levelBadge} ${droppedBadge} ${retainedBadge}</span>
         <span class="event-time" data-ts="${new Date(event.timestamp).toISOString()}">${timeAgo(event.timestamp)}</span>
+        <label class="retain-checkbox" title="Marcar para não apagar no prune">
+          <input type="checkbox" ${event.retained ? 'checked' : ''} data-event-id="${event.id}">
+          <span class="checkbox-label">Reter</span>
+        </label>
       </div>
       <p class="event-meta">Câmera ${event.camera_id || '-'}${event.zone ? ' · ' + event.zone : ''}</p>
       ${event.details ? `<p class="event-details">${event.details}</p>` : ''}
@@ -2481,6 +2487,49 @@ function setupEventCardThumbPreview() {
     // renderEventCards; se nao estiver (createEventCard legado), busca do
     // card-content textual como fallback.
     openEventThumbDialog(card, thumb.src);
+  });
+
+  // Retain checkbox handler (delegated)
+  grid.addEventListener('change', async (e) => {
+    const checkbox = e.target.closest('.retain-checkbox input[type="checkbox"]');
+    if (!checkbox) return;
+    const eventId = checkbox.dataset.eventId;
+    if (!eventId) return;
+    const retain = checkbox.checked;
+    try {
+      const res = await fetch(`/api/events/${eventId}/retain`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retain })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        checkbox.checked = !retain; // revert on error
+        alert(data.error || 'Erro ao atualizar');
+      } else {
+        // Update UI
+        const card = checkbox.closest('.event-card');
+        if (card) {
+          card.dataset.retained = retain ? '1' : '0';
+          const badge = card.querySelector('.badge-ok');
+          if (retain && !badge) {
+            // Add retained badge
+            const header = card.querySelector('.event-card-header .event-type');
+            if (header) {
+              const badgeEl = document.createElement('span');
+              badgeEl.className = 'badge badge-ok';
+              badgeEl.textContent = 'retido';
+              header.appendChild(badgeEl);
+            }
+          } else if (!retain && badge) {
+            badge.remove();
+          }
+        }
+      }
+    } catch (e) {
+      checkbox.checked = !retain;
+      alert('Erro ao atualizar');
+    }
   });
 }
 function openEventThumbDialog(card, imgSrc) {
