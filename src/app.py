@@ -1,12 +1,14 @@
 import cv2
 import os
 import time
+import threading
 from datetime import datetime, timezone
 from flask import Flask, jsonify, render_template, request, Response, send_file
 from .camera import CameraStream
 from .storage import EventStorage
 from .masking import frame_for_storage
 from .config import is_privacy_mode_on
+from . import config as cfg
 from .notifications import CHANNELS, EVENT_TYPES
 from .status import build_system_status
 import base64
@@ -136,11 +138,126 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
     def api_system_status():
         return jsonify(build_system_status(camera_manager))
 
+    @app.route("/api/config")
+    def api_config():
+        """Parâmetros de configuração efetivos (read-only) para o painel 'Configurações em uso'."""
+        return jsonify({
+            "motion": {
+                "min_area_px": cfg.MOTION_MIN_AREA,
+                "frame_wait_seconds": cfg.FRAME_WAIT_SECONDS,
+                "worker_healthy_timeout_seconds": cfg.WORKER_HEALTHY_TIMEOUT_SECONDS,
+            },
+            "alerts": {
+                "no_motion_alert_seconds": cfg.NO_MOTION_ALERT_SECONDS,
+                "cooldown_seconds": cfg.ALERT_COOLDOWN_SECONDS,
+                "cooldown_by_event": cfg.ALERT_COOLDOWN_BY_EVENT,
+            },
+            "detector": {
+                "model_path": cfg.DETECTOR_MODEL_PATH or "não configurado",
+                "confidence": cfg.DETECTOR_CONFIDENCE,
+                "iou": cfg.DETECTOR_IOU,
+                "classes": cfg.DETECTOR_CLASSES,
+            },
+            "identity": {
+                "enabled": cfg.IDENTITY_ENABLED,
+                "face_model_path": cfg.IDENTITY_FACE_MODEL_PATH or "não configurado",
+                "reid_model_path": cfg.IDENTITY_REID_MODEL_PATH or "não configurado",
+                "match_threshold": cfg.IDENTITY_MATCH_THRESHOLD,
+            },
+            "thumbnails": {
+                "interval_seconds": cfg.THUMBNAIL_INTERVAL_SECONDS,
+                "diff_threshold": cfg.THUMBNAIL_DIFF_THRESHOLD,
+                "history_size": cfg.THUMBNAIL_HISTORY_SIZE,
+            },
+            "clips": {
+                "pre_seconds": cfg.CLIP_PRE_SECONDS,
+                "post_seconds": cfg.CLIP_POST_SECONDS,
+                "fps": cfg.CLIP_FPS,
+                "history_size": cfg.CLIP_HISTORY_SIZE,
+            },
+            "tracking": {
+                "iou_threshold": cfg.TRACK_IOU_THRESHOLD,
+                "max_age_seconds": cfg.TRACK_MAX_AGE_SECONDS,
+            },
+            "behavior": {
+                "loitering_seconds": cfg.LOITERING_SECONDS,
+                "loitering_max_distance": cfg.LOITERING_MAX_DISTANCE,
+                "loitering_labels": cfg.LOITERING_LABELS,
+                "fall_aspect_ratio": cfg.FALL_ASPECT_RATIO,
+            },
+            "event_pruning": {
+                "enabled": cfg.EVENT_PRUNE_ENABLED,
+                "dropped_days": cfg.EVENT_PRUNE_DROPPED_DAYS,
+                "suppressed_days": cfg.EVENT_PRUNE_SUPPRESSED_DAYS,
+                "normal_days": cfg.EVENT_PRUNE_NORMAL_DAYS,
+                "no_motion_days": cfg.EVENT_PRUNE_NO_MOTION_DAYS,
+                "interval_seconds": cfg.EVENT_PRUNE_INTERVAL_SECONDS,
+            },
+            "privacy_mode": cfg.PRIVACY_MODE,
+        })
+
+    @app.route("/api/events/prune", methods=["POST"])
+    def api_events_prune():
+        """Executa limpeza de eventos sob demanda.
+        Body opcional: {"dropped_days": 0, "suppressed_days": 0.25, "normal_days": 1, "no_motion_days": 0.5}
+        Se omitido, usa os defaults do config.
+        """
+        data = request.get_json(silent=True) or {}
+        dropped_days = data.get("dropped_days")
+        suppressed_days = data.get("suppressed_days")
+        normal_days = data.get("normal_days")
+        no_motion_days = data.get("no_motion_days")
+        
+        deleted = storage.prune_events(
+            dropped_days=dropped_days if dropped_days is not None else -1,
+            suppressed_days=suppressed_days if suppressed_days is not None else -1,
+            normal_days=normal_days if normal_days is not None else -1,
+            no_motion_days=no_motion_days if no_motion_days is not None else -1,
+        )
+        return jsonify({"deleted": deleted})
+
+    @app.route("/api/events/<int:event_id>/retain", methods=["PUT"])
+    def api_event_retain(event_id):
+        """Toggle retain flag on an event."""
+        data = request.get_json(silent=True) or {}
+        retain = data.get("retain")
+        if retain is None:
+            return jsonify({"error": "retain (bool) é obrigatório"}), 400
+        try:
+            with storage.lock:
+                cursor = storage.connection.cursor()
+                cursor.execute(
+                    "UPDATE events SET retained = ? WHERE id = ?",
+                    (1 if retain else 0, event_id)
+                )
+                storage.connection.commit()
+                if cursor.rowcount == 0:
+                    return jsonify({"error": "Evento não encontrado"}), 404
+            return jsonify({"status": "ok", "retained": bool(retain)})
+        except Exception:
+            logger.exception("Erro ao atualizar retain")
+            return jsonify({"error": "Erro interno"}), 500
+
     @app.route("/workers")
     def workers():
         return jsonify({
             "workers": camera_manager.get_status() if camera_manager is not None else [],
             "active_workers": len(camera_manager.get_status()) if camera_manager is not None else 0,
+        })
+
+    @app.route("/api/dashboard")
+    def api_dashboard():
+        cameras = storage.list_cameras()
+        events = storage.list_events(limit=100)
+        zones = storage.list_zones()
+        n0_events = storage.list_events(level=0, limit=100)
+        worker_status = camera_manager.get_status() if camera_manager is not None else []
+        return jsonify({
+            "cameras": cameras,
+            "events": events,
+            "zones": zones,
+            "n0_events": n0_events,
+            "worker_status": worker_status,
         })
 
     @app.route("/camera/<int:camera_id>/snapshot")
@@ -152,6 +269,23 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         camera = storage.get_camera(camera_id)
         if not camera:
             return jsonify({"error": "Câmera não encontrada"}), 404
+
+        # Fast path: serve the worker's latest in-memory frame (no new capture).
+        if camera_manager is not None:
+            frame, ts = camera_manager.get_latest_frame(camera_id)
+            if frame is not None:
+                try:
+                    out = frame_for_storage(frame, camera.get("mask_polygons"))
+                    ok, jpg = cv2.imencode(".jpg", out)
+                    if ok:
+                        captured_iso = datetime.fromtimestamp(ts, timezone.utc).isoformat()
+                        return Response(
+                            jpg.tobytes(),
+                            mimetype="image/jpeg",
+                            headers={"Cache-Control": "no-store", "X-Snapshot-Time": captured_iso},
+                        )
+                except Exception:
+                    pass  # fall through to VideoCapture below
 
         source = camera["source"]
         log.info("Snapshot requested for camera %s (source=%s)", camera_id, source)
@@ -284,6 +418,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
             {"path": "/health", "method": "GET", "description": "Service health check"},
             {"path": "/status", "method": "GET", "description": "Service and worker summary"},
             {"path": "/workers", "method": "GET", "description": "Current worker status"},
+            {"path": "/api/dashboard", "method": "GET", "description": "Payload agregado do dashboard (câmeras, eventos, zonas, N0, status dos workers)"},
             {"path": "/camera/<id>/snapshot", "method": "GET", "description": "Capture a current frame preview"},
             {"path": "/cameras", "method": "GET", "description": "List cameras"},
             {"path": "/cameras", "method": "POST", "description": "Add a new camera"},
@@ -715,5 +850,21 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
     @app.route("/")
     def dashboard():
         return render_template("dashboard.html")
+
+    # Auto-pruning scheduler
+    if cfg.EVENT_PRUNE_ENABLED:
+        def _prune_loop():
+            while True:
+                time.sleep(cfg.EVENT_PRUNE_INTERVAL_SECONDS)
+                try:
+                    deleted = storage.prune_events()
+                    if deleted:
+                        logger.info("Auto-prune: %d eventos removidos", deleted)
+                except Exception:
+                    logger.exception("Erro no auto-prune")
+
+        prune_thread = threading.Thread(target=_prune_loop, daemon=True)
+        prune_thread.start()
+        logger.info("Auto-prune scheduler iniciado (intervalo=%ds)", cfg.EVENT_PRUNE_INTERVAL_SECONDS)
 
     return app

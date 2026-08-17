@@ -24,7 +24,7 @@ class AlertService:
 
     def send(self, camera_id, zone, event_type, details=None, zone_classification=None,
              identity=None, known=None, recognition_method=None, category=None, routing=None,
-             thumbnail_path=None, clip_path=None, routing_channels=None):
+             thumbnail_path=None, clip_path=None, routing_channels=None, timestamp=None):
         payload = {
             "camera_id": camera_id,
             "zone": zone,
@@ -37,6 +37,7 @@ class AlertService:
             "category": category,
             "thumbnail_path": thumbnail_path,
             "clip_path": clip_path,
+            "timestamp": timestamp,
         }
         if routing is None:
             routing = getattr(self, "routing", None)
@@ -225,6 +226,7 @@ def _format_message(payload: Dict) -> str:
     event_type = payload.get("event_type")
     details = payload.get("details") or "Sem detalhes adicionais."
     identity = payload.get("identity")
+    timestamp = payload.get("timestamp")
     message = (
         "*Alerta de Segurança*\n"
         f"*Câmera:* {_escape_markdown(camera_id)}\n"
@@ -232,6 +234,10 @@ def _format_message(payload: Dict) -> str:
         f"*Evento:* {_escape_markdown(event_type)}\n"
         f"*Descrição:* {_escape_markdown(details)}"
     )
+    if timestamp:
+        from datetime import datetime
+        ts = datetime.fromtimestamp(timestamp).strftime('%d/%m/%Y %H:%M:%S')
+        message += f"\n*Captura:* {ts}"
     zone_classification = payload.get("zone_classification")
     if zone_classification:
         message += f"\n*Classificação:* {_escape_markdown(zone_classification)}"

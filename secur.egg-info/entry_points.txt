@@ -1,0 +1,2 @@
+[console_scripts]
+secur = src.main:main

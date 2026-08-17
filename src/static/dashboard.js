@@ -28,6 +28,20 @@ async function fetchData(url) {
   return response.json();
 }
 
+const _apiCache = new Map(); // url -> { ts, promise }
+async function fetchCached(url, ttlMs = 60000) {
+  const cached = _apiCache.get(url);
+  if (cached && (Date.now() - cached.ts) < ttlMs) return cached.promise;
+  const promise = fetchData(url);
+  _apiCache.set(url, { ts: Date.now(), promise });
+  promise.catch(() => { const c = _apiCache.get(url); if (c && c.promise === promise) _apiCache.delete(url); });
+  return promise;
+}
+function invalidateCache(url) {
+  if (url) _apiCache.delete(url);
+  else _apiCache.clear();
+}
+
 function createSummaryCard(title, value, subtitle = "") {
   return `
     <div class="card">
@@ -142,7 +156,7 @@ function retrySnapshot(cameraId) {
     wrapper.classList.remove('error');
     img.style.display = '';
     img.nextElementSibling.style.display = 'none';
-    img.src = `/camera/${cameraId}/snapshot?ts=${Date.now()}`;
+    fetchSnapshotWithHeader(cameraId, `/camera/${cameraId}/snapshot?ts=${Date.now()}`);
   }
 }
 
@@ -154,7 +168,7 @@ function retrySnapshotNow(cameraId) {
   wrapper.classList.remove('error');
   img.style.display = '';
   img.nextElementSibling.style.display = 'none';
-  img.src = `/camera/${cameraId}/snapshot?ts=${Date.now()}`;
+  fetchSnapshotWithHeader(cameraId, `/camera/${cameraId}/snapshot?ts=${Date.now()}`);
 }
 
 function onSnapshotError(cameraId, el) {
@@ -233,17 +247,36 @@ function fetchSnapshotTime(cameraId, srcUrl) {
   } catch (e) { /* sem header: span fica oculto */ }
 }
 
+async function fetchSnapshotWithHeader(cameraId, url) {
+  try {
+    const resp = await fetch(url);
+    const img = document.getElementById(`snapshot-${cameraId}`);
+    if (!resp.ok) { if (img) onSnapshotError(cameraId, img); return; }
+    const ts = resp.headers.get('X-Snapshot-Time');
+    if (ts) { snapshotTimes[cameraId] = ts; refreshSnapshotAges(); }
+    const blob = await resp.blob();
+    if (!img) return;
+    const blobUrl = URL.createObjectURL(blob);
+    img.src = blobUrl; // triggers onSnapshotLoad with blob: src
+  } catch (e) {
+    const img = document.getElementById(`snapshot-${cameraId}`);
+    if (img) onSnapshotError(cameraId, img);
+  }
+}
+
 function onSnapshotLoad(cameraId, el) {
-  const wrapper = el.parentElement;
-  wrapper.classList.remove('loading');
-  wrapper.classList.remove('error');
-  const t = cameraFaultState[cameraId];
-  if (t && t.timer) clearTimeout(t.timer);
-  delete cameraFaultState[cameraId];
-  refreshSnapshotFallback(cameraId);
-  el.dataset.loading = '';
-  // Pede o timestamp do frame (header X-Snapshot-Time do /camera/<id>/snapshot)
-  fetchSnapshotTime(cameraId, el.currentSrc || el.src);
+  if (el.src && el.src.startsWith('blob:')) {
+    const wrapper = el.parentElement;
+    wrapper.classList.remove('loading');
+    wrapper.classList.remove('error');
+    const t = cameraFaultState[cameraId];
+    if (t && t.timer) clearTimeout(t.timer);
+    delete cameraFaultState[cameraId];
+    refreshSnapshotFallback(cameraId);
+    el.dataset.loading = '';
+    return;
+  }
+  fetchSnapshotWithHeader(cameraId, el.currentSrc || el.src);
 }
 
 function scheduleSnapshotRetry(cameraId) {
@@ -935,9 +968,167 @@ async function renderSettings() {
     const data = await fetchData('/api/settings');
     toggle.checked = !!data.privacy_mode;
   } catch (e) { /* offline: mantém estado atual */ }
+  renderSettingsConfig();
+}
+
+// Renderiza o valor de um parâmetro conforme o tipo:
+// booleano → badge (Ativado/Desativado), número → tag mono, texto → elipse.
+function appendConfigValue(dd, v) {
+  const text = Array.isArray(v) ? v.join(', ') : String(v);
+  dd.title = text;
+  if (typeof v === 'boolean') {
+    const badge = document.createElement('span');
+    badge.className = 'config-value-badge ' + (v ? 'is-on' : 'is-off');
+    badge.textContent = v ? 'Ativado' : 'Desativado';
+    dd.appendChild(badge);
+  } else if (typeof v === 'number') {
+    const tag = document.createElement('span');
+    tag.className = 'config-value-num';
+    tag.textContent = text;
+    dd.appendChild(tag);
+  } else {
+    const span = document.createElement('span');
+    span.className = 'config-value-text';
+    span.textContent = text;
+    dd.appendChild(span);
+  }
+}
+
+// Painel read-only "Configurações em uso" (collapsible). Busca /api/config
+// e exibe os parâmetros efetivos agrupados por categoria.
+function renderSettingsConfig() {
+  const container = document.getElementById('settings-config');
+  if (!container) return;
+  fetch('/api/config')
+    .then(r => r.json())
+    .then(cfg => {
+      container.innerHTML = '';
+      const section = document.createElement('div');
+      section.className = 'settings-config-sections';
+
+      const groups = [
+        { title: 'Movimento (N1)', data: cfg.motion, keys: ['min_area_px', 'frame_wait_seconds', 'worker_healthy_timeout_seconds'], labels: { min_area_px: 'Área mínima (px)', frame_wait_seconds: 'Espera frame (s)', worker_healthy_timeout_seconds: 'Timeout worker saudável (s)' } },
+        { title: 'Alertas', data: cfg.alerts, keys: ['no_motion_alert_seconds', 'cooldown_seconds'], labels: { no_motion_alert_seconds: 'Sem movimento alerta (s)', cooldown_seconds: 'Cooldown padrão (s)' } },
+        { title: 'Detector (YOLO)', data: cfg.detector, keys: ['model_path', 'confidence', 'iou'], labels: { model_path: 'Modelo', confidence: 'Confiança', iou: 'IoU' } },
+        { title: 'Identidade', data: cfg.identity, keys: ['enabled', 'face_model_path', 'match_threshold'], labels: { enabled: 'Habilitado', face_model_path: 'Modelo face', match_threshold: 'Threshold match' } },
+        { title: 'Thumbnails', data: cfg.thumbnails, keys: ['interval_seconds', 'diff_threshold', 'history_size'], labels: { interval_seconds: 'Intervalo (s)', diff_threshold: 'Threshold diff', history_size: 'Histórico' } },
+        { title: 'Clips', data: cfg.clips, keys: ['pre_seconds', 'post_seconds', 'fps', 'history_size'], labels: { pre_seconds: 'Pré (s)', post_seconds: 'Pós (s)', fps: 'FPS', history_size: 'Histórico' } },
+        { title: 'Tracking', data: cfg.tracking, keys: ['iou_threshold', 'max_age_seconds'], labels: { iou_threshold: 'IoU threshold', max_age_seconds: 'Max age (s)' } },
+        { title: 'Comportamento', data: cfg.behavior, keys: ['loitering_seconds', 'loitering_max_distance', 'fall_aspect_ratio'], labels: { loitering_seconds: 'Loitering (s)', loitering_max_distance: 'Loitering dist. max', fall_aspect_ratio: 'Fall aspect ratio' } },
+        { title: 'Limpeza de Eventos', data: cfg.event_pruning, keys: ['enabled', 'dropped_days', 'suppressed_days', 'normal_days', 'no_motion_days', 'interval_seconds'], labels: { enabled: 'Habilitado', dropped_days: 'N1 dropped (dias)', suppressed_days: 'N3 suppressed (dias)', normal_days: 'N4 alertas (dias)', no_motion_days: 'no_motion (dias)', interval_seconds: 'Intervalo (s)' } },
+      ];
+
+      groups.forEach(g => {
+        if (!g.data) return;
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'config-module-group';
+        const h4 = document.createElement('h4');
+        h4.textContent = g.title;
+        groupDiv.appendChild(h4);
+        const dl = document.createElement('dl');
+        dl.className = 'settings-config-list';
+        g.keys.forEach(k => {
+          const v = g.data[k];
+          if (v === undefined || v === null) return;
+          const dt = document.createElement('dt');
+          dt.textContent = g.labels[k] || k;
+          const dd = document.createElement('dd');
+          appendConfigValue(dd, v);
+          dl.appendChild(dt);
+          dl.appendChild(dd);
+        });
+        if (dl.children.length) {
+          groupDiv.appendChild(dl);
+          const count = document.createElement('span');
+          count.className = 'config-group-count';
+          count.textContent = String(dl.children.length / 2);
+          h4.appendChild(count);
+        }
+        if (groupDiv.children.length > 1) section.appendChild(groupDiv);
+      });
+
+      if (cfg.privacy_mode != null) {
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'config-module-group';
+        const h4 = document.createElement('h4');
+        h4.textContent = 'Privacidade';
+        groupDiv.appendChild(h4);
+        const dl = document.createElement('dl');
+        dl.className = 'settings-config-list';
+        const dt = document.createElement('dt');
+        dt.textContent = 'Modo privacidade';
+        const dd = document.createElement('dd');
+        appendConfigValue(dd, cfg.privacy_mode);
+        dl.appendChild(dt);
+        dl.appendChild(dd);
+        groupDiv.appendChild(dl);
+        const count = document.createElement('span');
+        count.className = 'config-group-count';
+        count.textContent = '1';
+        h4.appendChild(count);
+        section.appendChild(groupDiv);
+      }
+
+      // Botão para executar limpeza manual
+      const actionDiv = document.createElement('div');
+      actionDiv.className = 'config-action';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'button-primary button-mini';
+      btn.textContent = 'Executar limpeza agora';
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Limpando...';
+        try {
+          const res = await fetch('/api/events/prune', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dropped_days: cfg.event_pruning?.dropped_days,
+              suppressed_days: cfg.event_pruning?.suppressed_days,
+              normal_days: cfg.event_pruning?.normal_days,
+              no_motion_days: cfg.event_pruning?.no_motion_days,
+            })
+          });
+          const data = await res.json();
+          btn.textContent = `Concluído (${data.deleted} removidos)`;
+          setTimeout(() => { btn.disabled = false; btn.textContent = 'Executar limpeza agora'; }, 3000);
+        } catch (e) {
+          btn.textContent = 'Erro';
+          setTimeout(() => { btn.disabled = false; btn.textContent = 'Executar limpeza agora'; }, 3000);
+        }
+      });
+      actionDiv.appendChild(btn);
+      section.appendChild(actionDiv);
+
+      if (!section.children.length) {
+        container.textContent = 'Sem informações de configuração disponíveis.';
+        return;
+      }
+      container.appendChild(section);
+    })
+    .catch(() => {
+      container.textContent = 'Falha ao carregar configurações.';
+    });
 }
 
 function setupSettings() {
+  const configToggle = document.getElementById('settings-config-toggle');
+  if (configToggle) {
+    configToggle.addEventListener('click', () => {
+      const panel = document.getElementById('settings-config');
+      if (!panel) return;
+      panel.classList.toggle('hidden-panel');
+      const open = !panel.classList.contains('hidden-panel');
+      configToggle.classList.toggle('is-open', open);
+      configToggle.setAttribute('aria-expanded', String(open));
+      if (open) {
+        panel.classList.remove('animate-in');
+        void panel.offsetWidth; // reinicia a animação de entrada
+        panel.classList.add('animate-in');
+      }
+    });
+  }
   const toggle = document.getElementById('privacy-mode-toggle');
   if (!toggle) return;
   toggle.addEventListener('change', async () => {
@@ -949,6 +1140,8 @@ function setupSettings() {
     if (!res.ok) {
       toggle.checked = !toggle.checked;
       showMenuMessage('Falha ao salvar configuração.', 'camera-form-message');
+    } else {
+      invalidateCache('/api/settings');
     }
   });
 }
@@ -1012,24 +1205,25 @@ function timeAgo(ts) {
 }
 
 const thumbCache = {};
-
+const THUMB_CACHE_TTL_MS = 30000;
+function _pickThumb(items, eventTs) {
+  if (!items || !items.length) return null;
+  let best = null, bestDiff = Infinity;
+  items.forEach(item => {
+    const diff = Math.abs(new Date(item.timestamp).getTime() - new Date(eventTs).getTime());
+    if (diff < bestDiff) { bestDiff = diff; best = item; }
+  });
+  return best ? best.url : null;
+}
 function getCameraThumb(cameraId, eventTs) {
   if (!cameraId) return Promise.resolve(null);
-  if (thumbCache[cameraId] === undefined) {
-    thumbCache[cameraId] = fetch(`/camera/${cameraId}/thumbnails`)
-      .then(r => r.ok ? r.json() : [])
-      .catch(() => []);
+  const cached = thumbCache[cameraId];
+  if (cached && (Date.now() - cached.ts) < THUMB_CACHE_TTL_MS) {
+    return cached.promise.then(items => _pickThumb(items, eventTs));
   }
-  return thumbCache[cameraId].then(items => {
-    if (!items || !items.length) return null;
-    let best = null;
-    let bestDiff = Infinity;
-    items.forEach(item => {
-      const diff = Math.abs(new Date(item.timestamp).getTime() - new Date(eventTs).getTime());
-      if (diff < bestDiff) { bestDiff = diff; best = item; }
-    });
-    return best ? best.url : null;
-  });
+  const promise = fetch(`/camera/${cameraId}/thumbnails`).then(r => r.ok ? r.json() : []).catch(() => []);
+  thumbCache[cameraId] = { ts: Date.now(), promise };
+  return promise.then(items => _pickThumb(items, eventTs));
 }
 
 function createEventCard(event, thumbUrl, alertTypes = new Set()) {
@@ -1066,10 +1260,14 @@ function readFilterState() {
     zone: url.get('zone') || '',
     type: url.get('type') || '',
     level: url.get('level') || '',
-    since: url.get('since') || '',
+    since: url.get('since') || '1',
     alerts: url.get('alerts') === '1',
   };
-  if (Object.values(state).some(v => v !== '' && v !== false)) return state;
+  // Filtros explícitos na URL têm precedência; caso contrário, tenta
+  // localStorage. O default since='1' (última hora) não deve bloquear esse
+  // fallback, então o guard olha os parâmetros da URL em vez dos valores.
+  const hasUrlFilters = url.has('camera') || url.has('zone') || url.has('type') || url.has('level') || url.has('since') || url.has('alerts');
+  if (hasUrlFilters) return state;
   try {
     const saved = JSON.parse(localStorage.getItem(EVENT_FILTERS_KEY) || 'null');
     if (saved) return { camera: '', zone: '', type: '', level: '', since: '', alerts: false, ...saved };
@@ -1188,6 +1386,7 @@ function renderEventCards(events, alertTypes) {
     card.dataset.cameraName = event.camera_name || event.camera_id || '';
     card.dataset.zone = event.zone || '';
     card.dataset.details = event.details || '';
+    card.dataset.retained = event.retained ? '1' : '0';
     const thumb = document.createElement('div');
     thumb.className = 'event-thumb event-thumb-empty';
     thumb.style.cursor = 'pointer';
@@ -1197,11 +1396,16 @@ function renderEventCards(events, alertTypes) {
     body.className = 'event-card-body';
     const lvlLabel = ['N0', 'N1', 'N2', 'N3', 'N4'][lvl] || ('N' + lvl);
     const droppedBadge = event.dropped ? '<span class="badge badge-off">descartado N1</span>' : '';
+    const retainedBadge = event.retained ? '<span class="badge badge-ok">retido</span>' : '';
     const levelBadge = `<span class="badge badge-info">${lvlLabel}</span>`;
     body.innerHTML = `
       <div class="event-card-header">
-        <span class="event-type">${event.event_type} ${alertTypes.has(event.event_type) ? '<span class="badge badge-alert">alerta</span>' : '<span class="badge badge-info">info</span>'} ${levelBadge} ${droppedBadge}</span>
+        <span class="event-type">${event.event_type} ${alertTypes.has(event.event_type) ? '<span class="badge badge-alert">alerta</span>' : '<span class="badge badge-info">info</span>'} ${levelBadge} ${droppedBadge} ${retainedBadge}</span>
         <span class="event-time" data-ts="${new Date(event.timestamp).toISOString()}">${timeAgo(event.timestamp)}</span>
+        <label class="retain-checkbox" title="Marcar para não apagar no prune">
+          <input type="checkbox" ${event.retained ? 'checked' : ''} data-event-id="${event.id}">
+          <span class="checkbox-label">Reter</span>
+        </label>
       </div>
       <p class="event-meta">Câmera ${event.camera_id || '-'}${event.zone ? ' · ' + event.zone : ''}</p>
       ${event.details ? `<p class="event-details">${event.details}</p>` : ''}
@@ -1237,7 +1441,7 @@ function renderEventCards(events, alertTypes) {
 async function renderEvents(events) {
   let alertTypes = new Set();
   try {
-    const notif = await fetchData('/api/notifications');
+    const notif = await fetchCached('/api/notifications');
     alertTypes = new Set((notif.events || [])
       .filter(e => e.category === 'alerta')
       .map(e => e.key));
@@ -1249,6 +1453,7 @@ async function renderEvents(events) {
 
 let lastEvents = [];
 let lastAlertTypes = new Set();
+let lastDashboardPayload = null;
 
 function setupEventFilters() {
   const ids = ['filter-camera', 'filter-zone', 'filter-type', 'filter-level', 'filter-since', 'filter-alerts'];
@@ -1643,7 +1848,7 @@ async function populateAlertClasses(selected) {
   if (!container) return;
   let classes = [];
   try {
-    const data = await fetchData('/api/classes');
+    const data = await fetchCached('/api/classes');
     classes = data.classes || [];
   } catch (e) { return; }
   const selectedSet = new Set(selected || []);
@@ -1748,38 +1953,32 @@ function scrollToSection(sectionId) {
 /* ========== Footer ========== */
 
 async function renderStatusFooter() {
-  try {
-    const status = await fetchData('/status');
-    const health = document.getElementById('status-health');
-    const cameras = document.getElementById('status-cameras');
-    const workers = document.getElementById('status-workers');
-    const recent = document.getElementById('status-recent');
-
-    if (health) {
-      health.textContent = `Status: ${status.status || 'ok'}`;
-      health.className = status.status === 'ok' ? 'status-good' : 'status-bad';
-    }
-    if (cameras) {
-      cameras.textContent = `Câmeras: ${status.camera_count ?? '—'}`;
-    }
-    if (workers) {
-      workers.textContent = `Workers: ${status.active_workers ?? '—'}`;
-    }
-    if (recent) {
-      recent.textContent = `Eventos recentes: ${status.recent_events ?? '—'}`;
-    }
-
-    const uptime = document.getElementById('status-uptime');
-    if (uptime) {
-      uptime.textContent = `Uptime: ${formatUptime(Date.now() - appStartTime)}`;
-    }
-  } catch (error) {
-    const health = document.getElementById('status-health');
-    if (health) {
-      health.textContent = 'Status: indisponível';
-      health.className = 'status-bad';
-    }
+  let status = null;
+  if (lastDashboardPayload) {
+    status = {
+      status: 'ok',
+      camera_count: (lastDashboardPayload.cameras || []).length,
+      recent_events: (lastDashboardPayload.events || []).length,
+      active_workers: (lastDashboardPayload.worker_status || []).length,
+    };
+  } else {
+    try { status = await fetchData('/status'); } catch (e) { status = null; }
   }
+  if (!status) {
+    const health = document.getElementById('status-health');
+    if (health) { health.textContent = 'Status: indisponível'; health.className = 'status-bad'; }
+    return;
+  }
+  const health = document.getElementById('status-health');
+  const cameras = document.getElementById('status-cameras');
+  const workers = document.getElementById('status-workers');
+  const recent = document.getElementById('status-recent');
+  if (health) { health.textContent = `Status: ${status.status || 'ok'}`; health.className = status.status === 'ok' ? 'status-good' : 'status-bad'; }
+  if (cameras) cameras.textContent = `Câmeras: ${status.camera_count ?? '—'}`;
+  if (workers) workers.textContent = `Workers: ${status.active_workers ?? '—'}`;
+  if (recent) recent.textContent = `Eventos recentes: ${status.recent_events ?? '—'}`;
+  const uptime = document.getElementById('status-uptime');
+  if (uptime) uptime.textContent = `Uptime: ${formatUptime(Date.now() - appStartTime)}`;
 }
 
 /* ========== Render ========== */
@@ -1854,6 +2053,8 @@ async function renderNotifications() {
       if (!res.ok) {
         input.checked = !input.checked;
         showMenuMessage('Falha ao salvar configuração.', 'camera-form-message');
+      } else {
+        invalidateCache('/api/notifications');
       }
     });
   });
@@ -2091,46 +2292,35 @@ async function renderDashboard() {
 }
 
 async function renderOverviewSection() {
-  const cameras = await fetchData('/cameras');
-  const events = await fetchData('/events');
-  const zones = await fetchData('/zones');
-
-  // Indicador N0 por câmera (Visão geral): contagem de eventos de captura
-  // (level=0) via reuso de /events?level=0 (filtro server-side).
-  let n0ByCamera = new Map();
+  let payload;
   try {
-    const n0events = await fetchData('/events?level=0');
-    n0ByCamera = countEventsByCamera(n0events);
-  } catch (e) { /* sem N0: indicador omitido */ }
-
+    payload = await fetchData('/api/dashboard');
+  } catch (e) { return; }
+  lastDashboardPayload = payload;
+  const cameras = payload.cameras || [];
+  const events = payload.events || [];
+  const zones = payload.zones || [];
+  const n0events = payload.n0_events || [];
+  const n0ByCamera = countEventsByCamera(n0events);
   const summaryCards = document.getElementById('summary-cards');
   const lastEvent = events.length > 0 ? events[0] : null;
   const lastEventTime = lastEvent ? new Date(lastEvent.timestamp).toLocaleString() : 'Nenhum evento';
-
   summaryCards.innerHTML = [
     createSummaryCard('Câmeras conectadas', cameras.length, 'Fontes ativas de vídeo'),
     createSummaryCard('Zonas cadastradas', zones.length, 'Classificações de alerta'),
     createSummaryCard('Eventos recentes', events.length, 'Últimos 100 eventos carregados'),
     createSummaryCard('Último evento', lastEvent ? lastEvent.event_type : 'Nenhum', lastEventTime),
   ].join('');
-
   const lastEventMap = buildLastEventMap(events);
   const sortedCameras = sortCamerasByLastEvent(cameras, lastEventMap);
-
-  // Camera tiles: lazy-load + offline grouping (status via /status worker_status).
-  // A grade é renderizada UMA vez (guard dataset.rendered) — re-render a cada poll
-  // recriaria os <img> sem src e perderia o estado 'loaded' do lazy-load. O bar
-  // "Ver offline" (contador + visibilidade), porém, é atualizado em todo poll.
   const cameraTiles = document.getElementById('camera-tiles');
-  let workerStatus = null;
-  try {
-    const status = await fetchData('/status');
-    workerStatus = status.worker_status || null;
-  } catch (e) { /* offline: grade única + bar escondido */ }
-
+  const workerStatus = payload.worker_status || null;
   if (!cameraTiles.dataset.rendered) {
-    cameraTiles.dataset.rendered = '1';
-    renderCameraTiles(sortedCameras, workerStatus, lastEventMap, n0ByCamera);
+    if (sortedCameras.length > 0) {
+      cameraTiles.dataset.rendered = '1';
+      renderCameraTiles(sortedCameras, workerStatus, lastEventMap, n0ByCamera);
+    }
+    // if no cameras yet, leave dataset.rendered unset so next poll retries
   } else {
     updateOfflineSection(sortedCameras, workerStatus, lastEventMap, n0ByCamera);
   }
@@ -2297,6 +2487,49 @@ function setupEventCardThumbPreview() {
     // renderEventCards; se nao estiver (createEventCard legado), busca do
     // card-content textual como fallback.
     openEventThumbDialog(card, thumb.src);
+  });
+
+  // Retain checkbox handler (delegated)
+  grid.addEventListener('change', async (e) => {
+    const checkbox = e.target.closest('.retain-checkbox input[type="checkbox"]');
+    if (!checkbox) return;
+    const eventId = checkbox.dataset.eventId;
+    if (!eventId) return;
+    const retain = checkbox.checked;
+    try {
+      const res = await fetch(`/api/events/${eventId}/retain`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retain })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        checkbox.checked = !retain; // revert on error
+        alert(data.error || 'Erro ao atualizar');
+      } else {
+        // Update UI
+        const card = checkbox.closest('.event-card');
+        if (card) {
+          card.dataset.retained = retain ? '1' : '0';
+          const badge = card.querySelector('.badge-ok');
+          if (retain && !badge) {
+            // Add retained badge
+            const header = card.querySelector('.event-card-header .event-type');
+            if (header) {
+              const badgeEl = document.createElement('span');
+              badgeEl.className = 'badge badge-ok';
+              badgeEl.textContent = 'retido';
+              header.appendChild(badgeEl);
+            }
+          } else if (!retain && badge) {
+            badge.remove();
+          }
+        }
+      }
+    } catch (e) {
+      checkbox.checked = !retain;
+      alert('Erro ao atualizar');
+    }
   });
 }
 function openEventThumbDialog(card, imgSrc) {

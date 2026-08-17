@@ -1,0 +1,9 @@
+flask
+opencv-python-headless
+numpy
+python-dotenv
+requests
+paho-mqtt
+
+[dev]
+pytest
