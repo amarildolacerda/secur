@@ -1,12 +1,14 @@
 import cv2
 import os
 import time
+import threading
 from datetime import datetime, timezone
 from flask import Flask, jsonify, render_template, request, Response, send_file
 from .camera import CameraStream
 from .storage import EventStorage
 from .masking import frame_for_storage
 from .config import is_privacy_mode_on
+from . import config as cfg
 from .notifications import CHANNELS, EVENT_TYPES
 from .status import build_system_status
 import base64
@@ -139,7 +141,6 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
     @app.route("/api/config")
     def api_config():
         """Parâmetros de configuração efetivos (read-only) para o painel 'Configurações em uso'."""
-        from src import config as cfg
         return jsonify({
             "motion": {
                 "min_area_px": cfg.MOTION_MIN_AREA,
@@ -827,5 +828,21 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
     @app.route("/")
     def dashboard():
         return render_template("dashboard.html")
+
+    # Auto-pruning scheduler
+    if cfg.EVENT_PRUNE_ENABLED:
+        def _prune_loop():
+            while True:
+                time.sleep(cfg.EVENT_PRUNE_INTERVAL_SECONDS)
+                try:
+                    deleted = storage.prune_events()
+                    if deleted:
+                        logger.info("Auto-prune: %d eventos removidos", deleted)
+                except Exception:
+                    logger.exception("Erro no auto-prune")
+
+        prune_thread = threading.Thread(target=_prune_loop, daemon=True)
+        prune_thread.start()
+        logger.info("Auto-prune scheduler iniciado (intervalo=%ds)", cfg.EVENT_PRUNE_INTERVAL_SECONDS)
 
     return app

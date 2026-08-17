@@ -610,49 +610,93 @@ class EventStorage:
             cursor = self.connection.cursor()
             now = datetime.now(timezone.utc)
             
+            # Helper: get event IDs to be deleted, then remove associated thumbnails/clips
+            def _collect_and_delete_event_ids(where_sql, params):
+                """Returns list of event IDs that match the condition."""
+                cursor.execute(f"SELECT id FROM events WHERE {where_sql}", params)
+                return [row["id"] for row in cursor.fetchall()]
+            
+            def _delete_orphaned_media(event_ids):
+                """Delete thumbnails and clips associated with given event IDs."""
+                if not event_ids:
+                    return
+                placeholders = ",".join("?" * len(event_ids))
+                # Delete thumbnails
+                cursor.execute(
+                    f"SELECT path FROM camera_thumbnails WHERE event_id IN ({placeholders})",
+                    event_ids
+                )
+                for row in cursor.fetchall():
+                    try:
+                        Path(row["path"]).unlink(missing_ok=True)
+                    except Exception:
+                        logger.warning("Falha ao remover thumbnail órfão %s", row["path"])
+                cursor.execute(
+                    f"DELETE FROM camera_thumbnails WHERE event_id IN ({placeholders})",
+                    event_ids
+                )
+                # Delete clips
+                cursor.execute(
+                    f"SELECT path FROM event_clips WHERE event_id IN ({placeholders})",
+                    event_ids
+                )
+                for row in cursor.fetchall():
+                    try:
+                        Path(row["path"]).unlink(missing_ok=True)
+                    except Exception:
+                        logger.warning("Falha ao remover clipe órfão %s", row["path"])
+                cursor.execute(
+                    f"DELETE FROM event_clips WHERE event_id IN ({placeholders})",
+                    event_ids
+                )
+            
             # N1 dropped
             if dropped_days == 0:
-                cursor.execute("DELETE FROM events WHERE dropped = 1")
+                event_ids = _collect_and_delete_event_ids("dropped = 1", ())
             else:
                 cutoff = (now - timedelta(days=dropped_days)).isoformat()
-                cursor.execute(
-                    "DELETE FROM events WHERE dropped = 1 AND timestamp < ?",
-                    (cutoff,)
-                )
-            deleted += cursor.rowcount
+                event_ids = _collect_and_delete_event_ids("dropped = 1 AND timestamp < ?", (cutoff,))
+            if event_ids:
+                _delete_orphaned_media(event_ids)
+                placeholders = ",".join("?" * len(event_ids))
+                cursor.execute(f"DELETE FROM events WHERE id IN ({placeholders})", event_ids)
+                deleted += len(event_ids)
             
             # N3 suppressed/cooldown
             if suppressed_days == 0:
-                cursor.execute("DELETE FROM events WHERE level = 3 AND disposition IN ('suppressed', 'cooldown')")
+                event_ids = _collect_and_delete_event_ids("level = 3 AND disposition IN ('suppressed', 'cooldown')", ())
             else:
                 cutoff = (now - timedelta(days=suppressed_days)).isoformat()
-                cursor.execute(
-                    "DELETE FROM events WHERE level = 3 AND disposition IN ('suppressed', 'cooldown') AND timestamp < ?",
-                    (cutoff,)
-                )
-            deleted += cursor.rowcount
+                event_ids = _collect_and_delete_event_ids("level = 3 AND disposition IN ('suppressed', 'cooldown') AND timestamp < ?", (cutoff,))
+            if event_ids:
+                _delete_orphaned_media(event_ids)
+                placeholders = ",".join("?" * len(event_ids))
+                cursor.execute(f"DELETE FROM events WHERE id IN ({placeholders})", event_ids)
+                deleted += len(event_ids)
             
             # N4 normal
             if normal_days == 0:
-                cursor.execute("DELETE FROM events WHERE level = 4")
+                event_ids = _collect_and_delete_event_ids("level = 4", ())
             else:
                 cutoff = (now - timedelta(days=normal_days)).isoformat()
-                cursor.execute(
-                    "DELETE FROM events WHERE level = 4 AND timestamp < ?",
-                    (cutoff,)
-                )
-            deleted += cursor.rowcount
+                event_ids = _collect_and_delete_event_ids("level = 4 AND timestamp < ?", (cutoff,))
+            if event_ids:
+                _delete_orphaned_media(event_ids)
+                placeholders = ",".join("?" * len(event_ids))
+                cursor.execute(f"DELETE FROM events WHERE id IN ({placeholders})", event_ids)
+                deleted += len(event_ids)
             
             # no_motion events
             if no_motion_days == 0:
-                cursor.execute("DELETE FROM events WHERE event_type = 'no_motion'")
+                event_ids = _collect_and_delete_event_ids("event_type = 'no_motion'", ())
             else:
                 cutoff = (now - timedelta(days=no_motion_days)).isoformat()
-                cursor.execute(
-                    "DELETE FROM events WHERE event_type = 'no_motion' AND timestamp < ?",
-                    (cutoff,)
-                )
-            deleted += cursor.rowcount
+                event_ids = _collect_and_delete_event_ids("event_type = 'no_motion' AND timestamp < ?", (cutoff,))
+            if event_ids:
+                _delete_orphaned_media(event_ids)
+                placeholders = ",".join("?" * len(event_ids))
+                cursor.execute(f"DELETE FROM events WHERE id IN ({placeholders})", event_ids)
+                deleted += len(event_ids)
             
             self.connection.commit()
         return deleted
