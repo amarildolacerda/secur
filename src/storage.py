@@ -212,7 +212,7 @@ class EventStorage:
     def list_events(self, limit=100, level=None, camera_id=None, source=None):
         with self.lock:
             cursor = self.connection.cursor()
-            sql = ("SELECT id, timestamp, camera_id, zone, event_type, details, clip_path, level, dropped, source "
+            sql = ("SELECT id, timestamp, camera_id, zone, event_type, details, clip_path, level, dropped, source, retained "
                    "FROM events WHERE 1=1")
             params = []
             if level is not None:
