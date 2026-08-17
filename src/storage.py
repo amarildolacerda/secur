@@ -586,7 +586,7 @@ class EventStorage:
             cursor.execute("DELETE FROM event_clips WHERE camera_id = ?", (camera_id,))
             self.connection.commit()
 
-    def prune_events(self, dropped_days: int = 7, suppressed_days: int = 30, normal_days: int = 0):
+    def prune_events(self, dropped_days: float = 7, suppressed_days: float = 30, normal_days: float = 0, no_motion_days: float = 1):
         """Remove eventos antigos baseado na política de retenção.
         
         Args:
@@ -596,11 +596,14 @@ class EventStorage:
                              0 = remove todos imediatamente; 1 = espera 1 dia; etc.
             normal_days: dias para manter eventos normais (N4 alertas). 
                          0 = remove todos imediatamente; 1 = espera 1 dia; etc.
+            no_motion_days: dias para manter eventos no_motion (após automação).
+                            0 = remove todos imediatamente; 1 = espera 1 dia; etc.
         """
         from src import config as cfg
         dropped_days = dropped_days if dropped_days >= 0 else cfg.EVENT_PRUNE_DROPPED_DAYS
         suppressed_days = suppressed_days if suppressed_days >= 0 else cfg.EVENT_PRUNE_SUPPRESSED_DAYS
         normal_days = normal_days if normal_days >= 0 else cfg.EVENT_PRUNE_NORMAL_DAYS
+        no_motion_days = no_motion_days if no_motion_days >= 0 else cfg.EVENT_PRUNE_NO_MOTION_DAYS
         
         deleted = 0
         with self.lock:
@@ -636,6 +639,17 @@ class EventStorage:
                 cutoff = (now - timedelta(days=normal_days)).isoformat()
                 cursor.execute(
                     "DELETE FROM events WHERE level = 4 AND timestamp < ?",
+                    (cutoff,)
+                )
+            deleted += cursor.rowcount
+            
+            # no_motion events
+            if no_motion_days == 0:
+                cursor.execute("DELETE FROM events WHERE event_type = 'no_motion'")
+            else:
+                cutoff = (now - timedelta(days=no_motion_days)).isoformat()
+                cursor.execute(
+                    "DELETE FROM events WHERE event_type = 'no_motion' AND timestamp < ?",
                     (cutoff,)
                 )
             deleted += cursor.rowcount

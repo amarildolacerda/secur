@@ -1015,7 +1015,7 @@ function renderSettingsConfig() {
         { title: 'Clips', data: cfg.clips, keys: ['pre_seconds', 'post_seconds', 'fps', 'history_size'], labels: { pre_seconds: 'Pré (s)', post_seconds: 'Pós (s)', fps: 'FPS', history_size: 'Histórico' } },
         { title: 'Tracking', data: cfg.tracking, keys: ['iou_threshold', 'max_age_seconds'], labels: { iou_threshold: 'IoU threshold', max_age_seconds: 'Max age (s)' } },
         { title: 'Comportamento', data: cfg.behavior, keys: ['loitering_seconds', 'loitering_max_distance', 'fall_aspect_ratio'], labels: { loitering_seconds: 'Loitering (s)', loitering_max_distance: 'Loitering dist. max', fall_aspect_ratio: 'Fall aspect ratio' } },
-        { title: 'Limpeza de Eventos', data: cfg.event_pruning, keys: ['enabled', 'dropped_days', 'suppressed_days', 'normal_days', 'interval_seconds'], labels: { enabled: 'Habilitado', dropped_days: 'N1 dropped (dias)', suppressed_days: 'N3 suppressed (dias)', normal_days: 'N4 alertas (dias)', interval_seconds: 'Intervalo (s)' } },
+        { title: 'Limpeza de Eventos', data: cfg.event_pruning, keys: ['enabled', 'dropped_days', 'suppressed_days', 'normal_days', 'no_motion_days', 'interval_seconds'], labels: { enabled: 'Habilitado', dropped_days: 'N1 dropped (dias)', suppressed_days: 'N3 suppressed (dias)', normal_days: 'N4 alertas (dias)', no_motion_days: 'no_motion (dias)', interval_seconds: 'Intervalo (s)' } },
       ];
 
       groups.forEach(g => {
@@ -1083,7 +1083,12 @@ function renderSettingsConfig() {
           const res = await fetch('/api/events/prune', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
+            body: JSON.stringify({
+              dropped_days: cfg.event_pruning?.dropped_days,
+              suppressed_days: cfg.event_pruning?.suppressed_days,
+              normal_days: cfg.event_pruning?.normal_days,
+              no_motion_days: cfg.event_pruning?.no_motion_days,
+            })
           });
           const data = await res.json();
           btn.textContent = `Concluído (${data.deleted} removidos)`;

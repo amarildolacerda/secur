@@ -189,6 +189,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
                 "dropped_days": cfg.EVENT_PRUNE_DROPPED_DAYS,
                 "suppressed_days": cfg.EVENT_PRUNE_SUPPRESSED_DAYS,
                 "normal_days": cfg.EVENT_PRUNE_NORMAL_DAYS,
+                "no_motion_days": cfg.EVENT_PRUNE_NO_MOTION_DAYS,
                 "interval_seconds": cfg.EVENT_PRUNE_INTERVAL_SECONDS,
             },
             "privacy_mode": cfg.PRIVACY_MODE,
@@ -197,18 +198,20 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
     @app.route("/api/events/prune", methods=["POST"])
     def api_events_prune():
         """Executa limpeza de eventos sob demanda.
-        Body opcional: {"dropped_days": 0, "suppressed_days": 0.25, "normal_days": 1}
+        Body opcional: {"dropped_days": 0, "suppressed_days": 0.25, "normal_days": 1, "no_motion_days": 0.5}
         Se omitido, usa os defaults do config.
         """
         data = request.get_json(silent=True) or {}
         dropped_days = data.get("dropped_days")
         suppressed_days = data.get("suppressed_days")
         normal_days = data.get("normal_days")
+        no_motion_days = data.get("no_motion_days")
         
         deleted = storage.prune_events(
             dropped_days=dropped_days if dropped_days is not None else -1,
             suppressed_days=suppressed_days if suppressed_days is not None else -1,
             normal_days=normal_days if normal_days is not None else -1,
+            no_motion_days=no_motion_days if no_motion_days is not None else -1,
         )
         return jsonify({"deleted": deleted})
 
