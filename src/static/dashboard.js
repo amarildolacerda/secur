@@ -1069,6 +1069,33 @@ function renderSettingsConfig() {
         section.appendChild(groupDiv);
       }
 
+      // Botão para executar limpeza manual
+      const actionDiv = document.createElement('div');
+      actionDiv.className = 'config-action';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'button-primary button-mini';
+      btn.textContent = 'Executar limpeza agora';
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Limpando...';
+        try {
+          const res = await fetch('/api/events/prune', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+          });
+          const data = await res.json();
+          btn.textContent = `Concluído (${data.deleted} removidos)`;
+          setTimeout(() => { btn.disabled = false; btn.textContent = 'Executar limpeza agora'; }, 3000);
+        } catch (e) {
+          btn.textContent = 'Erro';
+          setTimeout(() => { btn.disabled = false; btn.textContent = 'Executar limpeza agora'; }, 3000);
+        }
+      });
+      actionDiv.appendChild(btn);
+      section.appendChild(actionDiv);
+
       if (!section.children.length) {
         container.textContent = 'Sem informações de configuração disponíveis.';
         return;

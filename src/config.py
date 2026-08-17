@@ -102,12 +102,12 @@ CLIP_HISTORY_SIZE = int(os.getenv("CLIP_HISTORY_SIZE", "20"))
 
 # Event pruning (auto-cleanup de eventos N1 dropped e N3 suppressed/cooldown)
 EVENT_PRUNE_ENABLED = os.getenv("EVENT_PRUNE_ENABLED", "true").lower() in ("1", "true", "yes", "on")
-# Dias para manter eventos dropped (N1 descartados)
-EVENT_PRUNE_DROPPED_DAYS = int(os.getenv("EVENT_PRUNE_DROPPED_DAYS", "7"))
-# Dias para manter eventos suppressed/cooldown (N3)
-EVENT_PRUNE_SUPPRESSED_DAYS = int(os.getenv("EVENT_PRUNE_SUPPRESSED_DAYS", "30"))
-# Dias para manter eventos normais (N4 alertas) - 0 = não apaga
-EVENT_PRUNE_NORMAL_DAYS = int(os.getenv("EVENT_PRUNE_NORMAL_DAYS", "0"))
+# Dias para manter eventos dropped (N1 descartados) - 0 = remove todos; aceita fração (ex: 0.5 = 12h)
+EVENT_PRUNE_DROPPED_DAYS = float(os.getenv("EVENT_PRUNE_DROPPED_DAYS", "0"))
+# Dias para manter eventos suppressed/cooldown (N3) - 1 = espera 1 dia; aceita fração
+EVENT_PRUNE_SUPPRESSED_DAYS = float(os.getenv("EVENT_PRUNE_SUPPRESSED_DAYS", "1"))
+# Dias para manter eventos normais (N4 alertas) - 1 = espera 1 dia; aceita fração
+EVENT_PRUNE_NORMAL_DAYS = float(os.getenv("EVENT_PRUNE_NORMAL_DAYS", "1"))
 # Intervalo de execução do prune (segundos)
 EVENT_PRUNE_INTERVAL_SECONDS = int(os.getenv("EVENT_PRUNE_INTERVAL_SECONDS", "3600"))
 

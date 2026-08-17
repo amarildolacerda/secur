@@ -590,46 +590,55 @@ class EventStorage:
         """Remove eventos antigos baseado na política de retenção.
         
         Args:
-            dropped_days: dias para manter eventos dropped (N1 descartados). 0 = não apaga.
-            suppressed_days: dias para manter eventos suppressed/cooldown (N3). 0 = não apaga.
-            normal_days: dias para manter eventos normais (N4 alertas). 0 = não apaga.
+            dropped_days: dias para manter eventos dropped (N1 descartados). 
+                          0 = remove todos imediatamente; 1 = espera 1 dia; etc.
+            suppressed_days: dias para manter eventos suppressed/cooldown (N3). 
+                             0 = remove todos imediatamente; 1 = espera 1 dia; etc.
+            normal_days: dias para manter eventos normais (N4 alertas). 
+                         0 = remove todos imediatamente; 1 = espera 1 dia; etc.
         """
         from src import config as cfg
-        dropped_days = dropped_days if dropped_days > 0 else cfg.EVENT_PRUNE_DROPPED_DAYS
-        suppressed_days = suppressed_days if suppressed_days > 0 else cfg.EVENT_PRUNE_SUPPRESSED_DAYS
-        normal_days = normal_days if normal_days > 0 else cfg.EVENT_PRUNE_NORMAL_DAYS
-        
-        if dropped_days == 0 and suppressed_days == 0 and normal_days == 0:
-            return 0
+        dropped_days = dropped_days if dropped_days >= 0 else cfg.EVENT_PRUNE_DROPPED_DAYS
+        suppressed_days = suppressed_days if suppressed_days >= 0 else cfg.EVENT_PRUNE_SUPPRESSED_DAYS
+        normal_days = normal_days if normal_days >= 0 else cfg.EVENT_PRUNE_NORMAL_DAYS
         
         deleted = 0
         with self.lock:
             cursor = self.connection.cursor()
             now = datetime.now(timezone.utc)
             
-            if dropped_days > 0:
+            # N1 dropped
+            if dropped_days == 0:
+                cursor.execute("DELETE FROM events WHERE dropped = 1")
+            else:
                 cutoff = (now - timedelta(days=dropped_days)).isoformat()
                 cursor.execute(
                     "DELETE FROM events WHERE dropped = 1 AND timestamp < ?",
                     (cutoff,)
                 )
-                deleted += cursor.rowcount
+            deleted += cursor.rowcount
             
-            if suppressed_days > 0:
+            # N3 suppressed/cooldown
+            if suppressed_days == 0:
+                cursor.execute("DELETE FROM events WHERE level = 3 AND disposition IN ('suppressed', 'cooldown')")
+            else:
                 cutoff = (now - timedelta(days=suppressed_days)).isoformat()
                 cursor.execute(
                     "DELETE FROM events WHERE level = 3 AND disposition IN ('suppressed', 'cooldown') AND timestamp < ?",
                     (cutoff,)
                 )
-                deleted += cursor.rowcount
+            deleted += cursor.rowcount
             
-            if normal_days > 0:
+            # N4 normal
+            if normal_days == 0:
+                cursor.execute("DELETE FROM events WHERE level = 4")
+            else:
                 cutoff = (now - timedelta(days=normal_days)).isoformat()
                 cursor.execute(
                     "DELETE FROM events WHERE level = 4 AND timestamp < ?",
                     (cutoff,)
                 )
-                deleted += cursor.rowcount
+            deleted += cursor.rowcount
             
             self.connection.commit()
         return deleted
