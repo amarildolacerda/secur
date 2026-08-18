@@ -76,8 +76,14 @@ function setActiveSection(sectionId) {
 
   // Troca de seção renderiza imediatamente (sem esperar o próximo poll de 5s).
   // Cobre nav links E botões de "Adicionar câmera/zona" (que chamam setActiveSection).
-  if (sectionChanged && dashboardReady) {
-    renderDashboard();
+  if (sectionChanged) {
+    // Re-renderiza a tabela de retenção na próxima visita à seção (o guard
+    // evita que o polling de 5s destrua inputs em edição).
+    const retentionBody = document.getElementById('retention-table-body');
+    if (retentionBody) delete retentionBody.dataset.rendered;
+    if (dashboardReady) {
+      renderDashboard();
+    }
   }
 }
 
@@ -2012,12 +2018,20 @@ async function renderEventRetentionSection() {
   try {
     cfg = await fetchData('/api/config');
   } catch (e) {
-    body.innerHTML = '<tr><td colspan="2">Falha ao carregar configuração.</td></tr>';
+    if (!body.dataset.rendered) {
+      body.innerHTML = '<tr><td colspan="2">Falha ao carregar configuração.</td></tr>';
+    }
     return;
   }
   const pruning = cfg.event_pruning || {};
   eventRetentionSnapshot = pruning;
-  body.innerHTML = buildRetentionTableHtml(pruning);
+  // O polling de 5s não pode recriar a tabela enquanto o usuário edita:
+  // os inputs são montados apenas na primeira visita à seção (guard
+  // resetado em setActiveSection ao trocar de seção).
+  if (!body.dataset.rendered) {
+    body.dataset.rendered = '1';
+    body.innerHTML = buildRetentionTableHtml(pruning);
+  }
 
   // Nota de status: limpeza automática ativa/desativada + intervalo.
   const statusEl = document.getElementById('retention-status');
@@ -2083,9 +2097,10 @@ async function applyEventRetention() {
       msg.classList.add('error');
     } else {
       const deleted = Number(data.deleted) || 0;
+      eventRetentionSnapshot = payload; // "Restaurar" volta para o que foi aplicado
       msg.textContent = deleted > 0
-        ? `Limpeza concluída: ${deleted} evento(s) removido(s).`
-        : 'Limpeza concluída: nenhum evento a remover.';
+        ? `Política salva. Limpeza concluída: ${deleted} evento(s) removido(s).`
+        : 'Política salva. Nenhum evento a remover.';
     }
   } catch (e) {
     msg.textContent = 'Falha de rede ao aplicar a retenção.';

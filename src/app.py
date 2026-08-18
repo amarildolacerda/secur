@@ -12,6 +12,7 @@ from . import config as cfg
 from .notifications import CHANNELS, EVENT_TYPES
 from .status import build_system_status
 import base64
+import json
 import numpy as np
 from typing import Optional
 import logging
@@ -46,6 +47,40 @@ def _is_valid_retention_policy(policy):
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 return False
     return True
+
+
+def _effective_event_prune_policy(storage):
+    """Política efetiva de prune de eventos: defaults do config sobrescritos
+    pela política salva via POST /api/events/prune (settings.event_prune_policy).
+
+    A página de retenção mostra e edita esta política; o scheduler automático
+    também a usa — valores salvos na UI têm precedência sobre o config.
+    """
+    policy = {
+        "enabled": cfg.EVENT_PRUNE_ENABLED,
+        "type_days": dict(cfg.EVENT_PRUNE_TYPE_DAYS),
+        "default_days": cfg.EVENT_PRUNE_DEFAULT_DAYS,
+        "max_age_days": cfg.EVENT_PRUNE_MAX_AGE_DAYS,
+        "interval_seconds": cfg.EVENT_PRUNE_INTERVAL_SECONDS,
+    }
+    raw = storage.get_setting("event_prune_policy")
+    if not raw:
+        return policy
+    try:
+        saved = json.loads(raw)
+    except (ValueError, TypeError):
+        return policy
+    if not isinstance(saved, dict):
+        return policy
+    if isinstance(saved.get("type_days"), dict):
+        for key, value in saved["type_days"].items():
+            if isinstance(key, str) and isinstance(value, (int, float)) and not isinstance(value, bool):
+                policy["type_days"][key] = float(value)
+    for key in ("default_days", "max_age_days"):
+        value = saved.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            policy[key] = float(value)
+    return policy
 
 
 def _is_valid_direction_line(line):
@@ -185,33 +220,54 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
                 "loitering_labels": cfg.LOITERING_LABELS,
                 "fall_aspect_ratio": cfg.FALL_ASPECT_RATIO,
             },
-               "event_pruning": {
-                   "enabled": cfg.EVENT_PRUNE_ENABLED,
-                   "type_days": cfg.EVENT_PRUNE_TYPE_DAYS,
-                   "default_days": cfg.EVENT_PRUNE_DEFAULT_DAYS,
-                   "max_age_days": cfg.EVENT_PRUNE_MAX_AGE_DAYS,
-                   "interval_seconds": cfg.EVENT_PRUNE_INTERVAL_SECONDS,
-            },
+"event_pruning": _effective_event_prune_policy(storage),
             "privacy_mode": cfg.PRIVACY_MODE,
         })
 
     @app.route("/api/events/prune", methods=["POST"])
     def api_events_prune():
-        """Executa limpeza de eventos sob demanda.
+        """Executa limpeza de eventos sob demanda e SALVA a política de retenção.
         Body opcional: {"type_days": {"motion_detected": 1}, "default_days": 7, "max_age_days": 30}
-        Se omitido, usa os defaults do config.
+        Se omitido, usa a política efetiva (config + política salva).
         """
         data = request.get_json(silent=True) or {}
         type_days = data.get("type_days")
         default_days = data.get("default_days")
         max_age_days = data.get("max_age_days")
-        
+
+        # Validação da política enviada (se houver) antes de salvar/executar.
+        if type_days is not None:
+            if not isinstance(type_days, dict) or not all(
+                isinstance(k, str)
+                and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0
+                for k, v in type_days.items()
+            ):
+                return jsonify({"error": "type_days deve ser dict {tipo: dias >= 0}"}), 400
+        for name, value in (("default_days", default_days), ("max_age_days", max_age_days)):
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0):
+                return jsonify({"error": f"{name} deve ser número >= 0"}), 400
+
+        effective = _effective_event_prune_policy(storage)
+        if type_days is not None or default_days is not None or max_age_days is not None:
+            # Persiste a política: campos omitidos herdam a política efetiva atual
+            # (type_days parcial é mesclado, não substituído).
+            saved_type_days = dict(effective["type_days"])
+            if type_days is not None:
+                saved_type_days.update(type_days)
+            saved = {
+                "type_days": saved_type_days,
+                "default_days": default_days if default_days is not None else effective["default_days"],
+                "max_age_days": max_age_days if max_age_days is not None else effective["max_age_days"],
+            }
+            storage.set_setting("event_prune_policy", json.dumps(saved))
+            effective = saved
+
         deleted = storage.prune_events(
-            type_days=type_days,
-            default_days=default_days if default_days is not None else -1,
-            max_age_days=max_age_days if max_age_days is not None else -1,
+            type_days=effective["type_days"],
+            default_days=effective["default_days"],
+            max_age_days=effective["max_age_days"],
         )
-        return jsonify({"deleted": deleted})
+        return jsonify({"deleted": deleted, "saved": True})
 
     @app.route("/api/events/<int:event_id>/retain", methods=["PUT"])
     def api_event_retain(event_id):
@@ -854,7 +910,12 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
             while True:
                 time.sleep(cfg.EVENT_PRUNE_INTERVAL_SECONDS)
                 try:
-                    deleted = storage.prune_events()
+                    policy = _effective_event_prune_policy(storage)
+                    deleted = storage.prune_events(
+                        type_days=policy["type_days"],
+                        default_days=policy["default_days"],
+                        max_age_days=policy["max_age_days"],
+                    )
                     if deleted:
                         logger.info("Auto-prune: %d eventos removidos", deleted)
                 except Exception:
