@@ -1239,15 +1239,16 @@ function readFilterState() {
     level: url.get('level') || '',
     since: url.get('since') || '1',
     alerts: url.get('alerts') === '1',
+    retained: url.get('retained') === '1',
   };
   // Filtros explícitos na URL têm precedência; caso contrário, tenta
   // localStorage. O default since='1' (última hora) não deve bloquear esse
   // fallback, então o guard olha os parâmetros da URL em vez dos valores.
-  const hasUrlFilters = url.has('camera') || url.has('zone') || url.has('type') || url.has('level') || url.has('since') || url.has('alerts');
+  const hasUrlFilters = url.has('camera') || url.has('zone') || url.has('type') || url.has('level') || url.has('since') || url.has('alerts') || url.has('retained');
   if (hasUrlFilters) return state;
   try {
     const saved = JSON.parse(localStorage.getItem(EVENT_FILTERS_KEY) || 'null');
-    if (saved) return { camera: '', zone: '', type: '', level: '', since: '', alerts: false, ...saved };
+    if (saved) return { camera: '', zone: '', type: '', level: '', since: '', alerts: false, retained: false, ...saved };
   } catch (e) { /* ignore */ }
   return state;
 }
@@ -1266,6 +1267,7 @@ function syncUrl(state) {
   if (state.level) url.set('level', state.level);
   if (state.since) url.set('since', state.since);
   if (state.alerts) url.set('alerts', '1');
+  if (state.retained) url.set('retained', '1');
   const qs = url.toString();
   history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
 }
@@ -1281,6 +1283,7 @@ function applyEventFilters(events, alertTypes) {
     if (state.level && Number(e.level) !== Number(state.level)) return false;
     if (cutoff && new Date(e.timestamp).getTime() < cutoff) return false;
     if (state.alerts && !alertTypes.has(e.event_type)) return false;
+    if (state.retained && !e.retained) return false;
     return true;
   });
 }
@@ -1324,6 +1327,8 @@ function populateFilterOptions(events) {
   if (levelSelect) levelSelect.value = state.level;
   const alertsCheck = document.getElementById('filter-alerts');
   if (alertsCheck) alertsCheck.checked = state.alerts;
+  const retainedCheck = document.getElementById('filter-retained');
+  if (retainedCheck) retainedCheck.checked = state.retained;
 }
 
 function renderEventCards(events, alertTypes) {
@@ -1433,7 +1438,7 @@ let lastAlertTypes = new Set();
 let lastDashboardPayload = null;
 
 function setupEventFilters() {
-  const ids = ['filter-camera', 'filter-zone', 'filter-type', 'filter-level', 'filter-since', 'filter-alerts'];
+  const ids = ['filter-camera', 'filter-zone', 'filter-type', 'filter-level', 'filter-since', 'filter-alerts', 'filter-retained'];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', () => {
@@ -1444,6 +1449,7 @@ function setupEventFilters() {
       state.level = document.getElementById('filter-level').value;
       state.since = document.getElementById('filter-since').value;
       state.alerts = document.getElementById('filter-alerts').checked;
+      state.retained = document.getElementById('filter-retained').checked;
       saveFilterState(state);
       syncUrl(state);
       renderEventCards(lastEvents, lastAlertTypes);
@@ -1460,14 +1466,16 @@ function setupEventFilters() {
       const level = document.getElementById('filter-level');
       const since = document.getElementById('filter-since');
       const alerts = document.getElementById('filter-alerts');
+      const retained = document.getElementById('filter-retained');
       if (camera) camera.value = '';
       if (zone) zone.value = '';
       if (type) type.value = '';
       if (level) level.value = '';
       if (since) since.value = '';
       if (alerts) alerts.checked = false;
-      saveFilterState({ camera: '', zone: '', type: '', level: '', since: '', alerts: false });
-      syncUrl({ camera: '', zone: '', type: '', level: '', since: '', alerts: false });
+      if (retained) retained.checked = false;
+      saveFilterState({ camera: '', zone: '', type: '', level: '', since: '', alerts: false, retained: false });
+      syncUrl({ camera: '', zone: '', type: '', level: '', since: '', alerts: false, retained: false });
       renderEventCards(lastEvents, lastAlertTypes);
     });
   });
@@ -2505,7 +2513,13 @@ async function renderOverviewSection() {
 }
 
 async function renderEventsSection() {
-  const events = await fetchData('/events?level=' + (readFilterState().level || ''));
+  const state = readFilterState();
+  const params = new URLSearchParams();
+  if (state.level) params.set('level', state.level);
+  // Retidos são protegidos do prune e não podem ficar fora do corte de 100:
+  // com o filtro ativo o servidor retorna todos (limite 1000).
+  if (state.retained) params.set('retained', '1');
+  const events = await fetchData('/events?' + params.toString());
   lastEvents = events;
   lastAlertTypes = await renderEvents(events);
 }

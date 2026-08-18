@@ -293,8 +293,11 @@
                         <option value="24">Últimas 24h</option>
                         <option value="168">Últimos 7 dias</option>
                     </select>
-                    <label class="checkbox-inline" title="Mostrar apenas eventos de alerta">
+                    <label class="checkbox-inline" title="Mostrar apenas eventos de tipos classificados como 'alerta' na Configuração de notificações">
                         <input type="checkbox" id="filter-alerts" /> Só alertas
+                    </label>
+                    <label class="checkbox-inline" title="Mostrar apenas eventos retidos (marcados com 'reter', protegidos do prune)">
+                        <input type="checkbox" id="filter-retained" /> Só retidos
                     </label>
                     <button type="button" class="button-secondary button-mini" id="filter-clear">Limpar</button>
                 </div>

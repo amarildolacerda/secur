@@ -209,7 +209,7 @@ class EventStorage:
             self.connection.commit()
             return cursor.rowcount > 0
 
-    def list_events(self, limit=100, level=None, camera_id=None, source=None):
+    def list_events(self, limit=100, level=None, camera_id=None, source=None, retained=None):
         with self.lock:
             cursor = self.connection.cursor()
             sql = ("SELECT id, timestamp, camera_id, zone, event_type, details, clip_path, level, dropped, source, retained "
@@ -221,6 +221,8 @@ class EventStorage:
                 sql += " AND camera_id = ?"; params.append(str(camera_id))
             if source is not None:
                 sql += " AND source = ?"; params.append(source)
+            if retained is not None:
+                sql += " AND retained = ?"; params.append(1 if retained else 0)
             sql += " ORDER BY id DESC LIMIT ?"
             params.append(limit)
             cursor.execute(sql, params)

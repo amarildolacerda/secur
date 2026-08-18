@@ -575,7 +575,11 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
     def events():
         level = request.args.get("level", type=int)
         camera_id = request.args.get("camera_id")
-        items = storage.list_events(limit=100, level=level, camera_id=camera_id)
+        retained = request.args.get("retained", type=int)
+        # Retidos são protegidos do prune e não podem ficar fora do corte de 100:
+        # com retained=1 o limite sobe para 1000.
+        limit = 1000 if retained == 1 else 100
+        items = storage.list_events(limit=limit, level=level, camera_id=camera_id, retained=retained)
         return jsonify(items)
 
     @app.route("/api/ingest", methods=["POST"])

@@ -593,3 +593,27 @@ def test_prune_rejects_invalid_policy(client):
     assert resp.status_code == 400
     resp = client.post("/api/events/prune", json={"max_age_days": True})
     assert resp.status_code == 400
+
+
+def test_events_retained_filter_beyond_limit(clip_env):
+    """Eventos retidos não podem ficar fora do corte de 100: /events?retained=1
+    retorna retidos antigos que o /events normal não mostra."""
+    client, storage = clip_env
+    ids = [storage.add_event("1", "z", "motion_detected", f"e{i}") for i in range(105)]
+    oldest = ids[0]
+    resp = client.put(f"/api/events/{oldest}/retain", json={"retain": True})
+    assert resp.status_code == 200
+
+    # Sem filtro: só os 100 mais recentes — o retido antigo fica de fora.
+    all_events = client.get("/events").json
+    assert len(all_events) == 100
+    assert oldest not in [e["id"] for e in all_events]
+
+    # Com retained=1: o retido antigo aparece, e só retidos são retornados.
+    retained_events = client.get("/events?retained=1").json
+    assert any(e["id"] == oldest for e in retained_events)
+    assert all(e["retained"] == 1 for e in retained_events)
+
+    # retained=0: só não-retidos.
+    non_retained = client.get("/events?retained=0").json
+    assert all(e["retained"] == 0 for e in non_retained)
