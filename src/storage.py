@@ -586,24 +586,30 @@ class EventStorage:
             cursor.execute("DELETE FROM event_clips WHERE camera_id = ?", (camera_id,))
             self.connection.commit()
 
-    def prune_events(self, dropped_days: float = 7, suppressed_days: float = 30, normal_days: float = 0, no_motion_days: float = 1):
-        """Remove eventos antigos baseado na política de retenção.
-        
+    def prune_events(self, type_days: dict = None, default_days: float = -1, max_age_days: float = -1):
+        """Remove eventos antigos por TIPO de evento (ignora level), com Idade Máxima
+        como rede de segurança final. Eventos retidos (retained=1) nunca são removidos.
+
+        Garantia de análise: eventos ainda em voo (disposition IS NULL E dropped = 0)
+        NUNCA são removidos, independente da idade. Isso assegura que a automação
+        (Home Assistant/MQTT) seja notificada antes do prune — o AlertRuleEngine só
+        define `disposition` após analisar e disparar os handlers. Eventos dropados
+        (dropped = 1, triados como ruído na N1) e analisados (disposition definido)
+        podem ser podados normalmente.
+
         Args:
-            dropped_days: dias para manter eventos dropped (N1 descartados). 
-                          0 = remove todos imediatamente; 1 = espera 1 dia; etc.
-            suppressed_days: dias para manter eventos suppressed/cooldown (N3). 
-                             0 = remove todos imediatamente; 1 = espera 1 dia; etc.
-            normal_days: dias para manter eventos normais (N4 alertas). 
-                         0 = remove todos imediatamente; 1 = espera 1 dia; etc.
-            no_motion_days: dias para manter eventos no_motion (após automação).
-                            0 = remove todos imediatamente; 1 = espera 1 dia; etc.
+            type_days: dict {event_type: dias}. 0 = remove todos imediatamente;
+                       <0 = nunca podar por tipo (só Idade Máx.); omissão = usa config.
+            default_days: retenção padrão (dias) para tipos não previstos em type_days.
+                          -1 = usa EVENT_PRUNE_DEFAULT_DAYS.
+            max_age_days: idade máxima (dias) de qualquer evento não retido, ao final.
+                          -1 = usa EVENT_PRUNE_MAX_AGE_DAYS; 0 = remove todos os não retidos.
         """
         from src import config as cfg
-        dropped_days = dropped_days if dropped_days >= 0 else cfg.EVENT_PRUNE_DROPPED_DAYS
-        suppressed_days = suppressed_days if suppressed_days >= 0 else cfg.EVENT_PRUNE_SUPPRESSED_DAYS
-        normal_days = normal_days if normal_days >= 0 else cfg.EVENT_PRUNE_NORMAL_DAYS
-        no_motion_days = no_motion_days if no_motion_days >= 0 else cfg.EVENT_PRUNE_NO_MOTION_DAYS
+        if type_days is None:
+            type_days = cfg.EVENT_PRUNE_TYPE_DAYS
+        default_days = default_days if default_days >= 0 else cfg.EVENT_PRUNE_DEFAULT_DAYS
+        max_age_days = max_age_days if max_age_days >= 0 else cfg.EVENT_PRUNE_MAX_AGE_DAYS
         
         deleted = 0
         with self.lock:
@@ -612,8 +618,15 @@ class EventStorage:
             
             # Helper: get event IDs to be deleted, then remove associated thumbnails/clips
             def _collect_and_delete_event_ids(where_sql, params):
-                """Returns list of event IDs that match the condition (excluding retained)."""
-                cursor.execute(f"SELECT id FROM events WHERE {where_sql} AND retained = 0", params)
+                """Retorna IDs que batem com a condição (exceto retidos) E que já
+                foram analisados. Garantia: eventos em voo (disposition IS NULL E
+                dropped = 0) NUNCA são podados — só após análise (disposition
+                definido) ou triagem como ruído (dropped = 1)."""
+                cursor.execute(
+                    f"SELECT id FROM events WHERE {where_sql} AND retained = 0 "
+                    f"AND (disposition IS NOT NULL OR dropped = 1)",
+                    params,
+                )
                 return [row["id"] for row in cursor.fetchall()]
             
             def _delete_orphaned_media(event_ids):
@@ -650,53 +663,36 @@ class EventStorage:
                     event_ids
                 )
             
-            # N1 dropped
-            if dropped_days == 0:
-                event_ids = _collect_and_delete_event_ids("dropped = 1", ())
-            else:
-                cutoff = (now - timedelta(days=dropped_days)).isoformat()
-                event_ids = _collect_and_delete_event_ids("dropped = 1 AND timestamp < ?", (cutoff,))
-            if event_ids:
-                _delete_orphaned_media(event_ids)
-                placeholders = ",".join("?" * len(event_ids))
-                cursor.execute(f"DELETE FROM events WHERE id IN ({placeholders})", event_ids)
-                deleted += len(event_ids)
-            
-            # N3 suppressed/cooldown
-            if suppressed_days == 0:
-                event_ids = _collect_and_delete_event_ids("level = 3 AND disposition IN ('suppressed', 'cooldown')", ())
-            else:
-                cutoff = (now - timedelta(days=suppressed_days)).isoformat()
-                event_ids = _collect_and_delete_event_ids("level = 3 AND disposition IN ('suppressed', 'cooldown') AND timestamp < ?", (cutoff,))
-            if event_ids:
-                _delete_orphaned_media(event_ids)
-                placeholders = ",".join("?" * len(event_ids))
-                cursor.execute(f"DELETE FROM events WHERE id IN ({placeholders})", event_ids)
-                deleted += len(event_ids)
-            
-            # N4 normal
-            if normal_days == 0:
-                event_ids = _collect_and_delete_event_ids("level = 4", ())
-            else:
-                cutoff = (now - timedelta(days=normal_days)).isoformat()
-                event_ids = _collect_and_delete_event_ids("level = 4 AND timestamp < ?", (cutoff,))
-            if event_ids:
-                _delete_orphaned_media(event_ids)
-                placeholders = ",".join("?" * len(event_ids))
-                cursor.execute(f"DELETE FROM events WHERE id IN ({placeholders})", event_ids)
-                deleted += len(event_ids)
-            
-            # no_motion events
-            if no_motion_days == 0:
-                event_ids = _collect_and_delete_event_ids("event_type = 'no_motion'", ())
-            else:
-                cutoff = (now - timedelta(days=no_motion_days)).isoformat()
-                event_ids = _collect_and_delete_event_ids("event_type = 'no_motion' AND timestamp < ?", (cutoff,))
-            if event_ids:
-                _delete_orphaned_media(event_ids)
-                placeholders = ",".join("?" * len(event_ids))
-                cursor.execute(f"DELETE FROM events WHERE id IN ({placeholders})", event_ids)
-                deleted += len(event_ids)
+            # 1) Por tipo de evento (ignorando level)
+            cursor.execute("SELECT DISTINCT event_type FROM events")
+            present_types = [r["event_type"] for r in cursor.fetchall()]
+            for etype in present_types:
+                days = type_days.get(etype, default_days)
+                if days < 0:
+                    continue  # tipo com -1: não podar por tipo (só Idade Máx.)
+                if days == 0:
+                    event_ids = _collect_and_delete_event_ids("event_type = ?", (etype,))
+                else:
+                    cutoff = (now - timedelta(days=days)).isoformat()
+                    event_ids = _collect_and_delete_event_ids("event_type = ? AND timestamp < ?", (etype, cutoff))
+                if event_ids:
+                    _delete_orphaned_media(event_ids)
+                    placeholders = ",".join("?" * len(event_ids))
+                    cursor.execute(f"DELETE FROM events WHERE id IN ({placeholders})", event_ids)
+                    deleted += len(event_ids)
+
+            # 2) Idade Máxima — rede de segurança final para qualquer não retido
+            if max_age_days >= 0:
+                if max_age_days == 0:
+                    event_ids = _collect_and_delete_event_ids("1=1", ())
+                else:
+                    cutoff = (now - timedelta(days=max_age_days)).isoformat()
+                    event_ids = _collect_and_delete_event_ids("timestamp < ?", (cutoff,))
+                if event_ids:
+                    _delete_orphaned_media(event_ids)
+                    placeholders = ",".join("?" * len(event_ids))
+                    cursor.execute(f"DELETE FROM events WHERE id IN ({placeholders})", event_ids)
+                    deleted += len(event_ids)
             
             self.connection.commit()
         return deleted

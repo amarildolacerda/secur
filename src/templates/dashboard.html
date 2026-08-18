@@ -49,7 +49,10 @@
                         <span class="dot" style="background:var(--info)"></span>
                         <span>Zonas</span>
                     </button>
-                   
+                    <button type="button" class="nav-sublink" data-section="event-retention">
+                        <span class="dot" style="background:var(--warn)"></span>
+                        <span>Retenção de eventos</span>
+                    </button>
                     <button type="button" class="nav-sublink" data-section="identities-management">
                         <span class="dot" style="background:var(--info)"></span>
                         <span>Identidades</span>
@@ -366,6 +369,32 @@
                         </thead>
                         <tbody id="identities-table-body"></tbody>
                     </table>
+                </div>
+            </section>
+
+            <section class="panel hidden-panel" id="event-retention">
+                <div class="panel-header">
+                    <div>
+                        <h2>Retenção de eventos</h2>
+                        <p>Defina por quanto tempo cada tipo de evento é mantido antes da limpeza automática.</p>
+                    </div>
+                </div>
+                <p id="retention-status" class="retention-status"></p>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tipo de evento</th>
+                                <th class="retention-days-col">Retenção (dias)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="retention-table-body"></tbody>
+                    </table>
+                </div>
+                <div class="retention-actions">
+                    <button type="button" class="button-primary" id="retention-apply">Aplicar</button>
+                    <button type="button" class="button-secondary" id="retention-restore" title="Reverter os valores para a configuração atual">Restaurar</button>
+                    <span id="retention-message" class="form-message" role="status"></span>
                 </div>
             </section>
 

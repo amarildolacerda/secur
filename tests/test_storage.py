@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from src.storage import EventStorage
 
@@ -427,6 +428,82 @@ def test_prune_clips_by_max_age(tmp_path):
     assert len(clips) == 1
     assert clips[0]["path"] == str(new_file)
     assert not Path(old_file).exists()
+    storage.close()
+
+
+def test_prune_events_by_type_and_max_age(tmp_path):
+    """Prune por tipo de evento (ignora level) + Idade Máxima; retidos preservados."""
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+    cam = storage.add_camera("Cam", "source://x", "entrada")
+
+    old_m = storage.add_event(cam, "entrada", "motion_detected", "old")   # 1d retenção -> podado
+    new_m = storage.add_event(cam, "entrada", "motion_detected", "new")   # recente -> mantido
+    cap = storage.add_event(cam, "entrada", "capture", "cap")            # 7d retenção, recente -> mantido
+    ret = storage.add_event(cam, "entrada", "motion_detected", "ret")    # retido -> mantido
+    storage.connection.execute("UPDATE events SET retained = 1 WHERE id = ?", (ret,))
+
+    old_ts = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
+    storage.connection.execute("UPDATE events SET timestamp = ? WHERE id = ?", (old_ts, old_m))
+    storage.connection.execute("UPDATE events SET timestamp = ? WHERE id = ?", (old_ts, ret))
+    # Marca old_m como analisado (disposition definido) para simular o fluxo real
+    # do AlertRuleEngine; sem isso o guard de análise o protegeria.
+    storage.update_event_level(old_m, 4, event_type="motion_detected", disposition="alert")
+    storage.connection.commit()
+
+    type_days = {"motion_detected": 1, "capture": 7}
+    deleted = storage.prune_events(type_days=type_days, default_days=7, max_age_days=30)
+    assert deleted == 1  # só old_m
+
+    remaining = [r[0] for r in storage.connection.execute("SELECT id FROM events").fetchall()]
+    assert old_m not in remaining
+    assert new_m in remaining
+    assert cap in remaining
+    assert ret in remaining
+    storage.close()
+
+
+def test_prune_events_max_age_backstop(tmp_path):
+    """Idade Máxima remove eventos de tipos com retenção -1 (nunca podar por tipo)."""
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+    cam = storage.add_camera("Cam", "source://x", "entrada")
+    old = storage.add_event(cam, "entrada", "capture", "old")
+    old_ts = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    storage.connection.execute("UPDATE events SET timestamp = ? WHERE id = ?", (old_ts, old))
+    # Marca como analisado para o guard de análise permitir o prune.
+    storage.update_event_level(old, 4, event_type="capture", disposition="alert")
+    storage.connection.commit()
+
+    deleted = storage.prune_events(type_days={"capture": -1}, default_days=-1, max_age_days=3)
+    assert deleted == 1
+    storage.close()
+
+
+def test_prune_events_skips_unanalyzed(tmp_path):
+    """Garantia: evento em voo (disposition NULL e dropped=0) não é podado mesmo
+    se antigo; dropado (dropped=1) e analisado (disposition) são podados."""
+    db_path = tmp_path / "events.db"
+    storage = EventStorage(db_path)
+    cam = storage.add_camera("Cam", "source://x", "entrada")
+
+    old_ts = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    inflight = storage.add_event(cam, "entrada", "motion_detected", "inflight")  # disposition NULL, dropped 0
+    dropped = storage.add_event(cam, "entrada", "capture", "dropped", dropped=True)  # dropped=1
+    analyzed = storage.add_event(cam, "entrada", "motion_detected", "analyzed")  # disposition set
+
+    for eid in (inflight, dropped, analyzed):
+        storage.connection.execute("UPDATE events SET timestamp = ? WHERE id = ?", (old_ts, eid))
+    storage.update_event_level(analyzed, 4, event_type="motion_detected", disposition="alert")
+    storage.connection.commit()
+
+    deleted = storage.prune_events(type_days={"motion_detected": 1, "capture": 7}, default_days=7, max_age_days=30)
+    # inflight protegido; dropped e analyzed podados
+    assert deleted == 2
+    remaining = [r[0] for r in storage.connection.execute("SELECT id FROM events").fetchall()]
+    assert inflight in remaining
+    assert dropped not in remaining
+    assert analyzed not in remaining
     storage.close()
 
 

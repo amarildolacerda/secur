@@ -100,16 +100,23 @@ CLIPS_DIR = DATA_DIR / "clips"
 CLIPS_DIR.mkdir(exist_ok=True)
 CLIP_HISTORY_SIZE = int(os.getenv("CLIP_HISTORY_SIZE", "20"))
 
-# Event pruning (auto-cleanup de eventos N1 dropped, N3 suppressed/cooldown, N4, no_motion)
+# Event pruning — por TIPO de evento (ignora level). 0 = remove todos imediatamente;
+# aceita fração (ex: 0.5 = 12h). -1 num tipo = nunca podar por tipo (só Idade Máx.).
 EVENT_PRUNE_ENABLED = os.getenv("EVENT_PRUNE_ENABLED", "true").lower() in ("1", "true", "yes", "on")
-# Dias para manter eventos dropped (N1 descartados) - 0 = remove todos; aceita fração (ex: 0.5 = 12h)
-EVENT_PRUNE_DROPPED_DAYS = float(os.getenv("EVENT_PRUNE_DROPPED_DAYS", "0"))
-# Dias para manter eventos suppressed/cooldown (N3) - 1 = espera 1 dia; aceita fração
-EVENT_PRUNE_SUPPRESSED_DAYS = float(os.getenv("EVENT_PRUNE_SUPPRESSED_DAYS", "1"))
-# Dias para manter eventos normais (N4 alertas) - 1 = espera 1 dia; aceita fração
-EVENT_PRUNE_NORMAL_DAYS = float(os.getenv("EVENT_PRUNE_NORMAL_DAYS", "1"))
-# Dias para manter eventos no_motion (após automação) - 0 = remove todos; aceita fração
-EVENT_PRUNE_NO_MOTION_DAYS = float(os.getenv("EVENT_PRUNE_NO_MOTION_DAYS", "1"))
+EVENT_PRUNE_TYPE_DAYS = {
+    "motion_detected": float(os.getenv("EVENT_PRUNE_MOTION_DETECTED_DAYS", "1")),
+    "capture": float(os.getenv("EVENT_PRUNE_CAPTURE_DAYS", "7")),
+    "snapshot_info": float(os.getenv("EVENT_PRUNE_SNAPSHOT_INFO_DAYS", "7")),
+    "no_motion": float(os.getenv("EVENT_PRUNE_NO_MOTION_DAYS", "0")),
+    "loitering": float(os.getenv("EVENT_PRUNE_LOITERING_DAYS", "7")),
+    "suppressed": float(os.getenv("EVENT_PRUNE_SUPPRESSED_DAYS", "1")),
+    "cooldown": float(os.getenv("EVENT_PRUNE_COOLDOWN_DAYS", "1")),
+}
+# Retenção padrão (dias) para tipos não previstos acima. -1 = nunca podar por tipo.
+EVENT_PRUNE_DEFAULT_DAYS = float(os.getenv("EVENT_PRUNE_DEFAULT_DAYS", "7"))
+# Idade máxima (dias) de qualquer evento NÃO retido — rede de segurança final.
+# 0 = remove todos os não retidos; -1 (no param) usa este valor.
+EVENT_PRUNE_MAX_AGE_DAYS = float(os.getenv("EVENT_PRUNE_MAX_AGE_DAYS", "30"))
 # Intervalo de execução do prune (segundos)
 EVENT_PRUNE_INTERVAL_SECONDS = int(os.getenv("EVENT_PRUNE_INTERVAL_SECONDS", "3600"))
 

@@ -1734,3 +1734,98 @@ tr.event-info td {
 .retain-checkbox:hover {
   color: var(--text);
 }
+
+/* ---------- Retenção de eventos (Manutenção) ---------- */
+.retention-status {
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin: 0 0 14px;
+}
+
+.retention-status.is-warn {
+  color: var(--warn);
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+#retention-table-body .retention-label {
+  font-weight: 500;
+  color: var(--text);
+}
+
+#retention-table-body .retention-key {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  color: var(--muted-subtle);
+  margin-top: 2px;
+}
+
+#retention-table-body .retention-hint {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted-subtle);
+  margin-top: 2px;
+}
+
+.retention-days-col {
+  width: 180px;
+}
+
+.retention-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.retention-input {
+  width: 84px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  text-align: right;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.retention-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.12);
+}
+
+.retention-unit {
+  font-size: 0.72rem;
+  color: var(--muted-subtle);
+  white-space: nowrap;
+}
+
+/* Linhas globais (padrão / idade máx.): separadas das regras por tipo */
+#retention-table-body .retention-global-row {
+  background: var(--surface-2);
+  border-top: 2px solid var(--border-strong);
+}
+
+#retention-table-body .retention-global-row .retention-label {
+  color: var(--muted);
+}
+
+.retention-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.retention-actions .form-message {
+  margin-top: 0;
+}
