@@ -545,3 +545,75 @@ def test_update_zone_direction_line(client):
     })
     assert resp.status_code == 200
     assert resp.json["direction_line"] == {"axis": "horizontal", "position": 0.3}
+
+
+def test_prune_saves_policy_and_config_reflects_it(client):
+    """POST /api/events/prune com política salva a política; /api/config passa
+    a refleti-la (a limpeza automática usa a política efetiva)."""
+    resp = client.post("/api/events/prune", json={
+        "type_days": {"motion_detected": 3, "capture": 15},
+        "default_days": 10,
+        "max_age_days": 60,
+    })
+    assert resp.status_code == 200
+    assert resp.json["saved"] is True
+    assert "deleted" in resp.json
+
+    cfg = client.get("/api/config").json
+    pruning = cfg["event_pruning"]
+    assert pruning["type_days"]["motion_detected"] == 3
+    assert pruning["type_days"]["capture"] == 15
+    assert pruning["default_days"] == 10
+    assert pruning["max_age_days"] == 60
+
+
+def test_prune_policy_partial_update_keeps_previous_values(client):
+    """Envio parcial (só type_days) preserva default/max_age salvos antes."""
+    client.post("/api/events/prune", json={
+        "type_days": {"motion_detected": 3},
+        "default_days": 10,
+        "max_age_days": 60,
+    })
+    resp = client.post("/api/events/prune", json={
+        "type_days": {"capture": 20},
+    })
+    assert resp.status_code == 200
+
+    pruning = client.get("/api/config").json["event_pruning"]
+    assert pruning["type_days"]["capture"] == 20
+    assert pruning["type_days"]["motion_detected"] == 3  # preservado
+    assert pruning["default_days"] == 10                 # preservado
+    assert pruning["max_age_days"] == 60                 # preservado
+
+
+def test_prune_rejects_invalid_policy(client):
+    resp = client.post("/api/events/prune", json={"type_days": {"motion_detected": -1}})
+    assert resp.status_code == 400
+    resp = client.post("/api/events/prune", json={"default_days": "sete"})
+    assert resp.status_code == 400
+    resp = client.post("/api/events/prune", json={"max_age_days": True})
+    assert resp.status_code == 400
+
+
+def test_events_retained_filter_beyond_limit(clip_env):
+    """Eventos retidos não podem ficar fora do corte de 100: /events?retained=1
+    retorna retidos antigos que o /events normal não mostra."""
+    client, storage = clip_env
+    ids = [storage.add_event("1", "z", "motion_detected", f"e{i}") for i in range(105)]
+    oldest = ids[0]
+    resp = client.put(f"/api/events/{oldest}/retain", json={"retain": True})
+    assert resp.status_code == 200
+
+    # Sem filtro: só os 100 mais recentes — o retido antigo fica de fora.
+    all_events = client.get("/events").json
+    assert len(all_events) == 100
+    assert oldest not in [e["id"] for e in all_events]
+
+    # Com retained=1: o retido antigo aparece, e só retidos são retornados.
+    retained_events = client.get("/events?retained=1").json
+    assert any(e["id"] == oldest for e in retained_events)
+    assert all(e["retained"] == 1 for e in retained_events)
+
+    # retained=0: só não-retidos.
+    non_retained = client.get("/events?retained=0").json
+    assert all(e["retained"] == 0 for e in non_retained)

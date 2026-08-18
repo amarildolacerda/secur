@@ -76,8 +76,14 @@ function setActiveSection(sectionId) {
 
   // Troca de seção renderiza imediatamente (sem esperar o próximo poll de 5s).
   // Cobre nav links E botões de "Adicionar câmera/zona" (que chamam setActiveSection).
-  if (sectionChanged && dashboardReady) {
-    renderDashboard();
+  if (sectionChanged) {
+    // Re-renderiza a tabela de retenção na próxima visita à seção (o guard
+    // evita que o polling de 5s destrua inputs em edição).
+    const retentionBody = document.getElementById('retention-table-body');
+    if (retentionBody) delete retentionBody.dataset.rendered;
+    if (dashboardReady) {
+      renderDashboard();
+    }
   }
 }
 
@@ -1015,7 +1021,6 @@ function renderSettingsConfig() {
         { title: 'Clips', data: cfg.clips, keys: ['pre_seconds', 'post_seconds', 'fps', 'history_size'], labels: { pre_seconds: 'Pré (s)', post_seconds: 'Pós (s)', fps: 'FPS', history_size: 'Histórico' } },
         { title: 'Tracking', data: cfg.tracking, keys: ['iou_threshold', 'max_age_seconds'], labels: { iou_threshold: 'IoU threshold', max_age_seconds: 'Max age (s)' } },
         { title: 'Comportamento', data: cfg.behavior, keys: ['loitering_seconds', 'loitering_max_distance', 'fall_aspect_ratio'], labels: { loitering_seconds: 'Loitering (s)', loitering_max_distance: 'Loitering dist. max', fall_aspect_ratio: 'Fall aspect ratio' } },
-        { title: 'Limpeza de Eventos', data: cfg.event_pruning, keys: ['enabled', 'dropped_days', 'suppressed_days', 'normal_days', 'no_motion_days', 'interval_seconds'], labels: { enabled: 'Habilitado', dropped_days: 'N1 dropped (dias)', suppressed_days: 'N3 suppressed (dias)', normal_days: 'N4 alertas (dias)', no_motion_days: 'no_motion (dias)', interval_seconds: 'Intervalo (s)' } },
       ];
 
       groups.forEach(g => {
@@ -1070,36 +1075,8 @@ function renderSettingsConfig() {
       }
 
       // Botão para executar limpeza manual
-      const actionDiv = document.createElement('div');
-      actionDiv.className = 'config-action';
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'button-primary button-mini';
-      btn.textContent = 'Executar limpeza agora';
-      btn.addEventListener('click', async () => {
-        btn.disabled = true;
-        btn.textContent = 'Limpando...';
-        try {
-          const res = await fetch('/api/events/prune', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              dropped_days: cfg.event_pruning?.dropped_days,
-              suppressed_days: cfg.event_pruning?.suppressed_days,
-              normal_days: cfg.event_pruning?.normal_days,
-              no_motion_days: cfg.event_pruning?.no_motion_days,
-            })
-          });
-          const data = await res.json();
-          btn.textContent = `Concluído (${data.deleted} removidos)`;
-          setTimeout(() => { btn.disabled = false; btn.textContent = 'Executar limpeza agora'; }, 3000);
-        } catch (e) {
-          btn.textContent = 'Erro';
-          setTimeout(() => { btn.disabled = false; btn.textContent = 'Executar limpeza agora'; }, 3000);
-        }
-      });
-      actionDiv.appendChild(btn);
-      section.appendChild(actionDiv);
+      // (removido: a política de retenção agora é editável em Manutenção →
+      // "Retenção de eventos", onde o botão "Aplicar" executa a limpeza.)
 
       if (!section.children.length) {
         container.textContent = 'Sem informações de configuração disponíveis.';
@@ -1262,15 +1239,16 @@ function readFilterState() {
     level: url.get('level') || '',
     since: url.get('since') || '1',
     alerts: url.get('alerts') === '1',
+    retained: url.get('retained') === '1',
   };
   // Filtros explícitos na URL têm precedência; caso contrário, tenta
   // localStorage. O default since='1' (última hora) não deve bloquear esse
   // fallback, então o guard olha os parâmetros da URL em vez dos valores.
-  const hasUrlFilters = url.has('camera') || url.has('zone') || url.has('type') || url.has('level') || url.has('since') || url.has('alerts');
+  const hasUrlFilters = url.has('camera') || url.has('zone') || url.has('type') || url.has('level') || url.has('since') || url.has('alerts') || url.has('retained');
   if (hasUrlFilters) return state;
   try {
     const saved = JSON.parse(localStorage.getItem(EVENT_FILTERS_KEY) || 'null');
-    if (saved) return { camera: '', zone: '', type: '', level: '', since: '', alerts: false, ...saved };
+    if (saved) return { camera: '', zone: '', type: '', level: '', since: '', alerts: false, retained: false, ...saved };
   } catch (e) { /* ignore */ }
   return state;
 }
@@ -1289,6 +1267,7 @@ function syncUrl(state) {
   if (state.level) url.set('level', state.level);
   if (state.since) url.set('since', state.since);
   if (state.alerts) url.set('alerts', '1');
+  if (state.retained) url.set('retained', '1');
   const qs = url.toString();
   history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
 }
@@ -1304,6 +1283,7 @@ function applyEventFilters(events, alertTypes) {
     if (state.level && Number(e.level) !== Number(state.level)) return false;
     if (cutoff && new Date(e.timestamp).getTime() < cutoff) return false;
     if (state.alerts && !alertTypes.has(e.event_type)) return false;
+    if (state.retained && !e.retained) return false;
     return true;
   });
 }
@@ -1347,6 +1327,8 @@ function populateFilterOptions(events) {
   if (levelSelect) levelSelect.value = state.level;
   const alertsCheck = document.getElementById('filter-alerts');
   if (alertsCheck) alertsCheck.checked = state.alerts;
+  const retainedCheck = document.getElementById('filter-retained');
+  if (retainedCheck) retainedCheck.checked = state.retained;
 }
 
 function renderEventCards(events, alertTypes) {
@@ -1456,7 +1438,7 @@ let lastAlertTypes = new Set();
 let lastDashboardPayload = null;
 
 function setupEventFilters() {
-  const ids = ['filter-camera', 'filter-zone', 'filter-type', 'filter-level', 'filter-since', 'filter-alerts'];
+  const ids = ['filter-camera', 'filter-zone', 'filter-type', 'filter-level', 'filter-since', 'filter-alerts', 'filter-retained'];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', () => {
@@ -1467,6 +1449,7 @@ function setupEventFilters() {
       state.level = document.getElementById('filter-level').value;
       state.since = document.getElementById('filter-since').value;
       state.alerts = document.getElementById('filter-alerts').checked;
+      state.retained = document.getElementById('filter-retained').checked;
       saveFilterState(state);
       syncUrl(state);
       renderEventCards(lastEvents, lastAlertTypes);
@@ -1483,14 +1466,16 @@ function setupEventFilters() {
       const level = document.getElementById('filter-level');
       const since = document.getElementById('filter-since');
       const alerts = document.getElementById('filter-alerts');
+      const retained = document.getElementById('filter-retained');
       if (camera) camera.value = '';
       if (zone) zone.value = '';
       if (type) type.value = '';
       if (level) level.value = '';
       if (since) since.value = '';
       if (alerts) alerts.checked = false;
-      saveFilterState({ camera: '', zone: '', type: '', level: '', since: '', alerts: false });
-      syncUrl({ camera: '', zone: '', type: '', level: '', since: '', alerts: false });
+      if (retained) retained.checked = false;
+      saveFilterState({ camera: '', zone: '', type: '', level: '', since: '', alerts: false, retained: false });
+      syncUrl({ camera: '', zone: '', type: '', level: '', since: '', alerts: false, retained: false });
       renderEventCards(lastEvents, lastAlertTypes);
     });
   });
@@ -1950,6 +1935,205 @@ function scrollToSection(sectionId) {
 
 /* ========== Maintenance menu ========== */
 
+/* ========== Retenção de eventos (Manutenção) ========== */
+
+// Rótulos amigáveis para tipos de evento conhecidos. Chaves fora deste mapa
+// exibem o nome técnico como está.
+const EVENT_RETENTION_LABELS = {
+  motion_detected: 'Movimento detectado',
+  capture: 'Captura (N0)',
+  snapshot_info: 'Objetos detectados (info)',
+  no_motion: 'Sem movimento',
+  loitering: 'Permanência suspeita',
+  suppressed: 'Suprimido (cooldown)',
+  cooldown: 'Cooldown',
+  identity_recognized: 'Identidade reconhecida',
+  intruder_detected: 'Intruso em zona restrita',
+  direction_change: 'Movimento em direção proibida',
+  fall_detected: 'Possível queda',
+  unknown_detected: 'Não reconhecido',
+  object_detected: 'Objeto detectado (legado)',
+};
+
+// Última política de retenção carregada de /api/config — usada pelo botão
+// "Restaurar" para reverter os inputs sem nova chamada de rede.
+let eventRetentionSnapshot = null;
+
+// Valor numérico seguro para o input ('' se ausente/NaN em vez de "NaN").
+function retentionValue(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? String(n) : '';
+}
+
+// Linha de um tipo de evento: rótulo amigável + chave técnica (mono) + input.
+function retentionTypeRow(type, label, days) {
+  const key = type !== label ? `<code class="retention-key">${escapeHtml(type)}</code>` : '';
+  return `
+    <tr data-retention-type="${escapeHtml(type)}">
+      <td>
+        <span class="retention-label">${escapeHtml(label)}</span>
+        ${key}
+      </td>
+      <td>
+        <div class="retention-input-wrap">
+          <input class="retention-input" type="number" min="0" step="any" inputmode="decimal"
+                 data-retention-type="${escapeHtml(type)}" value="${retentionValue(days)}"
+                 aria-label="${escapeHtml(label)} (dias)" />
+          <span class="retention-unit">dias</span>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+// Linha global (Retenção padrão / Idade máx. não retido): visualmente separada.
+function retentionGlobalRow(role, label, hint, days) {
+  return `
+    <tr class="retention-global-row" data-retention-role="${role}">
+      <td>
+        <span class="retention-label">${escapeHtml(label)}</span>
+        <span class="retention-hint">${escapeHtml(hint)}</span>
+      </td>
+      <td>
+        <div class="retention-input-wrap">
+          <input class="retention-input" type="number" min="0" step="any" inputmode="decimal"
+                 data-retention-role="${role}" value="${retentionValue(days)}"
+                 aria-label="${escapeHtml(label)} (dias)" />
+          <span class="retention-unit">dias</span>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+// Monta o HTML do tbody a partir da política de retenção (config ou snapshot).
+function buildRetentionTableHtml(pruning) {
+  const typeDays = pruning.type_days || {};
+  const typeRows = Object.entries(typeDays).map(([type, days]) => {
+    const label = EVENT_RETENTION_LABELS[type] || type;
+    return retentionTypeRow(type, label, days);
+  }).join('');
+  const globalRows =
+    retentionGlobalRow('default', 'Retenção padrão', 'tipos sem regra específica', pruning.default_days) +
+    retentionGlobalRow('max_age', 'Idade máx. não retido', 'limite absoluto p/ eventos não retidos', pruning.max_age_days);
+  return typeRows + globalRows;
+}
+
+async function renderEventRetentionSection() {
+  const body = document.getElementById('retention-table-body');
+  if (!body) return;
+  let cfg;
+  try {
+    cfg = await fetchData('/api/config');
+  } catch (e) {
+    if (!body.dataset.rendered) {
+      body.innerHTML = '<tr><td colspan="2">Falha ao carregar configuração.</td></tr>';
+    }
+    return;
+  }
+  const pruning = cfg.event_pruning || {};
+  eventRetentionSnapshot = pruning;
+  // O polling de 5s não pode recriar a tabela enquanto o usuário edita:
+  // os inputs são montados apenas na primeira visita à seção (guard
+  // resetado em setActiveSection ao trocar de seção).
+  if (!body.dataset.rendered) {
+    body.dataset.rendered = '1';
+    body.innerHTML = buildRetentionTableHtml(pruning);
+  }
+
+  // Nota de status: limpeza automática ativa/desativada + intervalo.
+  const statusEl = document.getElementById('retention-status');
+  if (statusEl) {
+    const enabled = pruning.enabled !== false;
+    const interval = Number(pruning.interval_seconds) || 0;
+    const intervalLabel = interval >= 3600 && interval % 3600 === 0
+      ? `${interval / 3600}h`
+      : `${interval}s`;
+    statusEl.textContent = enabled
+      ? `Limpeza automática ativa (a cada ${intervalLabel}). Eventos retidos (retained=1) nunca são removidos.`
+      : `Limpeza automática desativada. A tabela abaixo permite executar a limpeza manualmente.`;
+    statusEl.classList.toggle('is-warn', !enabled);
+  }
+}
+
+// Lê os inputs da tabela e valida. Retorna null se algum valor for inválido.
+function readRetentionInputs() {
+  const typeDays = {};
+  let valid = true;
+  document.querySelectorAll('#retention-table-body input[data-retention-type]').forEach(input => {
+    const value = parseFloat(input.value);
+    if (Number.isNaN(value) || value < 0) { valid = false; return; }
+    typeDays[input.dataset.retentionType] = value;
+  });
+  const defaultInput = document.querySelector('#retention-table-body input[data-retention-role="default"]');
+  const maxAgeInput = document.querySelector('#retention-table-body input[data-retention-role="max_age"]');
+  const defaultDays = defaultInput ? parseFloat(defaultInput.value) : NaN;
+  const maxAgeDays = maxAgeInput ? parseFloat(maxAgeInput.value) : NaN;
+  if (Number.isNaN(defaultDays) || defaultDays < 0 || Number.isNaN(maxAgeDays) || maxAgeDays < 0) {
+    valid = false;
+  }
+  return valid ? { type_days: typeDays, default_days: defaultDays, max_age_days: maxAgeDays } : null;
+}
+
+async function applyEventRetention() {
+  const btn = document.getElementById('retention-apply');
+  const msg = document.getElementById('retention-message');
+  if (!btn || !msg) return;
+
+  const payload = readRetentionInputs();
+  msg.classList.remove('error');
+  if (!payload) {
+    msg.textContent = 'Informe valores numéricos válidos (0 ou mais dias).';
+    msg.classList.add('error');
+    return;
+  }
+
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Aplicando...';
+  msg.textContent = '';
+
+  try {
+    const res = await fetch('/api/events/prune', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      msg.textContent = data.error || `Falha ao aplicar (HTTP ${res.status}).`;
+      msg.classList.add('error');
+    } else {
+      const deleted = Number(data.deleted) || 0;
+      eventRetentionSnapshot = payload; // "Restaurar" volta para o que foi aplicado
+      msg.textContent = deleted > 0
+        ? `Política salva. Limpeza concluída: ${deleted} evento(s) removido(s).`
+        : 'Política salva. Nenhum evento a remover.';
+    }
+  } catch (e) {
+    msg.textContent = 'Falha de rede ao aplicar a retenção.';
+    msg.classList.add('error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+}
+
+function restoreEventRetention() {
+  const body = document.getElementById('retention-table-body');
+  if (!body || !eventRetentionSnapshot) return;
+  body.innerHTML = buildRetentionTableHtml(eventRetentionSnapshot);
+  const msg = document.getElementById('retention-message');
+  if (msg) { msg.textContent = ''; msg.classList.remove('error'); }
+}
+
+function setupEventRetention() {
+  const applyBtn = document.getElementById('retention-apply');
+  if (applyBtn) applyBtn.addEventListener('click', applyEventRetention);
+  const restoreBtn = document.getElementById('retention-restore');
+  if (restoreBtn) restoreBtn.addEventListener('click', restoreEventRetention);
+}
+
 /* ========== Footer ========== */
 
 async function renderStatusFooter() {
@@ -2278,6 +2462,7 @@ const SECTION_RENDERERS = {
   'settings': renderSettings,
   'camera-management': renderCameraManagementSection,
   'zones-management': renderZoneManagementSection,
+  'event-retention': renderEventRetentionSection,
   'identities-management': loadAndRenderIdentities,
 };
 
@@ -2328,7 +2513,13 @@ async function renderOverviewSection() {
 }
 
 async function renderEventsSection() {
-  const events = await fetchData('/events?level=' + (readFilterState().level || ''));
+  const state = readFilterState();
+  const params = new URLSearchParams();
+  if (state.level) params.set('level', state.level);
+  // Retidos são protegidos do prune e não podem ficar fora do corte de 100:
+  // com o filtro ativo o servidor retorna todos (limite 1000).
+  if (state.retained) params.set('retained', '1');
+  const events = await fetchData('/events?' + params.toString());
   lastEvents = events;
   lastAlertTypes = await renderEvents(events);
 }
@@ -2459,6 +2650,7 @@ dashboardReady = true;
 setupCameraForm();
 setupZoneForm();
 setupSettings();
+setupEventRetention();
 setupEventFilters();
 setupOfflineToggle();
 setupSystemStatusLink();
