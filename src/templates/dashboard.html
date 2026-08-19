@@ -57,18 +57,18 @@
                         <span class="dot" style="background:var(--info)"></span>
                         <span>Identidades</span>
                     </button>
-                    <a href="/users" class="nav-sublink" style="text-decoration:none;">
+                    <button type="button" class="nav-sublink" data-section="users-management">
                         <span class="dot" style="background:var(--warn)"></span>
                         <span>Usuários</span>
-                    </a>
-                    <a href="/permissions" class="nav-sublink" style="text-decoration:none;">
+                    </button>
+                    <button type="button" class="nav-sublink" data-section="permissions-management">
                         <span class="dot" style="background:var(--danger)"></span>
                         <span>Permissões</span>
-                    </a>
-                    <a href="/audit" class="nav-sublink" style="text-decoration:none;">
+                    </button>
+                    <button type="button" class="nav-sublink" data-section="audit-log">
                         <span class="dot" style="background:var(--muted)"></span>
                         <span>Auditoria</span>
-                    </a>
+                    </button>
                 </div>
             </div>
         </nav>
@@ -433,6 +433,67 @@
                 </div>
             </section>
 
+            <!-- Users Management Section -->
+            <section class="panel hidden-panel" id="users-management">
+                <div class="panel-header">
+                    <div>
+                        <h2>Gestão de Usuários</h2>
+                        <p>Crie, edite e gerencie usuários e suas permissões de acesso.</p>
+                    </div>
+                    <button id="btn-create-user" class="button-primary">+ Criar usuário</button>
+                </div>
+                <div id="create-user-form" style="display:none;margin-bottom:1rem;">
+                    <div class="form-row">
+                        <div><label>Usuário</label><input type="text" id="new-username" placeholder="nome"></div>
+                        <div><label>Senha</label><input type="password" id="new-password" placeholder="mín. 6 caracteres"></div>
+                        <div><label>Role</label><select id="new-role"></select></div>
+                        <div><button type="button" class="button" id="btn-confirm-create">Criar</button></div>
+                    </div>
+                    <div id="create-user-error" style="color:var(--danger);font-size:.85rem;margin-top:4px;"></div>
+                </div>
+                <div id="users-grid" style="display:flex;flex-direction:column;gap:8px;"></div>
+            </section>
+
+            <!-- Permissions Management Section -->
+            <section class="panel hidden-panel" id="permissions-management">
+                <div class="panel-header">
+                    <div>
+                        <h2>Permissões por Role</h2>
+                        <p>Configure o que cada role pode fazer. Alterações têm efeito imediato.</p>
+                    </div>
+                    <button class="button" id="btn-save-perms">Salvar</button>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="perm-table" id="perm-table">
+                        <thead>
+                            <tr><th>Permissão</th><th>Admin</th><th>Chefe Seg.</th><th>Vigilante</th><th>Morador</th></tr>
+                        </thead>
+                        <tbody id="perm-body"></tbody>
+                    </table>
+                </div>
+                <div id="perm-status" style="font-size:.85rem;margin-top:.5rem;"></div>
+            </section>
+
+            <!-- Audit Log Section -->
+            <section class="panel hidden-panel" id="audit-log">
+                <div class="panel-header">
+                    <div>
+                        <h2>Log de Auditoria</h2>
+                        <p>Registro de ações realizadas no sistema.</p>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <select id="audit-action-filter" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:.8rem;"><option value="">Todas</option><option value="login">Login</option><option value="create_user">Criar usuário</option><option value="update_user">Editar usuário</option><option value="create_api_key">Criar API key</option><option value="delete_api_key">Deletar API key</option><option value="update_permissions">Atualizar permissões</option></select>
+                        <button class="button-mini" onclick="loadAuditLog()">Filtrar</button>
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="audit-table">
+                        <thead><tr><th>Data</th><th>Usuário</th><th>Ação</th><th>Alvo</th><th>IP</th></tr></thead>
+                        <tbody id="audit-body"></tbody>
+                    </table>
+                </div>
+            </section>
+
             <section class="panel hidden-panel" id="system-status">
                 <h2>Status do sistema</h2>
                 <div id="system-status-cards" class="grid"></div>
@@ -512,6 +573,22 @@
             </div>
             <p class="thumb-detail-hint">Scroll para zoom · arrastar para mover · duplo-clique 1x↔2x · <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> reset · <kbd>Esc</kbd> fechar</p>
             <div id="thumb-detail-meta" class="thumb-detail-meta"></div>
+        </div>
+    </div>
+
+    <!-- Camera assignment dialog -->
+    <div id="cam-dialog" class="dialog-overlay hidden-panel">
+        <div class="dialog-card" style="max-width:420px;">
+            <div class="panel-header">
+                <h3 id="cam-dialog-title" style="font-size:.9rem;margin:0;">Câmeras</h3>
+                <button type="button" class="button-close" onclick="_closeCamDialog()">×</button>
+            </div>
+            <p style="font-size:.8rem;color:var(--muted);margin:0 0 .5rem;">Nenhuma selecionada = acesso irrestrito.</p>
+            <div id="cam-dialog-list" style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:.5rem;"></div>
+            <div style="margin-top:.8rem;display:flex;gap:.5rem;justify-content:flex-end;">
+                <button type="button" class="button-secondary" onclick="_closeCamDialog()">Cancelar</button>
+                <button type="button" class="button" onclick="_saveCamDialog()">Salvar</button>
+            </div>
         </div>
     </div>
 

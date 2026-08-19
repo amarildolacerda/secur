@@ -1483,6 +1483,248 @@ function setupEventFilters() {
 
 /* ========== Camera form ========== */
 
+/* ---------- Preview de zonas de exclusão / máscara ----------
+   Desenha os polígonos dos textareas sobre o frame atual da câmera
+   (snapshot ?raw=1, sem máscara). Sem frame (modo adicionar ou câmera
+   offline) usa um placeholder escuro com grade e ajusta os polígonos à
+   área visível para dar noção da forma. */
+
+const PREVIEW_DEBOUNCE_MS = 350;
+// Estado do preview: frame carregado (edit) ou placeholder (add/offline).
+let previewFrame = null;        // { img, width, height } | null
+let previewLoadToken = 0;       // cancela loads obsoletos ao fechar/reabrir
+let previewDebounceTimer = null;
+let previewNote = 'add';        // 'add' | 'offline' | null (frame carregado)
+
+function resetCameraPreview() {
+  previewLoadToken += 1;
+  clearTimeout(previewDebounceTimer);
+  previewFrame = null;
+  previewNote = 'add';
+  const loading = document.getElementById('camera-preview-loading');
+  if (loading) loading.hidden = true;
+  const note = document.getElementById('camera-preview-note');
+  if (note) {
+    note.textContent = '';
+    note.classList.remove('error');
+  }
+}
+
+// Parseia o texto de um campo de polígonos. Aceita a lista de polígonos
+// (formato oficial) e, de forma leniente, uma lista plana de pontos como
+// um único polígono (ex.: o placeholder do textarea). Retorna
+// { polygons, error } — error só para JSON inválido / não-lista.
+function parsePolygonField(text) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return { polygons: [], error: null };
+  let data;
+  try {
+    data = JSON.parse(trimmed);
+  } catch (e) {
+    return { polygons: null, error: 'JSON inválido.' };
+  }
+  if (!Array.isArray(data)) {
+    return { polygons: null, error: 'Formato: lista de polígonos.' };
+  }
+  const isFlat = data.length > 0 && !Array.isArray(data[0]);
+  const rawPolys = isFlat ? [data] : data;
+  const polygons = [];
+  for (const poly of rawPolys) {
+    if (!Array.isArray(poly)) continue;
+    const pts = [];
+    for (const p of poly) {
+      if (p && typeof p === 'object' && typeof p.x === 'number' && typeof p.y === 'number') {
+        pts.push({ x: p.x, y: p.y });
+      }
+    }
+    if (pts.length >= 3) polygons.push(pts);
+  }
+  return { polygons, error: null };
+}
+
+function drawPlaceholderGrid(ctx, w, h) {
+  ctx.fillStyle = '#12141a';
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 40; x < w; x += 40) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+  for (let y = 40; y < h; y += 40) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+  ctx.stroke();
+}
+
+// Contorno escuro por baixo + cor por cima: visível em frames claros e escuros.
+function strokeWithOutline(ctx, outlineColor, color, outlineWidth, width) {
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = outlineWidth;
+  ctx.stroke();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.stroke();
+}
+
+function drawExclusionPolygon(ctx, pts) {
+  if (pts.length < 3) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(245, 158, 11, 0.22)';
+  ctx.fill();
+  strokeWithOutline(ctx, 'rgba(0,0,0,0.55)', '#f59e0b', 4, 2);
+}
+
+function drawMaskPolygon(ctx, pts) {
+  if (pts.length < 3) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(10, 12, 16, 0.55)';
+  ctx.fill();
+  // Hachura diagonal sutil para sugerir "borrado".
+  const pattern = document.createElement('canvas');
+  pattern.width = 8;
+  pattern.height = 8;
+  const pctx = pattern.getContext('2d');
+  pctx.strokeStyle = 'rgba(255,255,255,0.28)';
+  pctx.lineWidth = 1;
+  pctx.beginPath();
+  pctx.moveTo(-4, 4); pctx.lineTo(4, -4);
+  pctx.moveTo(0, 8); pctx.lineTo(8, 0);
+  pctx.moveTo(4, 12); pctx.lineTo(12, 4);
+  pctx.stroke();
+  const hatch = ctx.createPattern(pattern, 'repeat');
+  if (hatch) {
+    ctx.fillStyle = hatch;
+    ctx.fill();
+  }
+  strokeWithOutline(ctx, 'rgba(0,0,0,0.7)', 'rgba(255,255,255,0.65)', 3, 1.5);
+}
+
+function drawCameraPreview() {
+  const canvas = document.getElementById('camera-preview-canvas');
+  const note = document.getElementById('camera-preview-note');
+  if (!canvas || !note) return;
+  const ctx = canvas.getContext('2d');
+
+  const exclusion = parsePolygonField(document.getElementById('camera-exclusion-zones').value);
+  const mask = parsePolygonField(document.getElementById('camera-mask-polygons').value);
+  const error = exclusion.error || mask.error;
+
+  // Resolução interna: acompanha o frame (edit) ou 16:9 padrão (placeholder).
+  let W, H;
+  if (previewFrame) {
+    W = previewFrame.width;
+    H = previewFrame.height;
+  } else {
+    W = 960;
+    H = 540;
+  }
+  const MAX_W = 960;
+  if (W > MAX_W) {
+    H = Math.round((H * MAX_W) / W);
+    W = MAX_W;
+  }
+  if (canvas.width !== W) canvas.width = W;
+  if (canvas.height !== H) canvas.height = H;
+
+  if (previewFrame) {
+    ctx.drawImage(previewFrame.img, 0, 0, W, H);
+  } else {
+    drawPlaceholderGrid(ctx, W, H);
+  }
+
+  // Escala: frame real usa coordenadas de pixel; placeholder ajusta o
+  // conjunto de polígonos à área visível para dar noção da forma.
+  let sx = 1, sy = 1, ox = 0, oy = 0;
+  if (previewFrame) {
+    sx = W / previewFrame.width;
+    sy = H / previewFrame.height;
+  } else {
+    const all = [...(exclusion.polygons || []), ...(mask.polygons || [])].flat();
+    if (all.length) {
+      const minX = Math.min(...all.map(p => p.x));
+      const maxX = Math.max(...all.map(p => p.x));
+      const minY = Math.min(...all.map(p => p.y));
+      const maxY = Math.max(...all.map(p => p.y));
+      const bw = Math.max(maxX - minX, 1);
+      const bh = Math.max(maxY - minY, 1);
+      sx = sy = Math.min((W * 0.8) / bw, (H * 0.8) / bh);
+      ox = (W - (minX + maxX) * sx) / 2;
+      oy = (H - (minY + maxY) * sy) / 2;
+    }
+  }
+  const map = pts => pts.map(p => ({ x: p.x * sx + ox, y: p.y * sy + oy }));
+
+  (exclusion.polygons || []).forEach(poly => drawExclusionPolygon(ctx, map(poly)));
+  (mask.polygons || []).forEach(poly => drawMaskPolygon(ctx, map(poly)));
+
+  // Nota / erro inline (não interfere na validação do submit).
+  if (error) {
+    note.textContent = error;
+    note.classList.add('error');
+  } else if (previewNote === 'offline') {
+    note.textContent = 'Câmera offline — preview sem frame, polígonos em escala aproximada.';
+    note.classList.remove('error');
+  } else if (previewNote === 'add') {
+    note.textContent = 'Sem frame ainda — polígonos em escala aproximada. O preview do frame aparece ao editar uma câmera salva.';
+    note.classList.remove('error');
+  } else {
+    note.textContent = 'Frame atual sem máscara aplicada; polígonos desenhados por cima.';
+    note.classList.remove('error');
+  }
+
+  // Acessibilidade: descreve o conteúdo desenhado.
+  const counts = [];
+  if (exclusion.polygons && exclusion.polygons.length) counts.push(`${exclusion.polygons.length} zona(s) de exclusão`);
+  if (mask.polygons && mask.polygons.length) counts.push(`${mask.polygons.length} máscara(s) de privacidade`);
+  canvas.setAttribute('aria-label',
+    `Prévia das zonas de exclusão e máscara de privacidade${previewFrame ? ' sobre o frame da câmera' : ''}.` +
+    (counts.length ? ` ${counts.join(', ')}.` : ' Nenhum polígono definido.'));
+}
+
+function schedulePreviewRedraw() {
+  clearTimeout(previewDebounceTimer);
+  previewDebounceTimer = setTimeout(drawCameraPreview, PREVIEW_DEBOUNCE_MS);
+}
+
+async function loadPreviewFrame(cameraId) {
+  const token = ++previewLoadToken;
+  previewFrame = null;
+  previewNote = null;
+  const loading = document.getElementById('camera-preview-loading');
+  if (loading) loading.hidden = false;
+  try {
+    const response = await fetch(`/camera/${cameraId}/snapshot?raw=1&ts=${Date.now()}`);
+    if (token !== previewLoadToken) return;
+    if (!response.ok) throw new Error('snapshot indisponível');
+    const blob = await response.blob();
+    if (token !== previewLoadToken) return;
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = url;
+    });
+    if (token !== previewLoadToken) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    previewFrame = { img, width: img.naturalWidth || 1920, height: img.naturalHeight || 1080 };
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    if (token !== previewLoadToken) return;
+    previewNote = 'offline';
+  } finally {
+    if (token === previewLoadToken) {
+      if (loading) loading.hidden = true;
+      drawCameraPreview();
+    }
+  }
+}
+
 function setCameraFormMode(mode, camera = null) {
   const title = document.getElementById('camera-dialog-title');
   const submit = document.getElementById('camera-form-submit');
@@ -1519,6 +1761,14 @@ function setCameraFormMode(mode, camera = null) {
   if (message) {
     message.textContent = '';
     message.classList.remove('error');
+  }
+
+  // Preview de zonas/máscara: frame real ao editar, placeholder no adicionar.
+  resetCameraPreview();
+  if (mode === 'edit' && camera) {
+    loadPreviewFrame(camera.id);
+  } else {
+    drawCameraPreview();
   }
 }
 
@@ -2464,7 +2714,195 @@ const SECTION_RENDERERS = {
   'zones-management': renderZoneManagementSection,
   'event-retention': renderEventRetentionSection,
   'identities-management': loadAndRenderIdentities,
+  'users-management': renderUsersSection,
+  'permissions-management': renderPermissionsSection,
+  'audit-log': loadAuditLog,
 };
+
+// ── Users Management ──
+const USER_ROLES = [
+  {value:'admin', label:'Admin (Síndico)', badge:'badge-admin'},
+  {value:'chefe_seguranca', label:'Chefe de Segurança', badge:'badge-chefe'},
+  {value:'vigilante', label:'Vigilante', badge:'badge-vigilante'},
+  {value:'viewer', label:'Morador (Viewer)', badge:'badge-viewer'},
+];
+let _usersCurrentUser = null;
+
+async function renderUsersSection() {
+  try {
+    const meResp = await fetch('/api/auth/me');
+    if (meResp.status === 401) { window.location.href = '/login'; return; }
+    const me = await meResp.json();
+    _usersCurrentUser = me.user;
+    // Populate role select
+    const roleSelect = document.getElementById('new-role');
+    if (roleSelect && roleSelect.options.length === 0) {
+      USER_ROLES.forEach(r => {
+        if (me.user.role === 'admin' || (me.user.role === 'chefe_seguranca' && r.value !== 'admin')) {
+          const opt = document.createElement('option');
+          opt.value = r.value; opt.textContent = r.label;
+          roleSelect.appendChild(opt);
+        }
+      });
+    }
+    // Show/hide create button
+    const createBtn = document.getElementById('btn-create-user');
+    if (createBtn) createBtn.style.display = me.permissions?.create_users ? '' : 'none';
+    await _loadUsers();
+  } catch(e) { console.error('renderUsersSection:', e); }
+}
+
+async function _loadUsers() {
+  try {
+    const resp = await fetch('/api/users');
+    const users = await resp.json();
+    const grid = document.getElementById('users-grid');
+    if (!grid) return;
+    grid.innerHTML = users.map(u => {
+      const ri = USER_ROLES.find(r => r.value === u.role) || {label:u.role, badge:''};
+      const isMe = u.id === _usersCurrentUser?.id;
+      const isLastAdmin = u.role === 'admin' && users.filter(x => x.role === 'admin' && x.active).length <= 1;
+      return `<div class="user-card-inline">
+        <div class="user-info">
+          <h3>${u.username} ${isMe ? '<span style="font-size:.75rem;color:var(--muted);">(você)</span>' : ''}</h3>
+          <p><span class="badge-role ${ri.badge}">${ri.label}</span> · ${u.active ? 'Ativo' : 'Inativo'}</p>
+        </div>
+        <div style="display:flex;gap:4px;">
+          ${u.role==='viewer' && !isMe ? `<button class="button-mini" onclick="_openCamDialog(${u.id},'${u.username}')">Câmeras</button>` : ''}
+          ${!isMe && !isLastAdmin ? `<button class="button-mini" onclick="_toggleUser(${u.id},${u.active?0:1})">${u.active?'Desativar':'Ativar'}</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('_loadUsers:', e); }
+}
+
+async function _toggleUser(id, active) {
+  await fetch(`/api/users/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({active})});
+  await _loadUsers();
+}
+
+let _camDialogUserId = null;
+async function _openCamDialog(userId, username) {
+  _camDialogUserId = userId;
+  const camResp = await fetch('/cameras');
+  const cameras = await camResp.json();
+  const assignResp = await fetch(`/api/users/${userId}/cameras`);
+  const assigned = await assignResp.json();
+  const assignedIds = new Set(assigned.camera_ids || []);
+  const list = document.getElementById('cam-dialog-list');
+  list.innerHTML = cameras.length ? cameras.map(c =>
+    `<label style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:.85rem;cursor:pointer;">
+      <input type="checkbox" class="cam-check" value="${c.id}" ${assignedIds.has(c.id)?'checked':''}>
+      <span>${c.name}</span><span style="color:var(--muted);font-size:.75rem;">${c.zone||''}</span>
+    </label>`
+  ).join('') : '<p style="color:var(--muted);">Nenhuma câmera</p>';
+  document.getElementById('cam-dialog-title').textContent = `Câmeras — ${username}`;
+  document.getElementById('cam-dialog').classList.remove('hidden-panel');
+}
+function _closeCamDialog() { document.getElementById('cam-dialog').classList.add('hidden-panel'); }
+async function _saveCamDialog() {
+  if (!_camDialogUserId) return;
+  const ids = [...document.querySelectorAll('.cam-check:checked')].map(cb=>parseInt(cb.value));
+  await fetch(`/api/users/${_camDialogUserId}/cameras`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({camera_ids:ids})});
+  _closeCamDialog();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const createBtn = document.getElementById('btn-create-user');
+  if (createBtn) createBtn.addEventListener('click', () => {
+    document.getElementById('create-user-form').style.display = document.getElementById('create-user-form').style.display === 'none' ? 'block' : 'none';
+  });
+  const confirmBtn = document.getElementById('btn-confirm-create');
+  if (confirmBtn) confirmBtn.addEventListener('click', async () => {
+    const errEl = document.getElementById('create-user-error');
+    errEl.textContent = '';
+    const username = document.getElementById('new-username').value.trim();
+    const password = document.getElementById('new-password').value;
+    const role = document.getElementById('new-role').value;
+    if (!username || !password) { errEl.textContent = 'Preencha todos os campos'; return; }
+    if (password.length < 6) { errEl.textContent = 'Senha mínima: 6 caracteres'; return; }
+    const resp = await fetch('/api/users', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username,password,role})});
+    const data = await resp.json();
+    if (!resp.ok) { errEl.textContent = data.error || 'Erro'; return; }
+    document.getElementById('new-username').value = '';
+    document.getElementById('new-password').value = '';
+    document.getElementById('create-user-form').style.display = 'none';
+    await _loadUsers();
+  });
+});
+
+// ── Permissions Management ──
+const PERM_CATEGORIES = {
+  'Monitoramento': ['view_live','view_events','view_clips','view_snapshots','view_dashboard'],
+  'Eventos': ['dismiss_event','retain_event','delete_event','prune_events'],
+  'Operação': ['arm_disarm'],
+  'Sistema': ['manage_cameras','manage_zones','manage_identities','manage_notifications','manage_settings','manage_retention'],
+  'Usuários': ['manage_users','create_users','view_users','manage_permissions'],
+  'Auditoria': ['view_audit_log'],
+};
+
+async function renderPermissionsSection() {
+  try {
+    const meResp = await fetch('/api/auth/me');
+    const me = await meResp.json();
+    if (!me.permissions?.manage_permissions) {
+      document.getElementById('perm-body').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);">Sem permissão</td></tr>';
+      return;
+    }
+    const [permsResp, defsResp] = await Promise.all([fetch('/api/permissions'), fetch('/api/permissions/definitions')]);
+    const permissions = await permsResp.json();
+    const definitions = await defsResp.json();
+    const roles = ['admin','chefe_seguranca','vigilante','viewer'];
+    let html = '';
+    for (const [cat, perms] of Object.entries(PERM_CATEGORIES)) {
+      html += `<tr><td colspan="5" style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;background:var(--bg);padding:.3rem .6rem;">${cat}</td></tr>`;
+      for (const perm of perms) {
+        html += `<tr><td title="${perm}" style="text-align:left;">${definitions[perm]||perm}</td>`;
+        for (const role of roles) {
+          const checked = permissions[role]?.[perm] ? 'checked' : '';
+          const disabled = role==='admin' ? 'disabled' : '';
+          html += `<td><input type="checkbox" class="perm-toggle" data-role="${role}" data-perm="${perm}" ${checked} ${disabled}></td>`;
+        }
+        html += '</tr>';
+      }
+    }
+    document.getElementById('perm-body').innerHTML = html;
+    // Save button
+    document.getElementById('btn-save-perms').onclick = async () => {
+      const status = document.getElementById('perm-status');
+      const toggles = document.querySelectorAll('.perm-toggle');
+      const updates = [];
+      toggles.forEach(t => { if (!t.disabled) updates.push({role:t.dataset.role, permission:t.dataset.perm, enabled:t.checked}); });
+      const resp = await fetch('/api/permissions', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({permissions:updates})});
+      status.textContent = resp.ok ? '✓ Salvo' : 'Erro ao salvar';
+      status.style.color = resp.ok ? 'var(--primary)' : 'var(--danger)';
+      setTimeout(()=>{ status.textContent=''; }, 3000);
+    };
+  } catch(e) { console.error('renderPermissionsSection:', e); }
+}
+
+// ── Audit Log ──
+const AUDIT_ACTION_LABELS = {login:'Login',create_user:'Criar usuário',update_user:'Editar usuário',create_api_key:'Criar API key',delete_api_key:'Deletar API key',update_permissions:'Atualizar permissões',setup_create_admin:'Setup'};
+const AUDIT_ACTION_CLASSES = {login:'action-login',create_user:'action-create',create_api_key:'action-create',update_user:'action-update',update_permissions:'action-update',delete_api_key:'action-delete'};
+
+async function loadAuditLog() {
+  try {
+    const actionFilter = document.getElementById('audit-action-filter')?.value || '';
+    const params = new URLSearchParams({limit:50});
+    if (actionFilter) params.set('action', actionFilter);
+    const resp = await fetch('/api/audit?' + params.toString());
+    const entries = await resp.json();
+    const tbody = document.getElementById('audit-body');
+    if (!tbody) return;
+    if (!entries.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:1rem;">Nenhum registro</td></tr>'; return; }
+    tbody.innerHTML = entries.map(e => {
+      const label = AUDIT_ACTION_LABELS[e.action] || e.action;
+      const cls = AUDIT_ACTION_CLASSES[e.action] || '';
+      const date = new Date(e.created_at).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'});
+      return `<tr><td style="white-space:nowrap;font-size:.8rem;">${date}</td><td>${e.user_id||'—'}</td><td><span class="action-badge ${cls}">${label}</span></td><td>${e.target_type||'—'} ${e.target_id||''}</td><td>${e.ip_address||'—'}</td></tr>`;
+    }).join('');
+  } catch(e) { console.error('loadAuditLog:', e); }
+}
 
 async function renderDashboard() {
   const renderer = SECTION_RENDERERS[currentSection];
@@ -2613,6 +3051,12 @@ function setupCameraForm() {
       hideCameraForm();
     });
   }
+
+  // Preview ao vivo dos polígonos enquanto o usuário digita (debounced).
+  ['camera-exclusion-zones', 'camera-mask-polygons'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', schedulePreviewRedraw);
+  });
 }
 
 function setupZoneForm() {
