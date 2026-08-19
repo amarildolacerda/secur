@@ -447,7 +447,10 @@
                         <div><label>Usuário</label><input type="text" id="new-username" placeholder="nome" autocomplete="off"></div>
                         <div><label>Senha</label><input type="password" id="new-password" placeholder="mín. 6 caracteres" autocomplete="new-password"></div>
                         <div><label>Role</label><select id="new-role" autocomplete="off"></select></div>
-                        <div><button type="button" class="button" id="btn-confirm-create">Criar</button></div>
+                        <div style="display:flex;gap:6px;align-items:end;">
+                            <button type="button" class="button-primary" id="btn-confirm-create">Criar</button>
+                            <button type="button" class="button-secondary" onclick="document.getElementById('create-user-form').style.display='none'">Cancelar</button>
+                        </div>
                     </div>
                     <div id="create-user-error" style="color:var(--danger);font-size:.85rem;margin-top:4px;"></div>
                 </div>
@@ -461,7 +464,7 @@
                         <h2>Permissões por Role</h2>
                         <p>Configure o que cada role pode fazer. Alterações têm efeito imediato.</p>
                     </div>
-                    <button class="button" id="btn-save-perms">Salvar</button>
+                    <button class="button-primary" id="btn-save-perms">Salvar</button>
                 </div>
                 <div style="overflow-x:auto;">
                     <table class="perm-table" id="perm-table">
@@ -587,7 +590,7 @@
             <div id="cam-dialog-list" style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:.5rem;"></div>
             <div style="margin-top:.8rem;display:flex;gap:.5rem;justify-content:flex-end;">
                 <button type="button" class="button-secondary" onclick="_closeCamDialog()">Cancelar</button>
-                <button type="button" class="button" onclick="_saveCamDialog()">Salvar</button>
+                <button type="button" class="button-primary" onclick="_saveCamDialog()">Salvar</button>
             </div>
         </div>
     </div>
