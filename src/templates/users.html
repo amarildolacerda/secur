@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/static/style.css">
     <style>
         .users-grid { display:grid; gap:12px; margin-top:1rem; }
-        .user-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1rem 1.2rem; display:flex; align-items:center; gap:1rem; }
+        .user-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem 1.2rem; display:flex; align-items:center; gap:1rem; }
         .user-card .user-info { flex:1; }
         .user-card .user-info h3 { margin:0; font-size:.95rem; color:var(--text); }
         .user-card .user-info p { margin:2px 0 0; font-size:.8rem; color:var(--muted); }
@@ -192,7 +192,7 @@
                 <button type="button" class="button-close" onclick="closeCamDialog()">×</button>
             </div>
             <p style="font-size:.8rem;color:var(--muted);margin:0 0 .8rem;">Selecione as câmeras que este usuário pode ver. Nenhuma selecionada = acesso irrestrito.</p>
-            <div id="cam-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:.5rem;"></div>
+            <div id="cam-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem;"></div>
             <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end;">
                 <button type="button" class="button-secondary" onclick="closeCamDialog()">Cancelar</button>
                 <button type="button" class="button-primary" onclick="saveCameras()">Salvar</button>

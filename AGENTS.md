@@ -58,6 +58,18 @@ Fornecer orientações claras sobre como dividir tarefas entre agentes de projet
 - Deve checar qualidade de código, testes, documentação, performance e portabilidade.
 - Deve sugerir melhorias claras e acionáveis.
 
+## Padrões de estilo (OBRIGATÓRIO)
+
+- **Antes de criar ou modificar qualquer HTML/CSS**, ler `.opencode/skills/style/SKILL.md`.
+- Usar **sempre** as CSS variables do style guide (`var(--primary)`, `var(--muted)`, `var(--radius)`, etc.).
+- **Nunca** usar cores hardcoded (`#666`, `#ddd`) ou valores fixos (`border-radius:8px`).
+- **Nunca** usar `var(--text-secondary)` — o correto é `var(--muted)` ou `var(--muted-subtle)`.
+- Botões: `button-primary` (ações principais), `button-secondary` (secundárias), `button-mini` (tabelas/cards).
+- Tabelas: `thead th` com `var(--surface-2)`, `0.75rem`, uppercase.
+- Cards: `var(--surface)`, `border: 1px solid var(--border)`, `border-radius: var(--radius)`.
+- Forms: `label` com `var(--muted-subtle)`, `input/select` com `border-radius: var(--radius-sm)`.
+- Validar CSS contra o skill guide antes de commit (sem lixo, sem duplicações).
+
 ## Padrões relevantes para Secur
 
 - Dividir a lógica de captura de câmeras e inferência de IA em componentes separados.
