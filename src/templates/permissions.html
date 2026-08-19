@@ -9,7 +9,7 @@
         .perm-table { width:100%; border-collapse:collapse; margin-top:1rem; font-size:.85rem; }
         .perm-table th, .perm-table td { padding:.55rem .7rem; text-align:center; border-bottom:1px solid var(--border); }
         .perm-table th:first-child, .perm-table td:first-child { text-align:left; min-width:220px; }
-        .perm-table thead th { background:var(--surface); position:sticky; top:0; z-index:1; font-weight:600; color:var(--text-secondary); font-size:.75rem; text-transform:uppercase; letter-spacing:.3px; }
+        .perm-table thead th { background:var(--surface); position:sticky; top:0; z-index:1; font-weight:600; color:var(--muted); font-size:.75rem; text-transform:uppercase; letter-spacing:.3px; }
         .perm-table tbody tr:hover { background:rgba(255,255,255,.03); }
         .perm-table td { color:var(--text); }
         .perm-toggle { width:36px; height:20px; appearance:none; -webkit-appearance:none; background:var(--border); border-radius:10px; position:relative; cursor:pointer; transition:.2s; outline:none; border:none; }
@@ -27,7 +27,7 @@
 <body>
     <div class="main" style="margin-left:0; padding:1.5rem;">
         <h2 style="margin:0 0 .5rem;">🔐 Permissões por Role</h2>
-        <p style="color:var(--text-secondary); font-size:.85rem; margin:0 0 1rem;">Configure o que cada role pode fazer. Alterações têm efeito imediato.</p>
+        <p style="color:var(--muted); font-size:.85rem; margin:0 0 1rem;">Configure o que cada role pode fazer. Alterações têm efeito imediato.</p>
         <div style="overflow-x:auto;">
             <table class="perm-table" id="perm-table">
                 <thead>

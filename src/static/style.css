@@ -254,30 +254,101 @@ body {
   border-color: var(--danger);
 }
 
-/* Permissions and Audit tables */
-.perm-table, .audit-table { width:100%; border-collapse:collapse; font-size:.85rem; }
-.perm-table th, .audit-table th { text-align:left; padding:.5rem .6rem; font-size:.75rem; text-transform:uppercase; letter-spacing:.3px; color:var(--text-secondary); background:var(--surface-2); border-bottom:1px solid var(--border); }
-.perm-table td, .audit-table td { padding:.5rem .6rem; border-bottom:1px solid var(--border); color:var(--text); }
-.perm-table td:not(:first-child), .perm-table th:not(:first-child) { text-align:center; }
-.perm-toggle { width:36px; height:20px; appearance:none; -webkit-appearance:none; background:var(--border); border-radius:10px; position:relative; cursor:pointer; transition:.2s; outline:none; border:none; }
-.perm-toggle:checked { background:var(--primary); }
-.perm-toggle::before { content:''; position:absolute; width:16px; height:16px; background:#fff; border-radius:50%; top:2px; left:2px; transition:.2s; }
-.perm-toggle:checked::before { left:18px; }
-.perm-toggle:disabled { opacity:.4; cursor:not-allowed; }
-.user-card-inline { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:.7rem 1rem; display:flex; align-items:center; gap:1rem; }
-.user-card-inline .user-info { flex:1; }
-.user-card-inline .user-info h3 { margin:0; font-size:.9rem; }
-.user-card-inline .user-info p { margin:2px 0 0; font-size:.8rem; color:var(--text-secondary); }
-.badge-role { display:inline-block; padding:2px 8px; border-radius:10px; font-size:.7rem; font-weight:600; text-transform:uppercase; }
-.badge-admin { background:var(--danger); color:#fff; }
-.badge-chefe { background:var(--warn); color:#000; }
-.badge-vigilante { background:var(--primary); color:#fff; }
-.badge-viewer { background:var(--info); color:#fff; }
-.action-badge { display:inline-block; padding:1px 6px; border-radius:4px; font-size:.75rem; }
-.action-create { background:rgba(22,163,74,.12); color:var(--success); }
-.action-delete { background:rgba(220,38,38,.12); color:var(--danger); }
-.action-update { background:rgba(37,99,235,.12); color:var(--info); }
-.action-login { background:rgba(94,106,210,.12); color:var(--primary); }
+/* ── Users, Permissions & Audit (padrão style guide) ── */
+
+/* User cards — mesmo padrão de .card mas inline */
+.user-card-inline {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.user-card-inline .user-info { flex: 1; }
+.user-card-inline .user-info h3 { margin: 0; font-size: 0.9rem; color: var(--text); }
+.user-card-inline .user-info p { margin: 2px 0 0; font-size: 0.8rem; color: var(--muted); }
+
+/* Role badges */
+.badge-role {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.badge-admin { background: rgba(220,38,38,0.12); color: var(--danger); }
+.badge-chefe { background: rgba(245,158,11,0.12); color: var(--warn); }
+.badge-vigilante { background: rgba(94,106,210,0.12); color: var(--primary); }
+.badge-viewer { background: rgba(37,99,235,0.12); color: var(--info); }
+
+/* Permissions table — padrão tables do skill */
+.perm-table, .audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.perm-table th, .audit-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted-subtle);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.perm-table td, .audit-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.perm-table td:not(:first-child),
+.perm-table th:not(:first-child) { text-align: center; }
+
+/* Permission toggle switch */
+.perm-toggle {
+  width: 36px;
+  height: 20px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--border);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: 0.2s;
+  outline: none;
+  border: none;
+}
+.perm-toggle:checked { background: var(--primary); }
+.perm-toggle::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: 0.2s;
+}
+.perm-toggle:checked::before { left: 18px; }
+.perm-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Audit action badges — mesmo padrão de .badge */
+.action-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+}
+.action-create { background: rgba(22,163,74,0.12); color: var(--success); }
+.action-delete { background: rgba(220,38,38,0.12); color: var(--danger); }
+.action-update { background: rgba(37,99,235,0.12); color: var(--info); }
+.action-login { background: rgba(94,106,210,0.12); color: var(--primary); }
 
 /* ---------- Main ---------- */
 .main {
