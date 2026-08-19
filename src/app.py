@@ -124,6 +124,39 @@ def _validate_mask_polygons(mask_polygons):
                 return "cada ponto de mask_polygons deve ter x e y numéricos"
     return None
 
+
+def _get_allowed_camera_ids(user):
+    """Return the set of camera_ids the user can access, or None for unrestricted."""
+    if not user or user.get("role") != "viewer":
+        return None
+    ids = storage.get_user_cameras(user["id"])
+    return set(ids) if ids else None
+
+
+def _camera_allowed(user, camera_id):
+    """True if the user can access this specific camera."""
+    allowed = _get_allowed_camera_ids(user)
+    if allowed is None:
+        return True
+    return camera_id in allowed
+
+
+def _filter_cameras(cameras, user):
+    """Filter a list of camera dicts by user access."""
+    allowed = _get_allowed_camera_ids(user)
+    if allowed is None:
+        return cameras
+    return [c for c in cameras if c["id"] in allowed]
+
+
+def _filter_events_by_cameras(events, user):
+    """Filter events by user camera access."""
+    allowed = _get_allowed_camera_ids(user)
+    if allowed is None:
+        return events
+    return [e for e in events if str(e.get("camera_id", "")) in {str(i) for i in allowed}]
+
+
 try:
     from .identity import build_recognizer, IdentityRecognizer
 except Exception:
@@ -306,8 +339,9 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
 
     @app.route("/api/dashboard")
     def api_dashboard():
-        cameras = storage.list_cameras()
-        events = storage.list_events(limit=100)
+        user = getattr(g, "current_user", None)
+        cameras = _filter_cameras(storage.list_cameras(), user)
+        events = _filter_events_by_cameras(storage.list_events(limit=100), user)
         zones = storage.list_zones()
         n0_events = storage.list_events(level=0, limit=100)
         worker_status = camera_manager.get_status() if camera_manager is not None else []
@@ -321,6 +355,9 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
 
     @app.route("/camera/<int:camera_id>/snapshot")
     def camera_snapshot(camera_id):
+        user = getattr(g, "current_user", None)
+        if not _camera_allowed(user, camera_id):
+            return jsonify({"error": "Sem permissão para acessar esta câmera"}), 403
         import logging
         import threading
         log = logging.getLogger(__name__)
@@ -412,6 +449,9 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
 
     @app.route("/camera/<int:camera_id>/thumbnails")
     def camera_thumbnails(camera_id):
+        user = getattr(g, "current_user", None)
+        if not _camera_allowed(user, camera_id):
+            return jsonify({"error": "Sem permissão para acessar esta câmera"}), 403
         camera = storage.get_camera(camera_id)
         if not camera:
             return jsonify({"error": "Câmera não encontrada"}), 404
@@ -442,6 +482,9 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
 
     @app.route("/camera/<int:camera_id>/clips")
     def camera_clips(camera_id):
+        user = getattr(g, "current_user", None)
+        if not _camera_allowed(user, camera_id):
+            return jsonify({"error": "Sem permissão para acessar esta câmera"}), 403
         camera = storage.get_camera(camera_id)
         if not camera:
             return jsonify({"error": "Câmera não encontrada"}), 404
@@ -522,7 +565,9 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
 
     @app.route("/cameras")
     def cameras():
-        return jsonify(storage.list_cameras())
+        user = getattr(g, "current_user", None)
+        cams = storage.list_cameras()
+        return jsonify(_filter_cameras(cams, user))
 
     @app.route("/cameras", methods=["POST"])
     @require_permission("manage_cameras")
@@ -601,6 +646,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
 
     @app.route("/events")
     def events():
+        user = getattr(g, "current_user", None)
         level = request.args.get("level", type=int)
         camera_id = request.args.get("camera_id")
         retained = request.args.get("retained", type=int)
@@ -608,6 +654,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         # com retained=1 o limite sobe para 1000.
         limit = 1000 if retained == 1 else 100
         items = storage.list_events(limit=limit, level=level, camera_id=camera_id, retained=retained)
+        items = _filter_events_by_cameras(items, user)
         return jsonify(items)
 
     @app.route("/api/ingest", methods=["POST"])
@@ -1025,6 +1072,39 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
                                 target_type="user", target_id=str(user_id),
                                 details=data, ip_address=request.remote_addr)
         return jsonify({"status": "ok"})
+
+    @app.route("/api/users/<int:user_id>/cameras", methods=["GET"])
+    @require_permission("view_users")
+    def api_get_user_cameras(user_id):
+        user = getattr(g, "current_user", None)
+        target = storage.get_user(user_id)
+        if not target:
+            return jsonify({"error": "Usuário não encontrado"}), 404
+        # chefe_seguranca can only manage users they created
+        if user["role"] == "chefe_seguranca" and target.get("created_by") != user["id"]:
+            return jsonify({"error": "Sem permissão"}), 403
+        camera_ids = storage.get_user_cameras(user_id)
+        return jsonify({"user_id": user_id, "camera_ids": camera_ids})
+
+    @app.route("/api/users/<int:user_id>/cameras", methods=["PUT"])
+    @require_permission("manage_users")
+    def api_set_user_cameras(user_id):
+        user = getattr(g, "current_user", None)
+        target = storage.get_user(user_id)
+        if not target:
+            return jsonify({"error": "Usuário não encontrado"}), 404
+        # chefe_seguranca can only manage users they created
+        if user["role"] == "chefe_seguranca" and target.get("created_by") != user["id"]:
+            return jsonify({"error": "Sem permissão"}), 403
+        data = request.get_json(silent=True) or {}
+        camera_ids = data.get("camera_ids", [])
+        if not isinstance(camera_ids, list):
+            return jsonify({"error": "camera_ids deve ser uma lista"}), 400
+        storage.set_user_cameras(user_id, camera_ids)
+        storage.add_audit_entry("set_user_cameras", user_id=user.get("id") if user else None,
+                                target_type="user", target_id=str(user_id),
+                                details={"camera_ids": camera_ids}, ip_address=request.remote_addr)
+        return jsonify({"status": "ok", "user_id": user_id, "camera_ids": camera_ids})
 
     # ════════════════════════════════════════════════════════════════════
     # Permissions routes

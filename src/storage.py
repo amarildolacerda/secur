@@ -245,6 +245,15 @@ class EventStorage:
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_cameras (
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    camera_id INTEGER NOT NULL REFERENCES cameras(id),
+                    PRIMARY KEY (user_id, camera_id)
+                )
+                """
+            )
             self.connection.commit()
 
     def add_event(self, camera_id, zone, event_type, details=None, level=0, source="local", dropped=False):
@@ -1019,6 +1028,37 @@ class EventStorage:
                         (role, perm, 1 if enabled else 0),
                     )
             self.connection.commit()
+
+    # ════════════════════════════════════════════════════════════════════
+    # Auth: user-camera access control
+    # ════════════════════════════════════════════════════════════════════
+
+    def set_user_cameras(self, user_id: int, camera_ids: list):
+        """Replace all camera associations for a user. Empty list = no restriction."""
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("DELETE FROM user_cameras WHERE user_id = ?", (user_id,))
+            for cam_id in camera_ids:
+                cursor.execute(
+                    "INSERT OR IGNORE INTO user_cameras (user_id, camera_id) VALUES (?, ?)",
+                    (user_id, cam_id),
+                )
+            self.connection.commit()
+
+    def get_user_cameras(self, user_id: int) -> list:
+        """Return list of camera_ids assigned to user. Empty = unrestricted."""
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT camera_id FROM user_cameras WHERE user_id = ?", (user_id,))
+            return [row["camera_id"] for row in cursor.fetchall()]
+
+    def user_camera_ids(self, user) -> list | None:
+        """If user is a viewer with camera restrictions, return the list of allowed camera_ids.
+        Otherwise return None (unrestricted)."""
+        if not user or user.get("role") != "viewer":
+            return None
+        ids = self.get_user_cameras(user["id"])
+        return ids if ids else None  # empty = unrestricted
 
     # ════════════════════════════════════════════════════════════════════
     # Auth: API keys

@@ -26,12 +26,16 @@
 
 ## Fase 2 — User Management ✅
 
-> Entrega: gestão de usuários com hierarquia (admin → chefe_seguranca → vigilante → viewer).
+> Entrega: gestão de usuários com hierarquia (admin → chefe_seguranca → vigilante → viewer) + controle de acesso a câmeras por viewer.
 
 - [x] Criar campos `role` e `created_by` na tabela `users` + validação de hierarchy
 - [x] Criar rotas CRUD de usuários (`GET/POST /api/users`, `PUT/DELETE /api/users/<id>`) com regras de hierarquia
 - [x] Criar `templates/users.html` com UI de gestão (admin vê todos, chefe vê os seus)
 - [x] Implementar proteções: último admin não pode ser desativado/deletado, autodesativação bloqueada, chefe só cria/gerencia seus próprios
+- [x] Criar tabela `user_cameras` (user_id → camera_id) + CRUD (`set_user_cameras`, `get_user_cameras`, `user_camera_ids`)
+- [x] Criar rotas `GET/PUT /api/users/<id>/cameras` para atribuir câmeras ao viewer
+- [x] Filtrar endpoints de câmeras por acesso do viewer: `GET /cameras`, `GET /api/dashboard`, `GET /camera/<id>/snapshot`, `GET /camera/<id>/thumbnails`, `GET /camera/<id>/clips`, `GET /events`
+- [x] UI de atribuição de câmeras no `users.html` (checkbox list por viewer)
 
 ## Fase 3 — Permissões ✅
 

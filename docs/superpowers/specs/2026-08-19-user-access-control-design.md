@@ -83,7 +83,33 @@ CREATE TABLE audit_log (
 );
 ```
 
-### 2. Hierarquia de usuários
+### 2. Acesso a câmeras por viewer
+
+Em cenários de condomínio com até 80 câmeras, um viewer (morador) pode ter acesso restrito a câmeras específicas. A regra é:
+
+- **Viewer sem câmeras associadas** (`user_cameras` vazio): vê **todas** as câmeras (compatível com uso residencial simples)
+- **Viewer com câmeras associadas**: vê **apenas** as câmeras na lista `user_cameras`
+- **Admin/chefe_seguranca/vigilante**: sempre veem **todas** as câmeras (sem restrição)
+
+Tabela `user_cameras`:
+```sql
+CREATE TABLE user_cameras (
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    camera_id INTEGER NOT NULL REFERENCES cameras(id),
+    PRIMARY KEY (user_id, camera_id)
+);
+```
+
+Isso permite que o síndico/chefe atribua uma lista de câmeras ao morador. Se a lista estiver vazia, o morador vê tudo (padrão). Se tiver ao menos uma entrada, o acesso fica restrito.
+
+Endpoints novos:
+- `PUT /api/users/<id>/cameras` — define a lista de câmeras do viewer `{"camera_ids": [1, 3, 5]}`
+- `GET /api/users/<id>/cameras` — lista as câmeras atribuídas ao viewer
+
+Impacto nos endpoints existentes:
+- `GET /cameras`, `GET /api/dashboard`, `GET /camera/<id>/snapshot`, `GET /camera/<id>/thumbnails`, `GET /camera/<id>/clips` — filtrados automaticamente quando o usuário é viewer com câmeras associadas
+
+### 3. Hierarquia de usuários
 
 ```
 admin (síndico)

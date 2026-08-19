@@ -99,6 +99,7 @@
                     <p><span class="badge-role ${roleInfo.badge}">${roleInfo.label}</span> · ${u.active ? 'Ativo' : 'Inativo'} ·Criado em ${new Date(u.created_at).toLocaleDateString('pt-BR')}</p>
                 </div>
                 <div class="actions">
+                    ${u.role === 'viewer' && !isMe ? `<button class="btn-sm" onclick="openCameras(${u.id}, '${u.username}')">Câmeras</button>` : ''}
                     ${!isMe && !isLastAdmin ? `<button class="btn-sm" onclick="toggleUser(${u.id}, ${u.active ? 0 : 1})">${u.active ? 'Desativar' : 'Ativar'}</button>` : ''}
                 </div>
             </div>`;
@@ -134,7 +135,69 @@
         await loadUsers();
     });
 
+    // ── Camera assignment dialog ──
+    let cameras = [];
+    let editingUserId = null;
+
+    async function openCameras(userId, username) {
+        editingUserId = userId;
+        document.getElementById('cam-dialog-title').textContent = `Câmeras de ${username}`;
+        // Load all cameras
+        const camResp = await fetch('/cameras');
+        cameras = await camResp.json();
+        // Load current assignments
+        const assignResp = await fetch(`/api/users/${userId}/cameras`);
+        const assigned = await assignResp.json();
+        const assignedIds = new Set(assigned.camera_ids || []);
+        // Render checkboxes
+        const list = document.getElementById('cam-list');
+        if (!cameras.length) {
+            list.innerHTML = '<p style="color:var(--muted);">Nenhuma câmera cadastrada</p>';
+        } else {
+            list.innerHTML = cameras.map(c => 
+                `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:.85rem;cursor:pointer;">
+                    <input type="checkbox" class="cam-check" value="${c.id}" ${assignedIds.has(c.id) ? 'checked' : ''}>
+                    <span>${c.name}</span>
+                    <span style="color:var(--muted);font-size:.75rem;">${c.zone || ''}</span>
+                </label>`
+            ).join('');
+        }
+        document.getElementById('cam-dialog').classList.remove('hidden-panel');
+    }
+
+    function closeCamDialog() {
+        document.getElementById('cam-dialog').classList.add('hidden-panel');
+        editingUserId = null;
+    }
+
+    async function saveCameras() {
+        if (!editingUserId) return;
+        const checked = [...document.querySelectorAll('.cam-check:checked')].map(cb => parseInt(cb.value));
+        await fetch(`/api/users/${editingUserId}/cameras`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({camera_ids: checked}),
+        });
+        closeCamDialog();
+    }
+
     init();
     </script>
+
+    <!-- Camera assignment dialog -->
+    <div id="cam-dialog" class="dialog-overlay hidden-panel">
+        <div class="dialog-card" style="max-width:450px;">
+            <div class="panel-header">
+                <h2 id="cam-dialog-title" style="font-size:.95rem;">Câmeras</h2>
+                <button type="button" class="button-close" onclick="closeCamDialog()">×</button>
+            </div>
+            <p style="font-size:.8rem;color:var(--muted);margin:0 0 .8rem;">Selecione as câmeras que este usuário pode ver. Nenhuma selecionada = acesso irrestrito.</p>
+            <div id="cam-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:.5rem;"></div>
+            <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end;">
+                <button type="button" class="button-secondary" onclick="closeCamDialog()">Cancelar</button>
+                <button type="button" class="button" onclick="saveCameras()">Salvar</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
