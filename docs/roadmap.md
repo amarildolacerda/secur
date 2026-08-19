@@ -71,7 +71,7 @@
 - [ ] Timeline de revisão agrupando eventos sobrepostos (review items)
 - [ ] UI de revisão simplificada ("por que este evento?") + ações em lote (multiselect/delete)
 - [ ] Armar/desarmar câmera/zona por horário (ex.: desarmar quando estou em casa)
-- [ ] Permissões/roles — modo visualização (view-only) para não-admin
+- [x] Permissões/roles — modo visualização (view-only) para não-admin (Fase 1-5 do spec user-access-control)
 - [ ] Birdseye — visão geral que mostra apenas câmeras com atividade
 - [ ] Detecção de áudio (sirene, alarme, vidro quebrando) — leve na CPU
 

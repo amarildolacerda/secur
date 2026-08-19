@@ -221,6 +221,39 @@ body {
   z-index: 11;
 }
 
+/* User bar in sidebar footer */
+.user-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.user-bar span {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-bar .btn-sm {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.user-bar .btn-sm:hover {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
 /* ---------- Main ---------- */
 .main {
   margin-left: 200px;
@@ -735,6 +768,99 @@ tbody tr:last-child td {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--primary);
+}
+
+/* ---------- Camera form: preview de zonas/máscara ---------- */
+.preview-box {
+  position: relative;
+  background: #12141a;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+
+.preview-box canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 300px;
+  object-fit: contain;
+}
+
+.preview-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(18, 20, 26, 0.55);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.preview-loading[hidden] {
+  display: none;
+}
+
+.preview-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(94, 106, 210, 0.25);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.preview-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.preview-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.preview-legend-swatch.exclusion {
+  background: rgba(245, 158, 11, 0.3);
+  border: 1.5px solid var(--warn);
+}
+
+.preview-legend-swatch.mask {
+  background: repeating-linear-gradient(45deg, rgba(31, 41, 55, 0.9) 0 2px, rgba(31, 41, 55, 0.35) 2px 5px);
+  border: 1px solid var(--border-strong);
+}
+
+.preview-note {
+  font-size: 0.74rem;
+  color: var(--muted-subtle);
+}
+
+.preview-note.error {
+  color: var(--danger);
+}
+
+.form-row .form-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 /* ---------- Camera Cards ---------- */

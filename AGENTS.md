@@ -72,16 +72,42 @@ Fornecer orientações claras sobre como dividir tarefas entre agentes de projet
   
 ## Documentação de especificações e planos
 
-- Specs e planos de features ficam na pasta `/docs`.
-- Arquivos de especificação iniciam por `SPEC_` (ex.: `SPEC_user-access-control.md`).
-- Arquivos de plano de implementação iniciam por `PLAN_` (ex.: `PLAN_user-access-control.md`).
-- O nome do arquivo deve ser descritivo, em kebab-case, refletindo o feature.
-- Cada spec deve incluir: problema, o que já existe, o que construir, modelo de dados, rotas, segurança, riscos e roadmap de implementação.
-- Cada plano deve incluir no cabeçalho:
-  - **Status:** Planejado | Em andamento | Executado | Pausado | Cancelado
-  - **Prioridade:** Crítica | Alta | Média | Baixa
-  - **Fase atual:** fase em execução (ou "—" se ainda não iniciado)
-- Cada plano deve incluir no corpo: fases numeradas com tarefas checklistadas, entregável por fase.
+- Specs e planos de features ficam em `docs/superpowers/specs/` e `docs/superpowers/plans/`.
+- Convenção de nomes: `YYYY-MM-DD-nome-do-feature.md` (kebab-case, com data).
+- Specs usam sufixo `-design` no nome: `YYYY-MM-DD-nome-design.md`.
+- Planos usam o header do superpowers: `For agentic workers: REQUIRED SUB-SKILL...`.
+- Cada spec deve incluir: problema, o que já existe, o que construir, modelo de dados, rotas, segurança, riscos.
+- Cada plano deve incluir: Goal, Architecture, Tech Stack, Global Constraints, e tarefas checklistadas.
+
+## Skills disponíveis (`.opencode/skills/`)
+
+Skills locais do projeto, disponíveis para agentes via OpenCode:
+
+| Skill | Arquivo | Uso |
+|-------|---------|-----|
+| `code-review` | `.opencode/skills/code-review/SKILL.md` | Revisão de código: checklist de alinhamento com spec, qualidade, segurança, performance |
+| `style` | `.opencode/skills/style/SKILL.md` | Style guide do dashboard: paleta de cores, layout, componentes CSS, padrões responsivos |
+
+### Superpowers (plugin OpenCode)
+
+Skills do plugin [superpowers](https://github.com/obra/superpowers), instalado via `opencode.json`:
+
+| Skill | Uso |
+|-------|-----|
+| `brainstorming` | Design iterativo: refina ideias via perguntas, valida em seções |
+| `writing-plans` | Planos detalhados: tarefas de 2-5 min com caminhos de arquivo e código completo |
+| `subagent-driven-development` | Desenvolvimento com subagentes: uma task por subagent, com review duplo |
+| `executing-plans` | Execução em batches com checkpoints humanos |
+| `test-driven-development` | Ciclo RED-GREEN-REFACTOR: teste falha → implementa → passa → commit |
+| `requesting-code-review` | Review pré-tarefa: verifica contra o plano, reporta por severidade |
+| `using-git-worktree` | Branches isoladas para trabalho paralelo |
+| `finishing-a-development-branch` | Verifica testes, apresenta opções de merge/PR/keep/discard |
+
+### Como usar skills
+
+- Agentes devem checar skills relevantes antes de iniciar qualquer tarefa.
+- Skills são workflows obrigatórios, não sugestões.
+- Para planos em `docs/superpowers/plans/`, usar `superpowers:executing-plans` ou `superpowers:subagent-driven-development`.
 
 ## Melhorias futuras
 

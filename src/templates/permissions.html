@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Permissões — SecurityAI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .perm-table { width:100%; border-collapse:collapse; margin-top:1rem; font-size:.85rem; }
+        .perm-table th, .perm-table td { padding:.55rem .7rem; text-align:center; border-bottom:1px solid var(--border); }
+        .perm-table th:first-child, .perm-table td:first-child { text-align:left; min-width:220px; }
+        .perm-table thead th { background:var(--surface); position:sticky; top:0; z-index:1; font-weight:600; color:var(--text-secondary); font-size:.75rem; text-transform:uppercase; letter-spacing:.3px; }
+        .perm-table tbody tr:hover { background:rgba(255,255,255,.03); }
+        .perm-table td { color:var(--text); }
+        .perm-toggle { width:36px; height:20px; appearance:none; -webkit-appearance:none; background:var(--border); border-radius:10px; position:relative; cursor:pointer; transition:.2s; outline:none; border:none; }
+        .perm-toggle:checked { background:var(--primary); }
+        .perm-toggle::before { content:''; position:absolute; width:16px; height:16px; background:#fff; border-radius:50%; top:2px; left:2px; transition:.2s; }
+        .perm-toggle:checked::before { left:18px; }
+        .perm-toggle:disabled { opacity:.4; cursor:not-allowed; }
+        .perm-category { font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding:.3rem .7rem; background:var(--bg); }
+        .perm-category td { padding:.3rem .7rem !important; }
+        #save-status { font-size:.85rem; margin-left:1rem; }
+        .save-ok { color:var(--primary); }
+        .save-err { color:var(--danger); }
+    </style>
+</head>
+<body>
+    <div class="main" style="margin-left:0; padding:1.5rem;">
+        <h2 style="margin:0 0 .5rem;">🔐 Permissões por Role</h2>
+        <p style="color:var(--text-secondary); font-size:.85rem; margin:0 0 1rem;">Configure o que cada role pode fazer. Alterações têm efeito imediato.</p>
+        <div style="overflow-x:auto;">
+            <table class="perm-table" id="perm-table">
+                <thead>
+                    <tr>
+                        <th>Permissão</th>
+                        <th>Admin</th>
+                        <th>Chefe Seg.</th>
+                        <th>Vigilante</th>
+                        <th>Morador</th>
+                    </tr>
+                </thead>
+                <tbody id="perm-body"></tbody>
+            </table>
+        </div>
+        <div style="margin-top:1rem; display:flex; align-items:center;">
+            <button type="button" class="button" id="btn-save">Salvar alterações</button>
+            <span id="save-status"></span>
+        </div>
+    </div>
+    <script>
+    const ROLES = ['admin', 'chefe_seguranca', 'vigilante', 'viewer'];
+    const ROLE_LABELS = {admin:'Admin', chefe_seguranca:'Chefe Seg.', vigilante:'Vigilante', viewer:'Morador'};
+    const CATEGORIES = {
+        'Monitoramento': ['view_live', 'view_events', 'view_clips', 'view_snapshots', 'view_dashboard'],
+        'Eventos': ['dismiss_event', 'retain_event', 'delete_event', 'prune_events'],
+        'Operação': ['arm_disarm'],
+        'Sistema': ['manage_cameras', 'manage_zones', 'manage_identities', 'manage_notifications', 'manage_settings', 'manage_retention'],
+        'Usuários': ['manage_users', 'create_users', 'view_users', 'manage_permissions'],
+        'Auditoria': ['view_audit_log'],
+    };
+    let permissions = {}; // {role: {perm: bool}}
+    let definitions = {}; // {perm: label}
+
+    async function init() {
+        const meResp = await fetch('/api/auth/me');
+        if (meResp.status === 401) { window.location.href = '/login'; return; }
+        const me = await meResp.json();
+        if (!me.permissions?.manage_permissions) {
+            document.body.innerHTML = '<div style="padding:2rem;color:var(--danger);">Sem permissão para acessar esta página.</div>';
+            return;
+        }
+        const [permsResp, defsResp] = await Promise.all([
+            fetch('/api/permissions'),
+            fetch('/api/permissions/definitions'),
+        ]);
+        permissions = await permsResp.json();
+        definitions = await defsResp.json();
+        render();
+    }
+
+    function render() {
+        const tbody = document.getElementById('perm-body');
+        let html = '';
+        for (const [cat, perms] of Object.entries(CATEGORIES)) {
+            html += `<tr class="perm-category"><td colspan="5">${cat}</td></tr>`;
+            for (const perm of perms) {
+                const label = definitions[perm] || perm;
+                html += `<tr><td title="${perm}">${label}</td>`;
+                for (const role of ROLES) {
+                    const checked = permissions[role]?.[perm] ? 'checked' : '';
+                    const disabled = role === 'admin' ? 'disabled' : '';
+                    html += `<td><input type="checkbox" class="perm-toggle" data-role="${role}" data-perm="${perm}" ${checked} ${disabled}></td>`;
+                }
+                html += '</tr>';
+            }
+        }
+        tbody.innerHTML = html;
+    }
+
+    document.getElementById('btn-save').addEventListener('click', async () => {
+        const status = document.getElementById('save-status');
+        status.className = ''; status.textContent = 'Salvando...';
+        // Collect all toggle states
+        const toggles = document.querySelectorAll('.perm-toggle');
+        const updates = [];
+        for (const t of toggles) {
+            if (t.disabled) continue;
+            updates.push({
+                role: t.dataset.role,
+                permission: t.dataset.perm,
+                enabled: t.checked,
+            });
+        }
+        try {
+            const resp = await fetch('/api/permissions', {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({permissions: updates}),
+            });
+            if (resp.ok) {
+                status.className = 'save-ok'; status.textContent = '✓ Salvo';
+            } else {
+                const data = await resp.json();
+                status.className = 'save-err'; status.textContent = data.error || 'Erro';
+            }
+        } catch(e) {
+            status.className = 'save-err'; status.textContent = 'Erro de conexão';
+        }
+    });
+
+    init();
+    </script>
+</body>
+</html>

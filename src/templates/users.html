@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Usuários — SecurityAI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .users-grid { display:grid; gap:12px; margin-top:1rem; }
+        .user-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1rem 1.2rem; display:flex; align-items:center; gap:1rem; }
+        .user-card .user-info { flex:1; }
+        .user-card .user-info h3 { margin:0; font-size:.95rem; color:var(--text); }
+        .user-card .user-info p { margin:2px 0 0; font-size:.8rem; color:var(--text-secondary); }
+        .user-card .actions { display:flex; gap:6px; }
+        .badge-role { display:inline-block; padding:2px 8px; border-radius:10px; font-size:.7rem; font-weight:600; text-transform:uppercase; }
+        .badge-admin { background:var(--danger); color:#fff; }
+        .badge-chefe { background:var(--warn); color:#000; }
+        .badge-vigilante { background:var(--primary); color:#fff; }
+        .badge-viewer { background:var(--info); color:#fff; }
+        .form-row { display:flex; gap:1rem; align-items:end; flex-wrap:wrap; }
+        .form-row > div { flex:1; min-width:180px; }
+        .form-row label { display:block; margin-bottom:.3rem; font-size:.85rem; color:var(--text-secondary); }
+        .form-row input, .form-row select { width:100%; padding:.55rem .7rem; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); box-sizing:border-box; }
+    </style>
+</head>
+<body>
+    <div class="main" style="margin-left:0; padding:1.5rem;">
+        <h2 style="margin:0 0 1rem;">👥 Gestão de Usuários</h2>
+        <div id="create-user-form" class="card" style="margin-bottom:1.5rem;">
+            <h3 style="margin:0 0 .8rem;">Criar novo usuário</h3>
+            <div class="form-row">
+                <div>
+                    <label for="new-username">Usuário</label>
+                    <input type="text" id="new-username" placeholder="nome">
+                </div>
+                <div>
+                    <label for="new-password">Senha</label>
+                    <input type="password" id="new-password" placeholder="mínimo 6 caracteres">
+                </div>
+                <div>
+                    <label for="new-role">Role</label>
+                    <select id="new-role"></select>
+                </div>
+                <div>
+                    <button type="button" class="button" id="btn-create-user" style="margin-top:22px;">Criar</button>
+                </div>
+            </div>
+            <div id="create-error" class="form-message" style="color:var(--danger);display:none;"></div>
+        </div>
+        <div id="users-list" class="users-grid"></div>
+    </div>
+    <script>
+    const ROLES = [
+        {value:'admin', label:'Admin (Síndico)', badge:'badge-admin'},
+        {value:'chefe_seguranca', label:'Chefe de Segurança', badge:'badge-chefe'},
+        {value:'vigilante', label:'Vigilante', badge:'badge-vigilante'},
+        {value:'viewer', label:'Morador (Viewer)', badge:'badge-viewer'},
+    ];
+    let currentUser = null;
+    let users = [];
+
+    async function init() {
+        const meResp = await fetch('/api/auth/me');
+        if (meResp.status === 401) { window.location.href = '/login'; return; }
+        const me = await meResp.json();
+        currentUser = me.user;
+        // Populate role select based on permissions
+        const roleSelect = document.getElementById('new-role');
+        const canCreate = me.permissions?.create_users;
+        ROLES.forEach(r => {
+            // Admin can create all; chefe can create vigilante+viewer
+            if (currentUser.role === 'admin' || (currentUser.role === 'chefe_seguranca' && r.value !== 'admin')) {
+                const opt = document.createElement('option');
+                opt.value = r.value; opt.textContent = r.label;
+                roleSelect.appendChild(opt);
+            }
+        });
+        if (!canCreate) {
+            document.getElementById('create-user-form').style.display = 'none';
+        }
+        await loadUsers();
+    }
+
+    async function loadUsers() {
+        const resp = await fetch('/api/users');
+        users = await resp.json();
+        render();
+    }
+
+    function render() {
+        const container = document.getElementById('users-list');
+        container.innerHTML = users.map(u => {
+            const roleInfo = ROLES.find(r => r.value === u.role) || {label:u.role, badge:''};
+            const isMe = u.id === currentUser.id;
+            const isLastAdmin = u.role === 'admin' && users.filter(x => x.role === 'admin' && x.active).length <= 1;
+            return `<div class="user-card">
+                <div class="user-info">
+                    <h3>${u.username} ${isMe ? '<span style="font-size:.75rem;color:var(--muted);">(você)</span>' : ''}</h3>
+                    <p><span class="badge-role ${roleInfo.badge}">${roleInfo.label}</span> · ${u.active ? 'Ativo' : 'Inativo'} ·Criado em ${new Date(u.created_at).toLocaleDateString('pt-BR')}</p>
+                </div>
+                <div class="actions">
+                    ${!isMe && !isLastAdmin ? `<button class="btn-sm" onclick="toggleUser(${u.id}, ${u.active ? 0 : 1})">${u.active ? 'Desativar' : 'Ativar'}</button>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    async function toggleUser(id, active) {
+        await fetch(`/api/users/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({active}),
+        });
+        await loadUsers();
+    }
+
+    document.getElementById('btn-create-user').addEventListener('click', async () => {
+        const errEl = document.getElementById('create-error');
+        errEl.style.display = 'none';
+        const username = document.getElementById('new-username').value.trim();
+        const password = document.getElementById('new-password').value;
+        const role = document.getElementById('new-role').value;
+        if (!username || !password) { errEl.textContent = 'Preencha todos os campos'; errEl.style.display='block'; return; }
+        if (password.length < 6) { errEl.textContent = 'Senha mínima: 6 caracteres'; errEl.style.display='block'; return; }
+        const resp = await fetch('/api/users', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username, password, role}),
+        });
+        const data = await resp.json();
+        if (!resp.ok) { errEl.textContent = data.error || 'Erro'; errEl.style.display='block'; return; }
+        document.getElementById('new-username').value = '';
+        document.getElementById('new-password').value = '';
+        await loadUsers();
+    });
+
+    init();
+    </script>
+</body>
+</html>

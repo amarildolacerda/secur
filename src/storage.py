@@ -180,6 +180,71 @@ class EventStorage:
                 )
                 """
             )
+            # ── Auth tables ──
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL CHECK(role IN ('admin','chefe_seguranca','vigilante','viewer')),
+                    created_by INTEGER REFERENCES users(id),
+                    created_at TEXT NOT NULL,
+                    last_login TEXT,
+                    active INTEGER NOT NULL DEFAULT 1
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    id TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    ip_address TEXT
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS role_permissions (
+                    role TEXT NOT NULL,
+                    permission TEXT NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (role, permission)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key_hash TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    permissions TEXT,
+                    created_by INTEGER REFERENCES users(id),
+                    created_at TEXT NOT NULL,
+                    last_used TEXT,
+                    active INTEGER NOT NULL DEFAULT 1
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER REFERENCES users(id),
+                    api_key_id INTEGER REFERENCES api_keys(id),
+                    action TEXT NOT NULL,
+                    target_type TEXT,
+                    target_id TEXT,
+                    details TEXT,
+                    ip_address TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
             self.connection.commit()
 
     def add_event(self, camera_id, zone, event_type, details=None, level=0, source="local", dropped=False):
@@ -786,6 +851,262 @@ class EventStorage:
                 (key, value),
             )
             self.connection.commit()
+
+    # ════════════════════════════════════════════════════════════════════
+    # Auth: users
+    # ════════════════════════════════════════════════════════════════════
+
+    def add_user(self, username: str, password_hash: str, role: str, created_by=None) -> int:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO users (username, password_hash, role, created_by, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (username, password_hash, role, created_by, timestamp),
+            )
+            self.connection.commit()
+            return cursor.lastrowid
+
+    def get_user_by_username(self, username: str):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_user(self, user_id: int):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def list_users(self, created_by=None):
+        with self.lock:
+            cursor = self.connection.cursor()
+            if created_by is not None:
+                cursor.execute(
+                    "SELECT id, username, role, created_by, created_at, last_login, active "
+                    "FROM users WHERE created_by = ? ORDER BY id ASC",
+                    (created_by,),
+                )
+            else:
+                cursor.execute(
+                    "SELECT id, username, role, created_by, created_at, last_login, active "
+                    "FROM users ORDER BY id ASC"
+                )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def update_user(self, user_id: int, **kwargs):
+        allowed = {"username", "password_hash", "role", "active", "last_login"}
+        fields = {k: v for k, v in kwargs.items() if k in allowed}
+        if not fields:
+            return False
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        params = list(fields.values()) + [user_id]
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(f"UPDATE users SET {sets} WHERE id = ?", params)
+            self.connection.commit()
+            return cursor.rowcount > 0
+
+    def remove_user(self, user_id: int) -> bool:
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            self.connection.commit()
+            return cursor.rowcount > 0
+
+    def count_active_admins(self) -> int:
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT COUNT(*) AS c FROM users WHERE role = 'admin' AND active = 1")
+            return cursor.fetchone()["c"]
+
+    def has_users(self) -> bool:
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT COUNT(*) AS c FROM users")
+            return cursor.fetchone()["c"] > 0
+
+    # ════════════════════════════════════════════════════════════════════
+    # Auth: sessions
+    # ════════════════════════════════════════════════════════════════════
+
+    def create_session(self, session_id: str, user_id: int, expires_at: str, ip_address=None):
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO user_sessions (id, user_id, created_at, expires_at, ip_address) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (session_id, user_id, timestamp, expires_at, ip_address),
+            )
+            self.connection.commit()
+
+    def get_session(self, session_id: str):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT * FROM user_sessions WHERE id = ?", (session_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def delete_session(self, session_id: str):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("DELETE FROM user_sessions WHERE id = ?", (session_id,))
+            self.connection.commit()
+
+    def delete_user_sessions(self, user_id: int):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
+            self.connection.commit()
+
+    def purge_expired_sessions(self):
+        now = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("DELETE FROM user_sessions WHERE expires_at < ?", (now,))
+            self.connection.commit()
+
+    # ════════════════════════════════════════════════════════════════════
+    # Auth: role permissions
+    # ════════════════════════════════════════════════════════════════════
+
+    def get_role_permissions(self, role: str) -> dict:
+        """Returns {permission: bool} for a role."""
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT permission, enabled FROM role_permissions WHERE role = ?",
+                (role,),
+            )
+            return {row["permission"]: bool(row["enabled"]) for row in cursor.fetchall()}
+
+    def set_role_permission(self, role: str, permission: str, enabled: bool):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO role_permissions (role, permission, enabled) VALUES (?, ?, ?) "
+                "ON CONFLICT(role, permission) DO UPDATE SET enabled = excluded.enabled",
+                (role, permission, 1 if enabled else 0),
+            )
+            self.connection.commit()
+
+    def get_all_role_permissions(self) -> dict:
+        """Returns {role: {permission: bool}}."""
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT role, permission, enabled FROM role_permissions")
+            result = {}
+            for row in cursor.fetchall():
+                result.setdefault(row["role"], {})[row["permission"]] = bool(row["enabled"])
+            return result
+
+    def seed_default_permissions(self, defaults: dict):
+        """Seed permissions only if table is empty."""
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT COUNT(*) AS c FROM role_permissions")
+            if cursor.fetchone()["c"] > 0:
+                return
+            for role, perms in defaults.items():
+                for perm, enabled in perms.items():
+                    cursor.execute(
+                        "INSERT INTO role_permissions (role, permission, enabled) VALUES (?, ?, ?)",
+                        (role, perm, 1 if enabled else 0),
+                    )
+            self.connection.commit()
+
+    # ════════════════════════════════════════════════════════════════════
+    # Auth: API keys
+    # ════════════════════════════════════════════════════════════════════
+
+    def add_api_key(self, key_hash: str, name: str, permissions=None, created_by=None) -> int:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO api_keys (key_hash, name, permissions, created_by, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (key_hash, name, json.dumps(permissions) if permissions else None, created_by, timestamp),
+            )
+            self.connection.commit()
+            return cursor.lastrowid
+
+    def get_api_key_by_hash(self, key_hash: str):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT * FROM api_keys WHERE key_hash = ? AND active = 1", (key_hash,))
+            row = cursor.fetchone()
+            if row:
+                result = dict(row)
+                result["permissions"] = json.loads(result["permissions"]) if result.get("permissions") else None
+                return result
+            return None
+
+    def list_api_keys(self):
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, name, created_by, created_at, last_used, active FROM api_keys ORDER BY id ASC"
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def update_api_key_last_used(self, key_id: int):
+        now = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("UPDATE api_keys SET last_used = ? WHERE id = ?", (now, key_id))
+            self.connection.commit()
+
+    def remove_api_key(self, key_id: int) -> bool:
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
+            self.connection.commit()
+            return cursor.rowcount > 0
+
+    # ════════════════════════════════════════════════════════════════════
+    # Auth: audit log
+    # ════════════════════════════════════════════════════════════════════
+
+    def add_audit_entry(self, action: str, user_id=None, api_key_id=None,
+                        target_type=None, target_id=None, details=None, ip_address=None):
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "INSERT INTO audit_log (user_id, api_key_id, action, target_type, target_id, details, ip_address, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (user_id, api_key_id, action, target_type, target_id,
+                 json.dumps(details) if details else None, ip_address, timestamp),
+            )
+            self.connection.commit()
+
+    def list_audit_log(self, limit=100, user_id=None, action=None, offset=0):
+        with self.lock:
+            cursor = self.connection.cursor()
+            sql = ("SELECT id, user_id, api_key_id, action, target_type, target_id, details, ip_address, created_at "
+                   "FROM audit_log WHERE 1=1")
+            params = []
+            if user_id is not None:
+                sql += " AND user_id = ?"; params.append(user_id)
+            if action is not None:
+                sql += " AND action = ?"; params.append(action)
+            sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            cursor.execute(sql, params)
+            rows = [dict(row) for row in cursor.fetchall()]
+            for row in rows:
+                if row.get("details"):
+                    try:
+                        row["details"] = json.loads(row["details"])
+                    except (ValueError, TypeError):
+                        pass
+            return rows
 
     def close(self):
         with self.lock:

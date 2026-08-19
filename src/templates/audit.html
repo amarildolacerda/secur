@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auditoria — SecurityAI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .filters { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; align-items:end; }
+        .filters > div { flex:1; min-width:160px; }
+        .filters label { display:block; font-size:.8rem; color:var(--text-secondary); margin-bottom:.3rem; }
+        .filters select, .filters input { width:100%; padding:.5rem .6rem; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); box-sizing:border-box; font-size:.85rem; }
+        .audit-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+        .audit-table th { text-align:left; padding:.5rem .6rem; font-size:.75rem; text-transform:uppercase; letter-spacing:.3px; color:var(--text-secondary); background:var(--surface-2); border-bottom:1px solid var(--border); }
+        .audit-table td { padding:.5rem .6rem; border-bottom:1px solid var(--border); color:var(--text); vertical-align:top; }
+        .audit-table tr:hover { background:rgba(255,255,255,.03); }
+        .action-badge { display:inline-block; padding:1px 6px; border-radius:4px; font-size:.75rem; font-weight:500; }
+        .action-create { background:rgba(22,163,74,.12); color:var(--success); }
+        .action-delete { background:rgba(220,38,38,.12); color:var(--danger); }
+        .action-update { background:rgba(37,99,235,.12); color:var(--info); }
+        .action-login { background:rgba(94,106,210,.12); color:var(--primary); }
+        .pagination { display:flex; gap:.5rem; margin-top:1rem; justify-content:center; }
+        .pagination button { padding:.4rem .8rem; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); cursor:pointer; font-size:.85rem; }
+        .pagination button:disabled { opacity:.4; cursor:not-allowed; }
+        .pagination button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+    </style>
+</head>
+<body>
+    <div class="main" style="margin-left:0; padding:1.5rem;">
+        <h2 style="margin:0 0 1rem;">📋 Log de Auditoria</h2>
+        <div class="filters">
+            <div>
+                <label for="filter-action">Ação</label>
+                <select id="filter-action">
+                    <option value="">Todas</option>
+                    <option value="login">Login</option>
+                    <option value="create_user">Criar usuário</option>
+                    <option value="update_user">Editar usuário</option>
+                    <option value="create_api_key">Criar API key</option>
+                    <option value="delete_api_key">Deletar API key</option>
+                    <option value="update_permissions">Atualizar permissões</option>
+                    <option value="setup_create_admin">Setup inicial</option>
+                </select>
+            </div>
+            <div>
+                <label for="filter-user">Usuário</label>
+                <select id="filter-user">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <div>
+                <label>&nbsp;</label>
+                <button type="button" class="button" id="btn-filter">Filtrar</button>
+            </div>
+        </div>
+        <div style="overflow-x:auto;">
+            <table class="audit-table">
+                <thead>
+                    <tr>
+                        <th>Data/Hora</th>
+                        <th>Usuário</th>
+                        <th>Ação</th>
+                        <th>Alvo</th>
+                        <th>Detalhes</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody id="audit-body"></tbody>
+            </table>
+        </div>
+        <div class="pagination" id="pagination"></div>
+    </div>
+    <script>
+    const ACTION_LABELS = {
+        login: 'Login',
+        create_user: 'Criar usuário',
+        update_user: 'Editar usuário',
+        create_api_key: 'Criar API key',
+        delete_api_key: 'Deletar API key',
+        update_permissions: 'Atualizar permissões',
+        setup_create_admin: 'Setup inicial',
+    };
+    const ACTION_CLASSES = {
+        login: 'action-login',
+        create_user: 'action-create', create_api_key: 'action-create',
+        update_user: 'action-update', update_permissions: 'action-update',
+        delete_user: 'action-delete', delete_api_key: 'action-delete',
+    };
+    let allUsers = [];
+    let currentPage = 0;
+    const PAGE_SIZE = 50;
+
+    async function init() {
+        const meResp = await fetch('/api/auth/me');
+        if (meResp.status === 401) { window.location.href = '/login'; return; }
+        // Load users for filter
+        try {
+            const usersResp = await fetch('/api/users');
+            if (usersResp.ok) allUsers = await usersResp.json();
+        } catch(e) {}
+        const userSelect = document.getElementById('filter-user');
+        allUsers.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u.id; opt.textContent = u.username;
+            userSelect.appendChild(opt);
+        });
+        await loadEntries();
+    }
+
+    async function loadEntries() {
+        const action = document.getElementById('filter-action').value;
+        const userId = document.getElementById('filter-user').value;
+        const params = new URLSearchParams({limit: PAGE_SIZE, offset: currentPage * PAGE_SIZE});
+        if (action) params.set('action', action);
+        if (userId) params.set('user_id', userId);
+        const resp = await fetch('/api/audit?' + params.toString());
+        const entries = await resp.json();
+        render(entries);
+    }
+
+    function render(entries) {
+        const tbody = document.getElementById('audit-body');
+        if (!entries.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">Nenhum registro encontrado</td></tr>';
+            return;
+        }
+        tbody.innerHTML = entries.map(e => {
+            const user = allUsers.find(u => u.id === e.user_id);
+            const username = user ? user.username : (e.user_id ? `#${e.user_id}` : '—');
+            const actionLabel = ACTION_LABELS[e.action] || e.action;
+            const actionClass = ACTION_CLASSES[e.action] || '';
+            const target = e.target_type ? `${e.target_type}${e.target_id ? ' #' + e.target_id : ''}` : '—';
+            const details = e.details ? (typeof e.details === 'object' ? JSON.stringify(e.details) : e.details) : '—';
+            const date = new Date(e.created_at).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'});
+            return `<tr>
+                <td style="white-space:nowrap;">${date}</td>
+                <td>${username}</td>
+                <td><span class="action-badge ${actionClass}">${actionLabel}</span></td>
+                <td>${target}</td>
+                <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;" title="${details.replace(/"/g, '&quot;')}">${details}</td>
+                <td>${e.ip_address || '—'}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    document.getElementById('btn-filter').addEventListener('click', () => { currentPage = 0; loadEntries(); });
+    document.getElementById('filter-action').addEventListener('change', () => { currentPage = 0; loadEntries(); });
+    document.getElementById('filter-user').addEventListener('change', () => { currentPage = 0; loadEntries(); });
+
+    init();
+    </script>
+</body>
+</html>

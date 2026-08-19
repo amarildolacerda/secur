@@ -57,10 +57,28 @@
                         <span class="dot" style="background:var(--info)"></span>
                         <span>Identidades</span>
                     </button>
+                    <a href="/users" class="nav-sublink" style="text-decoration:none;">
+                        <span class="dot" style="background:var(--warn)"></span>
+                        <span>Usuários</span>
+                    </a>
+                    <a href="/permissions" class="nav-sublink" style="text-decoration:none;">
+                        <span class="dot" style="background:var(--danger)"></span>
+                        <span>Permissões</span>
+                    </a>
+                    <a href="/audit" class="nav-sublink" style="text-decoration:none;">
+                        <span class="dot" style="background:var(--muted)"></span>
+                        <span>Auditoria</span>
+                    </a>
                 </div>
             </div>
         </nav>
-        <div class="footer-nav"><a href="#" id="nav-system-status">v0.2.0</a></div>
+        <div class="footer-nav">
+            <a href="#" id="nav-system-status">v0.2.0</a>
+            <div id="user-bar" class="user-bar" style="display:none;">
+                <span id="user-bar-name"></span>
+                <button type="button" id="logout-btn" class="btn-sm" title="Sair">&#x274C;</button>
+            </div>
+        </div>
     </aside>
 
     <div class="main">
@@ -195,6 +213,20 @@
                             <label for="camera-mask-polygons">Máscara de privacidade (JSON)</label>
                             <textarea id="camera-mask-polygons" rows="3" placeholder='[{"x":0,"y":0},{"x":100,"y":0},{"x":100,"y":100}]'></textarea>
                             <small style="color:var(--muted-subtle);">Regiões com blur nos thumbnails, clipes e snapshot. Mesmo formato das zonas de exclusão.</small>
+                        </div>
+                        <div class="form-row">
+                            <span class="form-label" id="camera-preview-label">Preview</span>
+                            <div id="camera-preview-box" class="preview-box">
+                                <canvas id="camera-preview-canvas" role="img" aria-label="Prévia das zonas de exclusão e máscara de privacidade sobre o frame da câmera"></canvas>
+                                <div id="camera-preview-loading" class="preview-loading" hidden>
+                                    <span class="preview-spinner"></span>
+                                </div>
+                            </div>
+                            <div class="preview-legend">
+                                <span class="preview-legend-item"><span class="preview-legend-swatch exclusion"></span>Zona de exclusão — movimento ignorado</span>
+                                <span class="preview-legend-item"><span class="preview-legend-swatch mask"></span>Máscara de privacidade — borrado</span>
+                            </div>
+                            <small id="camera-preview-note" class="preview-note" aria-live="polite"></small>
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="button-primary" id="camera-form-submit">Salvar</button>
@@ -486,5 +518,27 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <script src="/static/camera_fault.js"></script>
     <script src="/static/dashboard.js"></script>
+    <script>
+    // ── Auth: load current user and wire up logout ──
+    (async function() {
+      try {
+        const resp = await fetch('/api/auth/me');
+        if (resp.status === 401) { window.location.href = '/login'; return; }
+        const data = await resp.json();
+        if (data.type === 'session' && data.user) {
+          const bar = document.getElementById('user-bar');
+          const nameEl = document.getElementById('user-bar-name');
+          if (bar && nameEl) {
+            nameEl.textContent = data.user.username + ' (' + data.user.role + ')';
+            bar.style.display = 'flex';
+          }
+        }
+      } catch(e) { /* silent */ }
+    })();
+    document.getElementById('logout-btn').addEventListener('click', async function() {
+      await fetch('/api/auth/logout', {method:'POST'});
+      window.location.href = '/login';
+    });
+    </script>
 </body>
 </html>

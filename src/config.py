@@ -129,3 +129,8 @@ LOITERING_MAX_DISTANCE = float(os.getenv("LOITERING_MAX_DISTANCE", "80"))
 LOITERING_LABELS = ["person", "car", "truck", "bus", "motorcycle", "bicycle"]
 
 FALL_ASPECT_RATIO = float(os.getenv("FALL_ASPECT_RATIO", "1.2"))
+
+# Auth settings
+SESSION_TTL_HOURS = int(os.getenv("SESSION_TTL_HOURS", "24"))
+MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "5"))
+LOCKOUT_MINUTES = int(os.getenv("LOCKOUT_MINUTES", "5"))
