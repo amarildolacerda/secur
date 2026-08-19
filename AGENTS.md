@@ -70,6 +70,19 @@ Fornecer orientações claras sobre como dividir tarefas entre agentes de projet
 - Se um recurso novo for requerido, avaliar o que já existe pesquisando na web para propor melhores práticas na implementação e focar no "valor" para o usuário;
 - Avaliar riscos, aqueles ligados a pessoas, cultura e legislação antes de implementar
   
+## Documentação de especificações e planos
+
+- Specs e planos de features ficam na pasta `/docs`.
+- Arquivos de especificação iniciam por `SPEC_` (ex.: `SPEC_user-access-control.md`).
+- Arquivos de plano de implementação iniciam por `PLAN_` (ex.: `PLAN_user-access-control.md`).
+- O nome do arquivo deve ser descritivo, em kebab-case, refletindo o feature.
+- Cada spec deve incluir: problema, o que já existe, o que construir, modelo de dados, rotas, segurança, riscos e roadmap de implementação.
+- Cada plano deve incluir no cabeçalho:
+  - **Status:** Planejado | Em andamento | Executado | Pausado | Cancelado
+  - **Prioridade:** Crítica | Alta | Média | Baixa
+  - **Fase atual:** fase em execução (ou "—" se ainda não iniciado)
+- Cada plano deve incluir no corpo: fases numeradas com tarefas checklistadas, entregável por fase.
+
 ## Melhorias futuras
 
 - Incluir um agente de integração com automação residencial.
