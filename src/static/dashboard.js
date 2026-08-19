@@ -2810,7 +2810,14 @@ async function _saveCamDialog() {
 document.addEventListener('DOMContentLoaded', () => {
   const createBtn = document.getElementById('btn-create-user');
   if (createBtn) createBtn.addEventListener('click', () => {
-    document.getElementById('create-user-form').style.display = document.getElementById('create-user-form').style.display === 'none' ? 'block' : 'none';
+    const form = document.getElementById('create-user-form');
+    if (form.style.display === 'none') {
+      document.getElementById('new-username').value = '';
+      document.getElementById('new-password').value = '';
+      form.style.display = 'block';
+    } else {
+      form.style.display = 'none';
+    }
   });
   const confirmBtn = document.getElementById('btn-confirm-create');
   if (confirmBtn) confirmBtn.addEventListener('click', async () => {

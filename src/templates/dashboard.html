@@ -444,9 +444,9 @@
                 </div>
                 <div id="create-user-form" style="display:none;margin-bottom:1rem;">
                     <div class="form-row">
-                        <div><label>Usuário</label><input type="text" id="new-username" placeholder="nome"></div>
-                        <div><label>Senha</label><input type="password" id="new-password" placeholder="mín. 6 caracteres"></div>
-                        <div><label>Role</label><select id="new-role"></select></div>
+                        <div><label>Usuário</label><input type="text" id="new-username" placeholder="nome" autocomplete="off"></div>
+                        <div><label>Senha</label><input type="password" id="new-password" placeholder="mín. 6 caracteres" autocomplete="new-password"></div>
+                        <div><label>Role</label><select id="new-role" autocomplete="off"></select></div>
                         <div><button type="button" class="button" id="btn-confirm-create">Criar</button></div>
                     </div>
                     <div id="create-user-error" style="color:var(--danger);font-size:.85rem;margin-top:4px;"></div>
