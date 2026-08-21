@@ -303,7 +303,13 @@ def setup_auth(app, storage):
                 return
 
         # 3. Not authenticated
-        return jsonify({"error": "Não autenticado"}), 401
+        # API requests get a JSON 401 so the SPA (fetchData) can redirect to
+        # /login. Page navigations get redirected straight to the login page
+        # instead of rendering the raw JSON error in the browser.
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Não autenticado"}), 401
+        from flask import redirect
+        return redirect("/login")
 
     # ── Login routes ──
 

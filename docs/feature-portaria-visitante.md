@@ -7,6 +7,8 @@
 
 Quando alguém chega à portaria para fazer uma **visita** ou **entrega** em uma unidade, o sistema detecta automaticamente (por visão), e o **app notifica o morador** sobre a ocorrência — indicando a **entrada** e depois a **saída** do domínio.
 
+Sera que o morador poderia receber uma mensagem no telegram ?
+
 ```
 [Pessoa/veículo chega à portaria]
         │  (visão: N0-N1 borda → N2-N4 central)
