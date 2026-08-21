@@ -3,7 +3,7 @@ import os
 import time
 import threading
 from datetime import datetime, timezone
-from flask import Flask, jsonify, render_template, request, Response, send_file, g
+from flask import Flask, jsonify, render_template, request, Response, send_file, g, abort
 from .camera import CameraStream
 from .storage import EventStorage
 from .masking import frame_for_storage
@@ -195,6 +195,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         events = storage.list_events(limit=10)
         status_payload = {
             "status": "ok",
+            "version": cfg.APP_VERSION,
             "camera_count": len(cameras),
             "recent_events": len(events),
             "cameras": cameras,
@@ -895,21 +896,6 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
             logger.exception("Falha ao importar identidade")
             return jsonify({'error': 'falha ao importar identidade'}), 500
 
-    @app.route("/identities/view")
-    def identities_view():
-        # derive species options from recognizer labels
-        try:
-            from .identity import RECOGNITION_LABELS
-            species_vals = sorted(set(RECOGNITION_LABELS.values()))
-        except Exception:
-            species_vals = ["person", "animal"]
-
-        def label_for(s):
-            return {"person": "Pessoa", "animal": "Animal", "vehicle": "Veículo"}.get(s, s.capitalize())
-
-        species_options = [{"value": s, "label": label_for(s)} for s in species_vals]
-        return render_template("identities.html", species_options=species_options)
-
     @app.route("/zones", methods=["POST"])
     @require_permission("manage_zones")
     def add_zone():
@@ -990,6 +976,16 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
     @app.route("/")
     def dashboard():
         return render_template("dashboard.html")
+
+    @app.route("/section/<name>")
+    def section_partial(name):
+        allowed = {
+            "overview", "events", "cameras", "zones", "identities",
+            "users", "permissions", "audit", "notifications", "settings", "retention",
+        }
+        if name not in allowed:
+            abort(404)
+        return render_template(f"sections/{name}.html")
 
     # ════════════════════════════════════════════════════════════════════
     # User management routes

@@ -1,0 +1,43 @@
+<style>
+    .chips-bar label { font-size: 0.75rem; color: var(--muted-subtle); text-transform: uppercase; letter-spacing: 0.3px; }
+    .pagination { display: flex; gap: 0.5rem; margin-top: 1rem; justify-content: center; }
+    .pagination button { padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.85rem; }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pagination button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .audit-date { white-space: nowrap; }
+    .audit-details { max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
+</style>
+
+<section class="panel" id="audit-log">
+    <div class="panel-header">
+        <div>
+            <h2>Log de Auditoria</h2>
+            <p>Registro de ações realizadas no sistema.</p>
+        </div>
+    </div>
+    <div class="chips-bar">
+        <label for="filter-action">Ação</label>
+        <select id="filter-action" class="chip-select">
+            <option value="">Todas</option>
+            <option value="login">Login</option>
+            <option value="create_user">Criar usuário</option>
+            <option value="update_user">Editar usuário</option>
+            <option value="create_api_key">Criar API key</option>
+            <option value="delete_api_key">Deletar API key</option>
+            <option value="update_permissions">Atualizar permissões</option>
+            <option value="setup_create_admin">Setup inicial</option>
+        </select>
+        <label for="filter-user">Usuário</label>
+        <select id="filter-user" class="chip-select">
+            <option value="">Todos</option>
+        </select>
+        <button type="button" class="button-secondary" id="btn-filter">Filtrar</button>
+    </div>
+    <div style="overflow-x:auto;">
+        <table class="audit-table">
+            <thead><tr><th>Data/Hora</th><th>Usuário</th><th>Ação</th><th>Alvo</th><th>Detalhes</th><th>IP</th></tr></thead>
+            <tbody id="audit-body"></tbody>
+        </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+</section>

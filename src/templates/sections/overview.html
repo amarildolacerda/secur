@@ -1,0 +1,29 @@
+<section class="panel" id="overview">
+    <div id="summary-cards" class="grid"></div>
+    <div id="camera-tiles" class="grid"></div>
+    <div id="camera-offline-bar" class="hidden-panel">
+        <div>
+            <span id="camera-offline-toggle-label" class="section-title">Ver offline</span>
+            <label class="switch" title="Mostrar câmeras offline">
+                <input type="checkbox" id="show-offline-cameras" />
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+    <div id="camera-offline-section" class="hidden-panel">
+        <div id="camera-offline-list" class="grid"></div>
+    </div>
+    <div id="camera-empty-state" class="empty-state hidden-panel">
+        <div class="empty-icon">&#x1F4F7;</div>
+        <h3>Nenhuma câmera cadastrada</h3>
+        <p>Adicione uma câmera para começar a monitorar.</p>
+        <button type="button" class="button-primary" id="empty-add-camera">Adicionar câmera</button>
+    </div>
+</section>
+
+<section class="panel" id="system-status">
+    <h2>Status do sistema</h2>
+    <div id="system-status-cards" class="grid"></div>
+</section>
+
+{% include 'sections/_dialogs.html' %}

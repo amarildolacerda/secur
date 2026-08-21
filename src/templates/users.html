@@ -5,80 +5,61 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Usuários — SecurityAI</title>
     <link rel="stylesheet" href="/static/style.css">
-    <style>
-        .users-grid { display:grid; gap:12px; margin-top:1rem; }
-        .user-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem 1.2rem; display:flex; align-items:center; gap:1rem; }
-        .user-card .user-info { flex:1; }
-        .user-card .user-info h3 { margin:0; font-size:.95rem; color:var(--text); }
-        .user-card .user-info p { margin:2px 0 0; font-size:.8rem; color:var(--muted); }
-        .user-card .actions { display:flex; gap:6px; }
-        .badge-role { display:inline-block; padding:2px 8px; border-radius:10px; font-size:.7rem; font-weight:600; text-transform:uppercase; }
-        .badge-admin { background:var(--danger); color:#fff; }
-        .badge-chefe { background:var(--warn); color:#000; }
-        .badge-vigilante { background:var(--primary); color:#fff; }
-        .badge-viewer { background:var(--info); color:#fff; }
-        .form-row { display:flex; gap:1rem; align-items:end; flex-wrap:wrap; }
-        .form-row > div { flex:1; min-width:180px; }
-        .form-row label { display:block; margin-bottom:.3rem; font-size:.85rem; color:var(--muted); }
-        .form-row input, .form-row select { width:100%; padding:.55rem .7rem; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); box-sizing:border-box; }
-    </style>
 </head>
 <body>
     <div class="main" style="margin-left:0; padding:1.5rem;">
-        <h2 style="margin:0 0 1rem;">👥 Gestão de Usuários</h2>
-        <div id="create-user-form" class="card" style="margin-bottom:1.5rem;">
-            <h3 style="margin:0 0 .8rem;">Criar novo usuário</h3>
-            <div class="form-row">
+        <div class="panel">
+            <div class="panel-header">
                 <div>
-                    <label for="new-username">Usuário</label>
-                    <input type="text" id="new-username" placeholder="nome">
+                    <h2>👥 Gestão de Usuários</h2>
                 </div>
-                <div>
-                    <label for="new-password">Senha</label>
-                    <input type="password" id="new-password" placeholder="mínimo 6 caracteres">
-                </div>
-                <div>
-                    <label for="new-role">Role</label>
-                    <select id="new-role"></select>
-                </div>
-                <div>
-                    <button type="button" class="button-primary" id="btn-create-user" style="margin-top:22px;">Criar</button>
-                </div>
+                <button type="button" class="button-primary" id="btn-open-create-user">+ Criar usuário</button>
             </div>
-            <div id="create-error" class="form-message" style="color:var(--danger);display:none;"></div>
+            <div class="table-responsive">
+                <table class="users-table">
+                    <thead><tr><th>Usuário</th><th>Role</th><th>Status</th><th>Criado em</th><th>Ações</th></tr></thead>
+                    <tbody id="users-table-body"></tbody>
+                </table>
+            </div>
         </div>
-        <div id="users-list" class="users-grid"></div>
     </div>
     <script>
     const ROLES = [
         {value:'admin', label:'Admin (Síndico)', badge:'badge-admin'},
-        {value:'chefe_seguranca', label:'Chefe de Segurança', badge:'badge-chefe'},
+        {value:'chefe_segurca', label:'Chefe de Segurança', badge:'badge-chefe'},
         {value:'vigilante', label:'Vigilante', badge:'badge-vigilante'},
         {value:'viewer', label:'Morador (Viewer)', badge:'badge-viewer'},
     ];
     let currentUser = null;
+    let currentPermissions = null;
     let users = [];
+    let editingUser = null;
 
     async function init() {
         const meResp = await fetch('/api/auth/me');
         if (meResp.status === 401) { window.location.href = '/login'; return; }
         const me = await meResp.json();
         currentUser = me.user;
-        // Populate role select based on permissions
-        const roleSelect = document.getElementById('new-role');
-        const canCreate = me.permissions?.create_users;
+        currentPermissions = me.permissions || {};
+        populateRoleSelect(document.getElementById('user-role'));
+        const canCreate = currentPermissions.create_users;
+        if (!canCreate) {
+            const btn = document.getElementById('btn-open-create-user');
+            if (btn) btn.style.display = 'none';
+        }
+        await loadUsers();
+    }
+
+    function populateRoleSelect(select) {
+        select.innerHTML = '';
         ROLES.forEach(r => {
-            // Admin can create all; chefe can create vigilante+viewer
+            // Admin can create all; chefe can create all except admin
             if (currentUser.role === 'admin' || (currentUser.role === 'chefe_seguranca' && r.value !== 'admin')) {
                 const opt = document.createElement('option');
                 opt.value = r.value; opt.textContent = r.label;
-                roleSelect.appendChild(opt);
+                select.appendChild(opt);
             }
         });
-        if (!canCreate) {
-            document.getElementById('create-user-form').style.display = 'none';
-        }
-        await loadUsers();
     }
 
     async function loadUsers() {
@@ -88,25 +69,32 @@
     }
 
     function render() {
-        const container = document.getElementById('users-list');
-        container.innerHTML = users.map(u => {
+        const tbody = document.getElementById('users-table-body');
+        const canManage = currentPermissions.manage_users;
+        if (!users.length) {
+            tbody.innerHTML = '<tr class="table-empty"><td colspan="5">Nenhum usuário cadastrado.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = users.map(u => {
             const roleInfo = ROLES.find(r => r.value === u.role) || {label:u.role, badge:''};
             const isMe = u.id === currentUser.id;
             const isLastAdmin = u.role === 'admin' && users.filter(x => x.role === 'admin' && x.active).length <= 1;
-            return `<div class="user-card">
-                <div class="user-info">
-                    <h3>${u.username} ${isMe ? '<span style="font-size:.75rem;color:var(--muted);">(você)</span>' : ''}</h3>
-                    <p><span class="badge-role ${roleInfo.badge}">${roleInfo.label}</span> · ${u.active ? 'Ativo' : 'Inativo'} ·Criado em ${new Date(u.created_at).toLocaleDateString('pt-BR')}</p>
-                </div>
-                <div class="actions">
+            return `<tr>
+                <td>${u.username} ${isMe ? '<span style="font-size:.75rem;color:var(--muted);">(você)</span>' : ''}</td>
+                <td><span class="badge-role ${roleInfo.badge}">${roleInfo.label}</span></td>
+                <td><span class="badge ${u.active ? 'on' : 'off'}">${u.active ? 'Ativo' : 'Inativo'}</span></td>
+                <td>${u.created_at ? new Date(u.created_at).toLocaleDateString('pt-BR') : ''}</td>
+                <td><div class="table-actions">
                     ${u.role === 'viewer' && !isMe ? `<button class="button-mini" onclick="openCameras(${u.id}, '${u.username}')">Câmeras</button>` : ''}
+                    ${canManage ? `<button class="button-mini" onclick="openUserDialog(${u.id})">Editar</button>` : ''}
                     ${!isMe && !isLastAdmin ? `<button class="button-mini" onclick="toggleUser(${u.id}, ${u.active ? 0 : 1})">${u.active ? 'Desativar' : 'Ativar'}</button>` : ''}
-                </div>
-            </div>`;
+                </div></td>
+            </tr>`;
         }).join('');
     }
 
     async function toggleUser(id, active) {
+        if (!confirm('Tem certeza que deseja ' + (active ? 'ativar' : 'desativar') + ' este usuário?')) return;
         await fetch(`/api/users/${id}`, {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
@@ -115,25 +103,70 @@
         await loadUsers();
     }
 
-    document.getElementById('btn-create-user').addEventListener('click', async () => {
-        const errEl = document.getElementById('create-error');
-        errEl.style.display = 'none';
-        const username = document.getElementById('new-username').value.trim();
-        const password = document.getElementById('new-password').value;
-        const role = document.getElementById('new-role').value;
-        if (!username || !password) { errEl.textContent = 'Preencha todos os campos'; errEl.style.display='block'; return; }
-        if (password.length < 6) { errEl.textContent = 'Senha mínima: 6 caracteres'; errEl.style.display='block'; return; }
-        const resp = await fetch('/api/users', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username, password, role}),
-        });
-        const data = await resp.json();
-        if (!resp.ok) { errEl.textContent = data.error || 'Erro'; errEl.style.display='block'; return; }
-        document.getElementById('new-username').value = '';
-        document.getElementById('new-password').value = '';
+    // ── User create/edit dialog ──
+    function openUserDialog(userId) {
+        const errEl = document.getElementById('user-form-message');
+        if (errEl) errEl.textContent = '';
+        const pwRow = document.getElementById('user-password-row');
+        const pwInput = document.getElementById('user-password');
+        if (userId == null) {
+            editingUser = null;
+            document.getElementById('user-dialog-title').textContent = 'Adicionar usuário';
+            document.getElementById('user-form').reset();
+            pwRow.style.display = '';
+            pwInput.required = true;
+        } else {
+            const u = users.find(x => x.id === userId);
+            if (!u) return;
+            editingUser = u.id;
+            document.getElementById('user-dialog-title').textContent = 'Editar usuário';
+            document.getElementById('user-username').value = u.username;
+            document.getElementById('user-role').value = u.role;
+            pwInput.value = '';
+            pwRow.style.display = 'none';
+            pwInput.required = false;
+        }
+        document.getElementById('user-dialog').classList.remove('hidden-panel');
+    }
+
+    function closeUserDialog() {
+        document.getElementById('user-dialog').classList.add('hidden-panel');
+        editingUser = null;
+    }
+
+    document.getElementById('user-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errEl = document.getElementById('user-form-message');
+        errEl.textContent = '';
+        const username = document.getElementById('user-username').value.trim();
+        const password = document.getElementById('user-password').value;
+        const role = document.getElementById('user-role').value;
+        if (!username) { errEl.textContent = 'Preencha o usuário'; return; }
+        if (editingUser == null) {
+            if (!password) { errEl.textContent = 'Preencha a senha'; return; }
+            if (password.length < 6) { errEl.textContent = 'Senha mínima: 6 caracteres'; return; }
+            const resp = await fetch('/api/users', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password, role}),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) { errEl.textContent = data.error || 'Erro ao criar'; return; }
+        } else {
+            const resp = await fetch(`/api/users/${editingUser}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, role}),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) { errEl.textContent = data.error || 'Erro ao editar'; return; }
+        }
+        closeUserDialog();
         await loadUsers();
     });
+
+    document.getElementById('btn-open-create-user').addEventListener('click', () => openUserDialog(null));
+    document.getElementById('cancel-user-edit').addEventListener('click', closeUserDialog);
 
     // ── Camera assignment dialog ──
     let cameras = [];
@@ -154,7 +187,7 @@
         if (!cameras.length) {
             list.innerHTML = '<p style="color:var(--muted);">Nenhuma câmera cadastrada</p>';
         } else {
-            list.innerHTML = cameras.map(c => 
+            list.innerHTML = cameras.map(c =>
                 `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:.85rem;cursor:pointer;">
                     <input type="checkbox" class="cam-check" value="${c.id}" ${assignedIds.has(c.id) ? 'checked' : ''}>
                     <span>${c.name}</span>
@@ -183,6 +216,36 @@
 
     init();
     </script>
+
+    <!-- User create/edit dialog -->
+    <div id="user-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true" aria-labelledby="user-dialog-title">
+        <div class="dialog-card">
+            <div class="dialog-header">
+                <h3 id="user-dialog-title">Adicionar usuário</h3>
+                <button type="button" class="button-close" aria-label="Fechar" onclick="closeUserDialog()">×</button>
+            </div>
+            <form id="user-form">
+                <div class="form-row">
+                    <label for="user-username">Usuário</label>
+                    <input id="user-username" type="text" placeholder="nome" required>
+                </div>
+                <div class="form-row" id="user-password-row">
+                    <label for="user-password">Senha</label>
+                    <input id="user-password" type="password" placeholder="mínimo 6 caracteres">
+                    <small style="color:var(--muted-subtle);">Obrigatória na criação. Mínimo 6 caracteres.</small>
+                </div>
+                <div class="form-row">
+                    <label for="user-role">Role</label>
+                    <select id="user-role"></select>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="button-primary" id="user-form-submit">Salvar</button>
+                    <button type="button" class="button-secondary" id="cancel-user-edit">Cancelar</button>
+                </div>
+                <span class="form-message" role="alert" id="user-form-message"></span>
+            </form>
+        </div>
+    </div>
 
     <!-- Camera assignment dialog -->
     <div id="cam-dialog" class="dialog-overlay hidden-panel">

@@ -76,9 +76,17 @@ body {
 }
 
 .sidebar nav {
-  flex: 1;
-  padding-bottom: 40px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
+
+.sidebar nav::-webkit-scrollbar { width: 8px; }
+.sidebar nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); }
+.sidebar nav::-webkit-scrollbar-track { background: transparent; }
 
 .sidebar nav .nav-link {
   display: flex;
@@ -213,12 +221,8 @@ body {
   border-top: 1px solid var(--border);
   font-size: 0.7rem;
   color: var(--muted-subtle);
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 200px;
   background: var(--surface);
-  z-index: 11;
+  flex: none;
 }
 
 /* User bar in sidebar footer */
@@ -256,19 +260,54 @@ body {
 
 /* ── Users, Permissions & Audit (padrão style guide) ── */
 
-/* User cards — mesmo padrão de .card mas inline */
-.user-card-inline {
-  background: var(--surface);
+/* ── Padrão de páginas de gestão ── */
+
+/* Formulário de criação inline (toggle) */
+.inline-form {
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  margin-bottom: 16px;
 }
-.user-card-inline .user-info { flex: 1; }
-.user-card-inline .user-info h3 { margin: 0; font-size: 0.9rem; color: var(--text); }
-.user-card-inline .user-info p { margin: 2px 0 0; font-size: 0.8rem; color: var(--muted); }
+
+/* Linha horizontal de campos (forms curtos) */
+.form-row-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+.form-row-inline > div {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.form-row-inline .form-actions {
+  flex: 0 0 auto;
+}
+
+/* Linha vazia de tabela (empty state) */
+.table-empty td {
+  text-align: center;
+  color: var(--muted);
+  padding: 24px 12px;
+  font-size: 0.85rem;
+}
+
+/* Botão para ações destrutivas (futuro: excluir usuário, etc.) */
+.button-danger {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: var(--danger);
+  color: #fff;
+  transition: filter 0.12s;
+}
+.button-danger:hover { filter: brightness(1.1); }
+.button-danger.button-mini { padding: 4px 10px; font-size: 0.78rem; }
 
 /* Role badges */
 .badge-role {

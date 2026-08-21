@@ -6,54 +6,40 @@
     <title>Auditoria — SecurityAI</title>
     <link rel="stylesheet" href="/static/style.css">
     <style>
-        .filters { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; align-items:end; }
-        .filters > div { flex:1; min-width:160px; }
-        .filters label { display:block; font-size:.8rem; color:var(--muted); margin-bottom:.3rem; }
-        .filters select, .filters input { width:100%; padding:.5rem .6rem; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); box-sizing:border-box; font-size:.85rem; }
-        .audit-table { width:100%; border-collapse:collapse; font-size:.85rem; }
-        .audit-table th { text-align:left; padding:.5rem .6rem; font-size:.75rem; text-transform:uppercase; letter-spacing:.3px; color:var(--muted); background:var(--surface-2); border-bottom:1px solid var(--border); }
-        .audit-table td { padding:.5rem .6rem; border-bottom:1px solid var(--border); color:var(--text); vertical-align:top; }
-        .audit-table tr:hover { background:rgba(255,255,255,.03); }
-        .action-badge { display:inline-block; padding:1px 6px; border-radius:4px; font-size:.75rem; font-weight:500; }
-        .action-create { background:rgba(22,163,74,.12); color:var(--success); }
-        .action-delete { background:rgba(220,38,38,.12); color:var(--danger); }
-        .action-update { background:rgba(37,99,235,.12); color:var(--info); }
-        .action-login { background:rgba(94,106,210,.12); color:var(--primary); }
-        .pagination { display:flex; gap:.5rem; margin-top:1rem; justify-content:center; }
-        .pagination button { padding:.4rem .8rem; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); cursor:pointer; font-size:.85rem; }
-        .pagination button:disabled { opacity:.4; cursor:not-allowed; }
-        .pagination button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+        /* Rótulo de filtro em chips-bar: sem equivalente global */
+        .chips-bar label { font-size: 0.75rem; color: var(--muted-subtle); text-transform: uppercase; letter-spacing: 0.3px; }
+        /* Paginação: sem equivalente global (dashboard não tem paginação) */
+        .pagination { display: flex; gap: 0.5rem; margin-top: 1rem; justify-content: center; }
+        .pagination button { padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.85rem; }
+        .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .pagination button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        /* Células específicas da auditoria (nowrap/ellipsis sem equivalente global) */
+        .audit-date { white-space: nowrap; }
+        .audit-details { max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
     </style>
 </head>
 <body>
     <div class="main" style="margin-left:0; padding:1.5rem;">
         <h2 style="margin:0 0 1rem;">📋 Log de Auditoria</h2>
-        <div class="filters">
-            <div>
-                <label for="filter-action">Ação</label>
-                <select id="filter-action">
-                    <option value="">Todas</option>
-                    <option value="login">Login</option>
-                    <option value="create_user">Criar usuário</option>
-                    <option value="update_user">Editar usuário</option>
-                    <option value="create_api_key">Criar API key</option>
-                    <option value="delete_api_key">Deletar API key</option>
-                    <option value="update_permissions">Atualizar permissões</option>
-                    <option value="setup_create_admin">Setup inicial</option>
-                </select>
-            </div>
-            <div>
-                <label for="filter-user">Usuário</label>
-                <select id="filter-user">
-                    <option value="">Todos</option>
-                </select>
-            </div>
-            <div>
-                <label>&nbsp;</label>
-                <button type="button" class="button" id="btn-filter">Filtrar</button>
-            </div>
+        <div class="chips-bar">
+            <label for="filter-action">Ação</label>
+            <select id="filter-action" class="chip-select">
+                <option value="">Todas</option>
+                <option value="login">Login</option>
+                <option value="create_user">Criar usuário</option>
+                <option value="update_user">Editar usuário</option>
+                <option value="create_api_key">Criar API key</option>
+                <option value="delete_api_key">Deletar API key</option>
+                <option value="update_permissions">Atualizar permissões</option>
+                <option value="setup_create_admin">Setup inicial</option>
+            </select>
+            <label for="filter-user">Usuário</label>
+            <select id="filter-user" class="chip-select">
+                <option value="">Todos</option>
+            </select>
+            <button type="button" class="button-secondary" id="btn-filter">Filtrar</button>
         </div>
-        <div style="overflow-x:auto;">
+        <div class="table-responsive">
             <table class="audit-table">
                 <thead>
                     <tr>
@@ -121,7 +107,7 @@
     function render(entries) {
         const tbody = document.getElementById('audit-body');
         if (!entries.length) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">Nenhum registro encontrado</td></tr>';
+            tbody.innerHTML = '<tr class="table-empty"><td colspan="6">Nenhum registro encontrado</td></tr>';
             return;
         }
         tbody.innerHTML = entries.map(e => {
@@ -133,11 +119,11 @@
             const details = e.details ? (typeof e.details === 'object' ? JSON.stringify(e.details) : e.details) : '—';
             const date = new Date(e.created_at).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'});
             return `<tr>
-                <td style="white-space:nowrap;">${date}</td>
+                <td class="audit-date">${date}</td>
                 <td>${username}</td>
                 <td><span class="action-badge ${actionClass}">${actionLabel}</span></td>
                 <td>${target}</td>
-                <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;" title="${details.replace(/"/g, '&quot;')}">${details}</td>
+                <td class="audit-details" title="${details.replace(/"/g, '&quot;')}">${details}</td>
                 <td>${e.ip_address || '—'}</td>
             </tr>`;
         }).join('');

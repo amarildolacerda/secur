@@ -17,6 +17,11 @@ DATA_DIR = ROOT_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "events.db"
 
+# Versão da release. Bump a cada release (formato vX.Y.Z, ver AGENTS.md).
+# Fonte única: exibida no footer do dashboard e usada como sw_version no HA
+# (antes era hardcoded "0.2.0" e ficava defasada em relação às tags).
+APP_VERSION = "0.6.0"
+
 DEFAULT_CAMERAS = [
     {
         "name": "Camera 1",

@@ -6,6 +6,7 @@ import requests
 import paho.mqtt.publish as publish
 
 from .notifications import is_enabled
+from .config import APP_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -304,7 +305,7 @@ def mqtt_register_device(cameras):
                 "name": f"Secur - {cam_name}",
                 "model": "Secur Camera",
                 "manufacturer": "Secur",
-                "sw_version": "0.2.0",
+                "sw_version": APP_VERSION,
                 "suggested_area": zone,
             }
 

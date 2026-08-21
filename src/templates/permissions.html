@@ -6,29 +6,16 @@
     <title>Permissões — SecurityAI</title>
     <link rel="stylesheet" href="/static/style.css">
     <style>
-        .perm-table { width:100%; border-collapse:collapse; margin-top:1rem; font-size:.85rem; }
-        .perm-table th, .perm-table td { padding:.55rem .7rem; text-align:center; border-bottom:1px solid var(--border); }
-        .perm-table th:first-child, .perm-table td:first-child { text-align:left; min-width:220px; }
-        .perm-table thead th { background:var(--surface); position:sticky; top:0; z-index:1; font-weight:600; color:var(--muted); font-size:.75rem; text-transform:uppercase; letter-spacing:.3px; }
-        .perm-table tbody tr:hover { background:rgba(255,255,255,.03); }
-        .perm-table td { color:var(--text); }
-        .perm-toggle { width:36px; height:20px; appearance:none; -webkit-appearance:none; background:var(--border); border-radius:10px; position:relative; cursor:pointer; transition:.2s; outline:none; border:none; }
-        .perm-toggle:checked { background:var(--primary); }
-        .perm-toggle::before { content:''; position:absolute; width:16px; height:16px; background:#fff; border-radius:50%; top:2px; left:2px; transition:.2s; }
-        .perm-toggle:checked::before { left:18px; }
-        .perm-toggle:disabled { opacity:.4; cursor:not-allowed; }
-        .perm-category { font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding:.3rem .7rem; background:var(--bg); }
-        .perm-category td { padding:.3rem .7rem !important; }
-        #save-status { font-size:.85rem; margin-left:1rem; }
-        .save-ok { color:var(--primary); }
-        .save-err { color:var(--danger); }
+        /* Categoria de permissões: linha separadora sem equivalente global */
+        .perm-category { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 0.3rem 0.7rem; background: var(--bg); }
+        .perm-category td { padding: 0.3rem 0.7rem !important; }
     </style>
 </head>
 <body>
     <div class="main" style="margin-left:0; padding:1.5rem;">
         <h2 style="margin:0 0 .5rem;">🔐 Permissões por Role</h2>
         <p style="color:var(--muted); font-size:.85rem; margin:0 0 1rem;">Configure o que cada role pode fazer. Alterações têm efeito imediato.</p>
-        <div style="overflow-x:auto;">
+        <div class="table-responsive">
             <table class="perm-table" id="perm-table">
                 <thead>
                     <tr>
@@ -42,9 +29,9 @@
                 <tbody id="perm-body"></tbody>
             </table>
         </div>
-        <div style="margin-top:1rem; display:flex; align-items:center;">
-            <button type="button" class="button" id="btn-save">Salvar alterações</button>
-            <span id="save-status"></span>
+        <div class="form-actions">
+            <button type="button" class="button-primary" id="btn-save">Salvar alterações</button>
+            <span id="save-status" class="form-message" role="status"></span>
         </div>
     </div>
     <script>
@@ -66,7 +53,7 @@
         if (meResp.status === 401) { window.location.href = '/login'; return; }
         const me = await meResp.json();
         if (!me.permissions?.manage_permissions) {
-            document.body.innerHTML = '<div style="padding:2rem;color:var(--danger);">Sem permissão para acessar esta página.</div>';
+            document.body.innerHTML = '<div class="form-message error" style="padding:2rem;">Sem permissão para acessar esta página.</div>';
             return;
         }
         const [permsResp, defsResp] = await Promise.all([
@@ -118,13 +105,13 @@
                 body: JSON.stringify({permissions: updates}),
             });
             if (resp.ok) {
-                status.className = 'save-ok'; status.textContent = '✓ Salvo';
+                status.className = 'form-message'; status.textContent = '✓ Salvo';
             } else {
                 const data = await resp.json();
-                status.className = 'save-err'; status.textContent = data.error || 'Erro';
+                status.className = 'form-message error'; status.textContent = data.error || 'Erro';
             }
         } catch(e) {
-            status.className = 'save-err'; status.textContent = 'Erro de conexão';
+            status.className = 'form-message error'; status.textContent = 'Erro de conexão';
         }
     });
 

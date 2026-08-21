@@ -1,0 +1,59 @@
+<section class="panel" id="users-management">
+    <div class="panel-header">
+        <div>
+            <h2>Gestão de Usuários</h2>
+            <p>Crie, edite e gerencie usuários e suas permissões de acesso.</p>
+        </div>
+        <button type="button" class="button-primary" id="btn-open-create-user">+ Criar usuário</button>
+    </div>
+    <div class="table-responsive">
+        <table class="users-table">
+            <thead><tr><th>Usuário</th><th>Role</th><th>Status</th><th>Criado em</th><th>Ações</th></tr></thead>
+            <tbody id="users-table-body"></tbody>
+        </table>
+    </div>
+</section>
+
+<div id="user-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true" aria-labelledby="user-dialog-title">
+    <div class="dialog-card">
+        <div class="dialog-header">
+            <h3 id="user-dialog-title">Adicionar usuário</h3>
+            <button type="button" class="button-close" aria-label="Fechar" onclick="closeUserDialog()">×</button>
+        </div>
+        <form id="user-form">
+            <div class="form-row">
+                <label for="user-username">Usuário</label>
+                <input id="user-username" type="text" placeholder="nome" required>
+            </div>
+            <div class="form-row" id="user-password-row">
+                <label for="user-password">Senha</label>
+                <input id="user-password" type="password" placeholder="mínimo 6 caracteres">
+                <small style="color:var(--muted-subtle);">Obrigatória na criação. Mínimo 6 caracteres.</small>
+            </div>
+            <div class="form-row">
+                <label for="user-role">Role</label>
+                <select id="user-role"></select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="button-primary" id="user-form-submit">Salvar</button>
+                <button type="button" class="button-secondary" id="cancel-user-edit">Cancelar</button>
+            </div>
+            <span class="form-message" role="alert" id="user-form-message"></span>
+        </form>
+    </div>
+</div>
+
+<div id="cam-dialog" class="dialog-overlay hidden-panel">
+    <div class="dialog-card" style="max-width:450px;">
+        <div class="panel-header">
+            <h2 id="cam-dialog-title" style="font-size:.95rem;">Câmeras</h2>
+            <button type="button" class="button-close" onclick="closeCamDialog()">×</button>
+        </div>
+        <p style="font-size:.8rem;color:var(--muted);margin:0 0 .8rem;">Selecione as câmeras que este usuário pode ver. Nenhuma selecionada = acesso irrestrito.</p>
+        <div id="cam-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem;"></div>
+        <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end;">
+            <button type="button" class="button-secondary" onclick="closeCamDialog()">Cancelar</button>
+            <button type="button" class="button-primary" onclick="saveCameras()">Salvar</button>
+        </div>
+    </div>
+</div>

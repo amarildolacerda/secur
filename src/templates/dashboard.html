@@ -21,53 +21,53 @@
                 <span class="icon">&#x1F4F7;</span>
                 <span>Visão geral</span>
             </button>
-            <button type="button" class="nav-link" data-section="recent-events" id="nav-recent-events">
+            <button type="button" class="nav-link" data-section="events" id="nav-events">
                 <span class="icon">&#x1F4CB;</span>
                 <span>Eventos</span>
             </button>
-            <button type="button" class="nav-link" data-section="notifications" id="nav-notifications">
-                <span class="icon">&#x1F514;</span>
-                <span>Notificações</span>
-            </button>
-            <button type="button" class="nav-link" data-section="settings" id="nav-settings">
-                <span class="icon">&#x1F512;</span>
-                <span>Configurações</span>
+            <button type="button" class="nav-link" data-section="cameras" id="nav-cameras">
+                <span class="icon">&#x1F3A5;</span>
+                <span>Câmeras</span>
             </button>
             <div class="nav-divider"></div>
             <div class="nav-group collapsed">
-                <button type="button" class="nav-group-head"  onclick="toggleCrudNav()">
+                <button type="button" class="nav-group-head" onclick="this.closest('.nav-group').classList.toggle('collapsed')">
                     <span class="icon">&#x2699;</span>
                     <span>Manutenção</span>
                     <span class="chev">&#9662;</span>
                 </button>
                 <div class="nav-group-list" id="crud-nav-list">
-                    <button type="button" class="nav-sublink" data-section="camera-management">
-                        <span class="dot" style="background:var(--primary)"></span>
-                        <span>Câmeras</span>
-                    </button>
-                    <button type="button" class="nav-sublink" data-section="zones-management">
+                    <button type="button" class="nav-sublink" data-section="zones">
                         <span class="dot" style="background:var(--info)"></span>
                         <span>Zonas</span>
                     </button>
-                    <button type="button" class="nav-sublink" data-section="event-retention">
-                        <span class="dot" style="background:var(--warn)"></span>
-                        <span>Retenção de eventos</span>
-                    </button>
-                    <button type="button" class="nav-sublink" data-section="identities-management">
+                    <button type="button" class="nav-sublink" data-section="identities">
                         <span class="dot" style="background:var(--info)"></span>
                         <span>Identidades</span>
                     </button>
-                    <button type="button" class="nav-sublink" data-section="users-management">
+                    <button type="button" class="nav-sublink" data-section="users">
                         <span class="dot" style="background:var(--warn)"></span>
                         <span>Usuários</span>
                     </button>
-                    <button type="button" class="nav-sublink" data-section="permissions-management">
+                    <button type="button" class="nav-sublink" data-section="permissions">
                         <span class="dot" style="background:var(--danger)"></span>
                         <span>Permissões</span>
                     </button>
-                    <button type="button" class="nav-sublink" data-section="audit-log">
+                    <button type="button" class="nav-sublink" data-section="audit">
                         <span class="dot" style="background:var(--muted)"></span>
                         <span>Auditoria</span>
+                    </button>
+                    <button type="button" class="nav-sublink" data-section="notifications">
+                        <span class="dot" style="background:var(--primary)"></span>
+                        <span>Notificações</span>
+                    </button>
+                    <button type="button" class="nav-sublink" data-section="settings">
+                        <span class="dot" style="background:var(--muted-subtle)"></span>
+                        <span>Configurações</span>
+                    </button>
+                    <button type="button" class="nav-sublink" data-section="retention">
+                        <span class="dot" style="background:var(--warn)"></span>
+                        <span>Retenção</span>
                     </button>
                 </div>
             </div>
@@ -82,543 +82,20 @@
     </aside>
 
     <div class="main">
-        <div id="page">
-            <section class="panel" id="overview">
-                <div id="summary-cards" class="grid"></div>
-                <div id="camera-tiles" class="grid"></div>
-                <div id="camera-offline-bar" class="hidden-panel">
-                    <div>
-                        <span id="camera-offline-toggle-label" class="section-title">Ver offline</span>
-                        <label class="switch" title="Mostrar câmeras offline">
-                            <input type="checkbox" id="show-offline-cameras" />
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-                <div id="camera-offline-section" class="hidden-panel">
-                    <div id="camera-offline-list" class="grid"></div>
-                </div>
-                <div id="camera-empty-state" class="empty-state hidden-panel">
-                    <div class="empty-icon">&#x1F4F7;</div>
-                    <h3>Nenhuma câmera cadastrada</h3>
-                    <p>Adicione uma câmera para começar a monitorar.</p>
-                    <button type="button" class="button-primary" id="empty-add-camera">Adicionar câmera</button>
-                </div>
-            </section>
-
-            <!-- Identity dialog (copied from identities view) -->
-            <div id="identity-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
-                <div class="dialog-card">
-                    <div class="dialog-header">
-                        <h3>Cadastrar identidade</h3>
-                        <button id="identity-dialog-close" type="button" class="button-close" aria-label="Fechar">×</button>
-                    </div>
-                    <form id="identity-form">
-                        <div class="form-row">
-                            <label for="identity-name">Nome</label>
-                            <input id="identity-name" type="text" required />
-                        </div>
-                        <div class="form-row">
-                            <label for="identity-species">Espécie</label>
-                            <select id="identity-species">
-                                <!-- options populated by identities view when loaded or fallback -->
-                                <option value="person">Pessoa</option>
-                                <option value="animal">Animal</option>
-                            </select>
-                        </div>
-                        <div class="form-row">
-                            <label for="identity-images">Imagens</label>
-                                <input id="identity-images" type="file" accept="image/*" multiple />
-                                <textarea id="identity-images-b64" style="display:none;" aria-hidden="true"></textarea>
-                            <div style="margin-top:8px">
-                                    <button type="button" id="identity-capture" class="button-secondary">Capturar da câmera</button>
-                                    <span id="capture-status" style="margin-left:8px;color:var(--muted)"></span>
-                                </div>
-                            <div id="capture-preview-area" style="margin-top:10px; display:none;">
-                                <div style="display:flex;align-items:center;gap:8px;">
-                                    <img id="capture-preview" alt="Preview" style="max-width:160px;max-height:120px;border:1px solid var(--border);" />
-                                    <div>
-                                        <button type="button" id="approve-capture" class="button-primary">Aprovar</button>
-                                        <button type="button" id="recapture" class="button-secondary">Refazer</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="submit" class="button-primary">Salvar</button>
-                            <button type="button" class="button-secondary" id="identity-cancel">Cancelar</button>
-                        </div>
-                        <span id="identity-message" class="form-message"></span>
-                    </form>
-                </div>
-            </div>
-
-            <section class="panel hidden-panel" id="camera-management">
-                <div class="panel-header">
-                    <div>
-                        <h2>Gerenciamento de câmeras</h2>
-                        <p>Lista de câmeras cadastradas e ações de editar/excluir.</p>
-                    </div>
-                    <button id="add-camera-button" class="button-primary">+ Adicionar câmera</button>
-                </div>
-                <div class="table-responsive">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Nome</th>
-                                <th>Fonte</th>
-                                <th>Zona</th>
-                                <th>Classes</th>
-                                <th>Exclusões</th>
-                                <th>Máscara</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="camera-table-body"></tbody>
-                    </table>
-                </div>
-            </section>
-
-            <div id="camera-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true" aria-labelledby="camera-dialog-title">
-                <div class="dialog-card">
-                    <div class="dialog-header">
-                        <h3 id="camera-dialog-title">Adicionar câmera</h3>
-                        <button id="camera-dialog-close" type="button" class="button-close" aria-label="Fechar">×</button>
-                    </div>
-                    <form id="camera-form">
-                        <div class="form-row">
-                            <label for="camera-name">Nome</label>
-                            <input id="camera-name" type="text" placeholder="Nome da câmera" required>
-                        </div>
-                        <div class="form-row">
-                            <label for="camera-source">URL RTSP</label>
-                            <input id="camera-source" type="text" placeholder="rtsp://..." required>
-                        </div>
-                        <div class="form-row">
-                            <label for="camera-zone">Zona</label>
-                            <select id="camera-zone">
-                                <option value="">Nenhuma zona</option>
-                            </select>
-                        </div>
-                        <div class="form-row">
-                            <label for="camera-alert-classes">Classes de alerta (vazio = todas)</label>
-                            <div id="camera-alert-classes" class="checkbox-group"></div>
-                        </div>
-                        <div class="form-row">
-                            <label for="camera-exclusion-zones">Zonas de exclusão (JSON)</label>
-                            <textarea id="camera-exclusion-zones" rows="3" placeholder='[{"x":0,"y":0},{"x":100,"y":0},{"x":100,"y":100}]'></textarea>
-                        </div>
-                        <div class="form-row">
-                            <label for="camera-mask-polygons">Máscara de privacidade (JSON)</label>
-                            <textarea id="camera-mask-polygons" rows="3" placeholder='[{"x":0,"y":0},{"x":100,"y":0},{"x":100,"y":100}]'></textarea>
-                            <small style="color:var(--muted-subtle);">Regiões com blur nos thumbnails, clipes e snapshot. Mesmo formato das zonas de exclusão.</small>
-                        </div>
-                        <div class="form-row">
-                            <span class="form-label" id="camera-preview-label">Preview</span>
-                            <div id="camera-preview-box" class="preview-box">
-                                <canvas id="camera-preview-canvas" role="img" aria-label="Prévia das zonas de exclusão e máscara de privacidade sobre o frame da câmera"></canvas>
-                                <div id="camera-preview-loading" class="preview-loading" hidden>
-                                    <span class="preview-spinner"></span>
-                                </div>
-                            </div>
-                            <div class="preview-legend">
-                                <span class="preview-legend-item"><span class="preview-legend-swatch exclusion"></span>Zona de exclusão — movimento ignorado</span>
-                                <span class="preview-legend-item"><span class="preview-legend-swatch mask"></span>Máscara de privacidade — borrado</span>
-                            </div>
-                            <small id="camera-preview-note" class="preview-note" aria-live="polite"></small>
-                        </div>
-                        <div class="form-actions">
-                            <button type="submit" class="button-primary" id="camera-form-submit">Salvar</button>
-                            <button type="button" class="button-secondary" id="cancel-camera-edit">Cancelar</button>
-                        </div>
-                        <span id="camera-form-message" class="form-message"></span>
-                    </form>
-                </div>
-            </div>
-
-            <section class="panel hidden-panel" id="zones-management">
-                <div class="panel-header">
-                    <div>
-                        <h2>Gerenciamento de zonas</h2>
-                        <p>Cadastro de zonas com classificação de severidade de alerta.</p>
-                    </div>
-                    <button id="add-zone-button" class="button-primary">+ Adicionar zona</button>
-                </div>
-                <div class="table-responsive">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Nome</th>
-                                <th>Classificação</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="zone-table-body"></tbody>
-                    </table>
-                </div>
-            </section>
-
-            <div id="zone-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true" aria-labelledby="zone-dialog-title">
-                <div class="dialog-card">
-                    <div class="dialog-header">
-                        <h3 id="zone-dialog-title">Adicionar zona</h3>
-                        <button id="zone-dialog-close" type="button" class="button-close" aria-label="Fechar">×</button>
-                    </div>
-                    <form id="zone-form">
-                        <div class="form-row">
-                            <label for="zone-name">Nome</label>
-                            <input id="zone-name" type="text" placeholder="Nome da zona" required>
-                        </div>
-                        <div class="form-row">
-                            <label for="zone-classification">Classificação</label>
-                            <select id="zone-classification" required>
-                                <option value="pública">Pública</option>
-                                <option value="segurança">Segurança</option>
-                                <option value="privativa">Privativa</option>
-                            </select>
-                        </div>
-                        <div class="form-row">
-                            <label for="zone-schedule-start">Horário de alerta (início)</label>
-                            <input id="zone-schedule-start" type="time">
-                        </div>
-                        <div class="form-row">
-                            <label for="zone-schedule-end">Horário de alerta (fim)</label>
-                            <input id="zone-schedule-end" type="time">
-                        </div>
-                        <div class="form-row">
-                            <label for="zone-direction-line">Linha de direção (JSON)</label>
-                            <textarea id="zone-direction-line" rows="2" placeholder='{"axis":"vertical","position":0.5}'></textarea>
-                        </div>
-                        <div class="form-actions">
-                            <button type="submit" class="button-primary" id="zone-form-submit">Salvar</button>
-                            <button type="button" class="button-secondary" id="cancel-zone-edit">Cancelar</button>
-                        </div>
-                        <span id="zone-form-message" class="form-message"></span>
-                    </form>
-                </div>
-            </div>
-
-            <section class="panel hidden-panel" id="recent-events">
-                <div class="panel-header">
-                    <div>
-                        <h2>Eventos recentes</h2>
-                        <p>Últimos 100 eventos carregados.</p>
-                    </div>
-                </div>
-                <div class="chips-bar" id="event-filters">
-                    <select id="filter-camera" class="chip-select"><option value="">Todas as câmeras</option></select>
-                    <select id="filter-zone" class="chip-select"><option value="">Todas as zonas</option></select>
-                    <select id="filter-type" class="chip-select"><option value="">Todos os tipos</option></select>
-                    <select id="filter-level" class="chip-select">
-                        <option value="">Todos os níveis</option>
-                        <option value="0">N0 (captura)</option>
-                        <option value="1">N1 (triagem)</option>
-                        <option value="2">N2 (detecção)</option>
-                        <option value="3">N3 (análise)</option>
-                        <option value="4">N4 (providência)</option>
-                    </select>
-                    <select id="filter-since" class="chip-select">
-                        <option value="">Todo o período</option>
-                        <option value="1" selected>Última hora</option>
-                        <option value="24">Últimas 24h</option>
-                        <option value="168">Últimos 7 dias</option>
-                    </select>
-                    <label class="checkbox-inline" title="Mostrar apenas eventos de tipos classificados como 'alerta' na Configuração de notificações">
-                        <input type="checkbox" id="filter-alerts" /> Só alertas
-                    </label>
-                    <label class="checkbox-inline" title="Mostrar apenas eventos retidos (marcados com 'reter', protegidos do prune)">
-                        <input type="checkbox" id="filter-retained" /> Só retidos
-                    </label>
-                    <button type="button" class="button-secondary button-mini" id="filter-clear">Limpar</button>
-                </div>
-                <div id="events-grid" class="grid"></div>
-                <div id="events-empty" class="empty-state hidden-panel">
-                    <div class="empty-icon">&#x1F50D;</div>
-                    <h3>Nenhum evento encontrado</h3>
-                    <p id="events-empty-text">Ajuste os filtros para ver resultados.</p>
-                    <button type="button" class="button-primary" id="events-clear-filters">Limpar filtros</button>
-                </div>
-            </section>
-
-            <section class="panel hidden-panel" id="notifications">
-                <div class="panel-header">
-                    <div>
-                        <h2>Configuração de notificações</h2>
-                        <p>Escolha quais tipos de evento são notificados em cada canal.</p>
-                    </div>
-                </div>
-                <div class="table-responsive">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Evento</th>
-                                <th>Categoria</th>
-                                <th id="notif-channel-headers"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="notifications-table-body"></tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section class="panel hidden-panel" id="settings">
-                <h2>Configurações</h2>
-                <div class="card">
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-                        <div>
-                            <strong>Modo privacidade</strong>
-                            <p style="color:var(--muted-subtle);font-size:0.85rem;margin:4px 0 0;">
-                                Desliga o reconhecimento de identidade (faces/ReID). Movimento e
-                                detecção de objetos continuam ativos. Tudo permanece 100% local.
-                            </p>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" id="privacy-mode-toggle" />
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-                <div class="card">
-                    <button type="button" class="button-secondary button-mini" id="settings-config-toggle" aria-expanded="false" aria-controls="settings-config">
-                        <span class="config-toggle-label"><span class="config-toggle-icon">&#x2699;</span> Configurações em uso</span>
-                        <span class="config-toggle-chevron">&#9662;</span>
-                    </button>
-                    <div id="settings-config" class="hidden-panel" style="margin-top:12px;"></div>
-                </div>
-            </section>
-
-            <section class="panel hidden-panel" id="identities-management">
-                <div class="panel-header">
-                    <div>
-                        <h2>Identidades conhecidas</h2>
-                        <p>Cadastre e gerencie identidades conhecidas.</p>
-                    </div>
-                    <button id="add-identity-button" class="button-primary">+ Cadastrar identidade</button>
-                </div>
-                <div class="table-responsive">
-                    <table>
-                        <thead>
-                            <tr><th>ID</th><th>Nome</th><th>Espécie</th><th>Criado</th><th>Ações</th></tr>
-                        </thead>
-                        <tbody id="identities-table-body"></tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section class="panel hidden-panel" id="event-retention">
-                <div class="panel-header">
-                    <div>
-                        <h2>Retenção de eventos</h2>
-                        <p>Defina por quanto tempo cada tipo de evento é mantido antes da limpeza automática.</p>
-                    </div>
-                </div>
-                <p id="retention-status" class="retention-status"></p>
-                <div class="table-responsive">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Tipo de evento</th>
-                                <th class="retention-days-col">Retenção (dias)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="retention-table-body"></tbody>
-                    </table>
-                </div>
-                <div class="retention-actions">
-                    <button type="button" class="button-primary" id="retention-apply">Aplicar</button>
-                    <button type="button" class="button-secondary" id="retention-restore" title="Reverter os valores para a configuração atual">Restaurar</button>
-                    <span id="retention-message" class="form-message" role="status"></span>
-                </div>
-            </section>
-
-            <!-- Users Management Section -->
-            <section class="panel hidden-panel" id="users-management">
-                <div class="panel-header">
-                    <div>
-                        <h2>Gestão de Usuários</h2>
-                        <p>Crie, edite e gerencie usuários e suas permissões de acesso.</p>
-                    </div>
-                    <button id="btn-create-user" class="button-primary">+ Criar usuário</button>
-                </div>
-                <div id="create-user-form" style="display:none;margin-bottom:1rem;">
-                    <div class="form-row">
-                        <div><label>Usuário</label><input type="text" id="new-username" placeholder="nome" autocomplete="off"></div>
-                        <div><label>Senha</label><input type="password" id="new-password" placeholder="mín. 6 caracteres" autocomplete="new-password"></div>
-                        <div><label>Role</label><select id="new-role" autocomplete="off"></select></div>
-                        <div style="display:flex;gap:6px;align-items:end;">
-                            <button type="button" class="button-primary" id="btn-confirm-create">Criar</button>
-                            <button type="button" class="button-secondary" onclick="document.getElementById('create-user-form').style.display='none'">Cancelar</button>
-                        </div>
-                    </div>
-                    <div id="create-user-error" style="color:var(--danger);font-size:.85rem;margin-top:4px;"></div>
-                </div>
-                <div id="users-grid" style="display:flex;flex-direction:column;gap:8px;"></div>
-            </section>
-
-            <!-- Permissions Management Section -->
-            <section class="panel hidden-panel" id="permissions-management">
-                <div class="panel-header">
-                    <div>
-                        <h2>Permissões por Role</h2>
-                        <p>Configure o que cada role pode fazer. Alterações têm efeito imediato.</p>
-                    </div>
-                    <button class="button-primary" id="btn-save-perms">Salvar</button>
-                </div>
-                <div style="overflow-x:auto;">
-                    <table class="perm-table" id="perm-table">
-                        <thead>
-                            <tr><th>Permissão</th><th>Admin</th><th>Chefe Seg.</th><th>Vigilante</th><th>Morador</th></tr>
-                        </thead>
-                        <tbody id="perm-body"></tbody>
-                    </table>
-                </div>
-                <div id="perm-status" style="font-size:.85rem;margin-top:.5rem;"></div>
-            </section>
-
-            <!-- Audit Log Section -->
-            <section class="panel hidden-panel" id="audit-log">
-                <div class="panel-header">
-                    <div>
-                        <h2>Log de Auditoria</h2>
-                        <p>Registro de ações realizadas no sistema.</p>
-                    </div>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <select id="audit-action-filter" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:.8rem;"><option value="">Todas</option><option value="login">Login</option><option value="create_user">Criar usuário</option><option value="update_user">Editar usuário</option><option value="create_api_key">Criar API key</option><option value="delete_api_key">Deletar API key</option><option value="update_permissions">Atualizar permissões</option></select>
-                        <button class="button-mini" onclick="loadAuditLog()">Filtrar</button>
-                    </div>
-                </div>
-                <div style="overflow-x:auto;">
-                    <table class="audit-table">
-                        <thead><tr><th>Data</th><th>Usuário</th><th>Ação</th><th>Alvo</th><th>IP</th></tr></thead>
-                        <tbody id="audit-body"></tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section class="panel hidden-panel" id="system-status">
-                <h2>Status do sistema</h2>
-                <div id="system-status-cards" class="grid"></div>
-            </section>
-        </div>
-    </div>
-
-    <div class="app-footer" id="app-footer">
-        <div class="footer-left">
-            <span id="status-health">Status: carregando...</span>
+        <div id="main-page"><!-- seção lazy-load injetada aqui --></div>
+        <footer id="app-footer" class="app-footer">
+            <span id="status-health" class="status-bad">Status: …</span>
             <span id="status-cameras">Câmeras: —</span>
             <span id="status-workers">Workers: —</span>
-            <span class="local-badge" title="Todo o processamento acontece no dispositivo. Nada sai dele, exceto pelos canais que você configurar (Telegram, MQTT, Home Assistant).">100% local</span>
-        </div>
-        <div class="footer-right">
+            <span id="status-recent">Eventos recentes: —</span>
             <span id="status-uptime">Uptime: —</span>
-            <span id="status-recent">Eventos: —</span>
-        </div>
-    </div>
-
-    <!-- Live Player Modal -->
-    <div id="live-player-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
-        <div class="dialog-card live-player-card">
-            <div class="dialog-header">
-                <h3 id="live-player-title">Ao vivo</h3>
-                <button type="button" class="button-close" aria-label="Fechar" onclick="closeLivePlayer()">×</button>
-            </div>
-            <div id="live-video-container" class="live-video-container">
-                <video id="live-video" controls autoplay muted class="live-video"></video>
-            </div>
-            <div id="live-snapshot-container" class="live-snapshot-container" style="display:none;">
-                <img id="live-snapshot" class="live-snapshot" alt="Ao vivo" />
-                <p class="live-label">Ao vivo (atualização a cada 500ms)</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Thumbnail History Modal -->
-    <div id="thumb-history-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
-        <div class="dialog-card thumb-history-card">
-            <div class="dialog-header">
-                <h3 id="thumb-history-title">Histórico</h3>
-                <button type="button" class="button-close" aria-label="Fechar" onclick="closeThumbHistory()">×</button>
-            </div>
-            <div id="thumb-history-grid" class="thumb-history-grid"></div>
-            <p id="thumb-history-empty" class="thumb-history-empty">Nenhum thumbnail capturado ainda.</p>
-        </div>
-    </div>
-
-    <!-- Clip History Modal -->
-    <div id="clip-history-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true" aria-labelledby="clip-history-title">
-        <div class="dialog-card">
-            <div class="dialog-header">
-                <h3 id="clip-history-title">Clipes</h3>
-                <button id="clip-history-close" type="button" class="button-close" aria-label="Fechar">×</button>
-            </div>
-            <div id="clip-history-grid" style="display:flex;flex-direction:column;gap:12px;max-height:60vh;overflow-y:auto;"></div>
-            <div id="clip-history-empty" style="display:none;color:var(--muted-subtle);padding:12px 0;">Nenhum clipe gravado.</div>
-        </div>
-    </div>
-
-    <!-- Thumbnail Detail Modal (com zoom/pan) -->
-    <div id="thumb-detail-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
-        <div class="dialog-card thumb-detail-card">
-            <div class="dialog-header">
-                <h3 id="thumb-detail-title">Detalhe</h3>
-                <div class="thumb-detail-controls">
-                    <button type="button" class="button-mini" id="thumb-detail-zoom-out" title="Diminuir zoom (-)">−</button>
-                    <span id="thumb-detail-zoom-label">100%</span>
-                    <button type="button" class="button-mini" id="thumb-detail-zoom-in" title="Aumentar zoom (+)">+</button>
-                    <button type="button" class="button-mini" id="thumb-detail-zoom-reset" title="Restaurar zoom (0)">1:1</button>
-                </div>
-                <button type="button" class="button-close" aria-label="Fechar" onclick="closeThumbDetail()">×</button>
-            </div>
-            <div id="thumb-detail-viewport" class="thumb-detail-viewport">
-                <img id="thumb-detail-img" src="" alt="Thumbnail ampliado" draggable="false" />
-            </div>
-            <p class="thumb-detail-hint">Scroll para zoom · arrastar para mover · duplo-clique 1x↔2x · <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> reset · <kbd>Esc</kbd> fechar</p>
-            <div id="thumb-detail-meta" class="thumb-detail-meta"></div>
-        </div>
-    </div>
-
-    <!-- Camera assignment dialog -->
-    <div id="cam-dialog" class="dialog-overlay hidden-panel">
-        <div class="dialog-card" style="max-width:420px;">
-            <div class="panel-header">
-                <h3 id="cam-dialog-title" style="font-size:.9rem;margin:0;">Câmeras</h3>
-                <button type="button" class="button-close" onclick="_closeCamDialog()">×</button>
-            </div>
-            <p style="font-size:.8rem;color:var(--muted);margin:0 0 .5rem;">Nenhuma selecionada = acesso irrestrito.</p>
-            <div id="cam-dialog-list" style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem;"></div>
-            <div style="margin-top:.8rem;display:flex;gap:.5rem;justify-content:flex-end;">
-                <button type="button" class="button-secondary" onclick="_closeCamDialog()">Cancelar</button>
-                <button type="button" class="button-primary" onclick="_saveCamDialog()">Salvar</button>
-            </div>
-        </div>
+            <span id="status-version">Versão: —</span>
+        </footer>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <script src="/static/camera_fault.js"></script>
-    <script src="/static/dashboard.js"></script>
-    <script>
-    // ── Auth: load current user and wire up logout ──
-    (async function() {
-      try {
-        const resp = await fetch('/api/auth/me');
-        if (resp.status === 401) { window.location.href = '/login'; return; }
-        const data = await resp.json();
-        if (data.type === 'session' && data.user) {
-          const bar = document.getElementById('user-bar');
-          const nameEl = document.getElementById('user-bar-name');
-          if (bar && nameEl) {
-            nameEl.textContent = data.user.username + ' (' + data.user.role + ')';
-            bar.style.display = 'flex';
-          }
-        }
-      } catch(e) { /* silent */ }
-    })();
-    document.getElementById('logout-btn').addEventListener('click', async function() {
-      await fetch('/api/auth/logout', {method:'POST'});
-      window.location.href = '/login';
-    });
-    </script>
+    <script type="module" src="/static/shared.js"></script>
+    <script type="module" src="/static/core.js"></script>
 </body>
 </html>
