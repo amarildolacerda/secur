@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Usuários — SecurityAI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="main" style="margin-left:0; padding:1.5rem;">
+        <div class="panel">
+            <div class="panel-header">
+                <div>
+                    <h2>👥 Gestão de Usuários</h2>
+                </div>
+                <button type="button" class="button-primary" id="btn-open-create-user">+ Criar usuário</button>
+            </div>
+            <div class="table-responsive">
+                <table class="users-table">
+                    <thead><tr><th>Usuário</th><th>Role</th><th>Status</th><th>Criado em</th><th>Ações</th></tr></thead>
+                    <tbody id="users-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script>
+    const ROLES = [
+        {value:'admin', label:'Admin (Síndico)', badge:'badge-admin'},
+        {value:'chefe_segurca', label:'Chefe de Segurança', badge:'badge-chefe'},
+        {value:'vigilante', label:'Vigilante', badge:'badge-vigilante'},
+        {value:'viewer', label:'Morador (Viewer)', badge:'badge-viewer'},
+    ];
+    let currentUser = null;
+    let currentPermissions = null;
+    let users = [];
+    let editingUser = null;
+
+    async function init() {
+        const meResp = await fetch('/api/auth/me');
+        if (meResp.status === 401) { window.location.href = '/login'; return; }
+        const me = await meResp.json();
+        currentUser = me.user;
+        currentPermissions = me.permissions || {};
+        populateRoleSelect(document.getElementById('user-role'));
+        const canCreate = currentPermissions.create_users;
+        if (!canCreate) {
+            const btn = document.getElementById('btn-open-create-user');
+            if (btn) btn.style.display = 'none';
+        }
+        await loadUsers();
+    }
+
+    function populateRoleSelect(select) {
+        select.innerHTML = '';
+        ROLES.forEach(r => {
+            // Admin can create all; chefe can create all except admin
+            if (currentUser.role === 'admin' || (currentUser.role === 'chefe_seguranca' && r.value !== 'admin')) {
+                const opt = document.createElement('option');
+                opt.value = r.value; opt.textContent = r.label;
+                select.appendChild(opt);
+            }
+        });
+    }
+
+    async function loadUsers() {
+        const resp = await fetch('/api/users');
+        users = await resp.json();
+        render();
+    }
+
+    function render() {
+        const tbody = document.getElementById('users-table-body');
+        const canManage = currentPermissions.manage_users;
+        if (!users.length) {
+            tbody.innerHTML = '<tr class="table-empty"><td colspan="5">Nenhum usuário cadastrado.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = users.map(u => {
+            const roleInfo = ROLES.find(r => r.value === u.role) || {label:u.role, badge:''};
+            const isMe = u.id === currentUser.id;
+            const isLastAdmin = u.role === 'admin' && users.filter(x => x.role === 'admin' && x.active).length <= 1;
+            return `<tr>
+                <td>${u.username} ${isMe ? '<span style="font-size:.75rem;color:var(--muted);">(você)</span>' : ''}</td>
+                <td><span class="badge-role ${roleInfo.badge}">${roleInfo.label}</span></td>
+                <td><span class="badge ${u.active ? 'on' : 'off'}">${u.active ? 'Ativo' : 'Inativo'}</span></td>
+                <td>${u.created_at ? new Date(u.created_at).toLocaleDateString('pt-BR') : ''}</td>
+                <td><div class="table-actions">
+                    ${u.role === 'viewer' && !isMe ? `<button class="button-mini" onclick="openCameras(${u.id}, '${u.username}')">Câmeras</button>` : ''}
+                    ${canManage ? `<button class="button-mini" onclick="openUserDialog(${u.id})">Editar</button>` : ''}
+                    ${!isMe && !isLastAdmin ? `<button class="button-mini" onclick="toggleUser(${u.id}, ${u.active ? 0 : 1})">${u.active ? 'Desativar' : 'Ativar'}</button>` : ''}
+                </div></td>
+            </tr>`;
+        }).join('');
+    }
+
+    async function toggleUser(id, active) {
+        if (!confirm('Tem certeza que deseja ' + (active ? 'ativar' : 'desativar') + ' este usuário?')) return;
+        await fetch(`/api/users/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({active}),
+        });
+        await loadUsers();
+    }
+
+    // ── User create/edit dialog ──
+    function openUserDialog(userId) {
+        const errEl = document.getElementById('user-form-message');
+        if (errEl) errEl.textContent = '';
+        const pwRow = document.getElementById('user-password-row');
+        const pwInput = document.getElementById('user-password');
+        if (userId == null) {
+            editingUser = null;
+            document.getElementById('user-dialog-title').textContent = 'Adicionar usuário';
+            document.getElementById('user-form').reset();
+            pwRow.style.display = '';
+            pwInput.required = true;
+        } else {
+            const u = users.find(x => x.id === userId);
+            if (!u) return;
+            editingUser = u.id;
+            document.getElementById('user-dialog-title').textContent = 'Editar usuário';
+            document.getElementById('user-username').value = u.username;
+            document.getElementById('user-role').value = u.role;
+            pwInput.value = '';
+            pwRow.style.display = 'none';
+            pwInput.required = false;
+        }
+        document.getElementById('user-dialog').classList.remove('hidden-panel');
+    }
+
+    function closeUserDialog() {
+        document.getElementById('user-dialog').classList.add('hidden-panel');
+        editingUser = null;
+    }
+
+    document.getElementById('user-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errEl = document.getElementById('user-form-message');
+        errEl.textContent = '';
+        const username = document.getElementById('user-username').value.trim();
+        const password = document.getElementById('user-password').value;
+        const role = document.getElementById('user-role').value;
+        if (!username) { errEl.textContent = 'Preencha o usuário'; return; }
+        if (editingUser == null) {
+            if (!password) { errEl.textContent = 'Preencha a senha'; return; }
+            if (password.length < 6) { errEl.textContent = 'Senha mínima: 6 caracteres'; return; }
+            const resp = await fetch('/api/users', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password, role}),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) { errEl.textContent = data.error || 'Erro ao criar'; return; }
+        } else {
+            const resp = await fetch(`/api/users/${editingUser}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, role}),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) { errEl.textContent = data.error || 'Erro ao editar'; return; }
+        }
+        closeUserDialog();
+        await loadUsers();
+    });
+
+    document.getElementById('btn-open-create-user').addEventListener('click', () => openUserDialog(null));
+    document.getElementById('cancel-user-edit').addEventListener('click', closeUserDialog);
+
+    // ── Camera assignment dialog ──
+    let cameras = [];
+    let editingUserId = null;
+
+    async function openCameras(userId, username) {
+        editingUserId = userId;
+        document.getElementById('cam-dialog-title').textContent = `Câmeras de ${username}`;
+        // Load all cameras
+        const camResp = await fetch('/cameras');
+        cameras = await camResp.json();
+        // Load current assignments
+        const assignResp = await fetch(`/api/users/${userId}/cameras`);
+        const assigned = await assignResp.json();
+        const assignedIds = new Set(assigned.camera_ids || []);
+        // Render checkboxes
+        const list = document.getElementById('cam-list');
+        if (!cameras.length) {
+            list.innerHTML = '<p style="color:var(--muted);">Nenhuma câmera cadastrada</p>';
+        } else {
+            list.innerHTML = cameras.map(c =>
+                `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:.85rem;cursor:pointer;">
+                    <input type="checkbox" class="cam-check" value="${c.id}" ${assignedIds.has(c.id) ? 'checked' : ''}>
+                    <span>${c.name}</span>
+                    <span style="color:var(--muted);font-size:.75rem;">${c.zone || ''}</span>
+                </label>`
+            ).join('');
+        }
+        document.getElementById('cam-dialog').classList.remove('hidden-panel');
+    }
+
+    function closeCamDialog() {
+        document.getElementById('cam-dialog').classList.add('hidden-panel');
+        editingUserId = null;
+    }
+
+    async function saveCameras() {
+        if (!editingUserId) return;
+        const checked = [...document.querySelectorAll('.cam-check:checked')].map(cb => parseInt(cb.value));
+        await fetch(`/api/users/${editingUserId}/cameras`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({camera_ids: checked}),
+        });
+        closeCamDialog();
+    }
+
+    init();
+    </script>
+
+    <!-- User create/edit dialog -->
+    <div id="user-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true" aria-labelledby="user-dialog-title">
+        <div class="dialog-card">
+            <div class="dialog-header">
+                <h3 id="user-dialog-title">Adicionar usuário</h3>
+                <button type="button" class="button-close" aria-label="Fechar" onclick="closeUserDialog()">×</button>
+            </div>
+            <form id="user-form">
+                <div class="form-row">
+                    <label for="user-username">Usuário</label>
+                    <input id="user-username" type="text" placeholder="nome" required>
+                </div>
+                <div class="form-row" id="user-password-row">
+                    <label for="user-password">Senha</label>
+                    <input id="user-password" type="password" placeholder="mínimo 6 caracteres">
+                    <small style="color:var(--muted-subtle);">Obrigatória na criação. Mínimo 6 caracteres.</small>
+                </div>
+                <div class="form-row">
+                    <label for="user-role">Role</label>
+                    <select id="user-role"></select>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="button-primary" id="user-form-submit">Salvar</button>
+                    <button type="button" class="button-secondary" id="cancel-user-edit">Cancelar</button>
+                </div>
+                <span class="form-message" role="alert" id="user-form-message"></span>
+            </form>
+        </div>
+    </div>
+
+    <!-- Camera assignment dialog -->
+    <div id="cam-dialog" class="dialog-overlay hidden-panel">
+        <div class="dialog-card" style="max-width:450px;">
+            <div class="panel-header">
+                <h2 id="cam-dialog-title" style="font-size:.95rem;">Câmeras</h2>
+                <button type="button" class="button-close" onclick="closeCamDialog()">×</button>
+            </div>
+            <p style="font-size:.8rem;color:var(--muted);margin:0 0 .8rem;">Selecione as câmeras que este usuário pode ver. Nenhuma selecionada = acesso irrestrito.</p>
+            <div id="cam-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem;"></div>
+            <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end;">
+                <button type="button" class="button-secondary" onclick="closeCamDialog()">Cancelar</button>
+                <button type="button" class="button-primary" onclick="saveCameras()">Salvar</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

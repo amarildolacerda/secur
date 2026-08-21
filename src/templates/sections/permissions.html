@@ -1,0 +1,23 @@
+<style>
+    .perm-category { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 0.3rem 0.7rem; background: var(--bg); }
+    .perm-category td { padding: 0.3rem 0.7rem !important; }
+</style>
+
+<section class="panel" id="permissions-management">
+    <div class="panel-header">
+        <div>
+            <h2>Permissões por Role</h2>
+            <p>Configure o que cada role pode fazer. Alterações têm efeito imediato.</p>
+        </div>
+        <button type="button" class="button-primary" id="btn-save">Salvar alterações</button>
+    </div>
+    <div style="overflow-x:auto;">
+        <table class="perm-table" id="perm-table">
+            <thead>
+                <tr><th>Permissão</th><th>Admin</th><th>Chefe Seg.</th><th>Vigilante</th><th>Morador</th></tr>
+            </thead>
+            <tbody id="perm-body"></tbody>
+        </table>
+    </div>
+    <div id="save-status" style="font-size:.85rem;margin-top:.5rem;"></div>
+</section>

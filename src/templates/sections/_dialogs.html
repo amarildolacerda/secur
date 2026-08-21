@@ -1,0 +1,61 @@
+    <!-- Live Player Modal -->
+    <div id="live-player-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
+        <div class="dialog-card live-player-card">
+            <div class="dialog-header">
+                <h3 id="live-player-title">Ao vivo</h3>
+                <button type="button" class="button-close" aria-label="Fechar" onclick="closeLivePlayer()">×</button>
+            </div>
+            <div id="live-video-container" class="live-video-container">
+                <video id="live-video" controls autoplay muted class="live-video"></video>
+            </div>
+            <div id="live-snapshot-container" class="live-snapshot-container" style="display:none;">
+                <img id="live-snapshot" class="live-snapshot" alt="Ao vivo" />
+                <p class="live-label">Ao vivo (atualização a cada 500ms)</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Thumbnail History Modal -->
+    <div id="thumb-history-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
+        <div class="dialog-card thumb-history-card">
+            <div class="dialog-header">
+                <h3 id="thumb-history-title">Histórico</h3>
+                <button type="button" class="button-close" aria-label="Fechar" onclick="closeThumbHistory()">×</button>
+            </div>
+            <div id="thumb-history-grid" class="thumb-history-grid"></div>
+            <p id="thumb-history-empty" class="thumb-history-empty">Nenhum thumbnail capturado ainda.</p>
+        </div>
+    </div>
+
+    <!-- Clip History Modal -->
+    <div id="clip-history-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true" aria-labelledby="clip-history-title">
+        <div class="dialog-card">
+            <div class="dialog-header">
+                <h3 id="clip-history-title">Clipes</h3>
+                <button id="clip-history-close" type="button" class="button-close" aria-label="Fechar">×</button>
+            </div>
+            <div id="clip-history-grid" style="display:flex;flex-direction:column;gap:12px;max-height:60vh;overflow-y:auto;"></div>
+            <div id="clip-history-empty" style="display:none;color:var(--muted-subtle);padding:12px 0;">Nenhum clipe gravado.</div>
+        </div>
+    </div>
+
+    <!-- Thumbnail Detail Modal (com zoom/pan) -->
+    <div id="thumb-detail-overlay" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
+        <div class="dialog-card thumb-detail-card">
+            <div class="dialog-header">
+                <h3 id="thumb-detail-title">Detalhe</h3>
+                <div class="thumb-detail-controls">
+                    <button type="button" class="button-mini" id="thumb-detail-zoom-out" title="Diminuir zoom (-)">−</button>
+                    <span id="thumb-detail-zoom-label">100%</span>
+                    <button type="button" class="button-mini" id="thumb-detail-zoom-in" title="Aumentar zoom (+)">+</button>
+                    <button type="button" class="button-mini" id="thumb-detail-zoom-reset" title="Restaurar zoom (0)">1:1</button>
+                </div>
+                <button type="button" class="button-close" aria-label="Fechar" onclick="closeThumbDetail()">×</button>
+            </div>
+            <div id="thumb-detail-viewport" class="thumb-detail-viewport">
+                <img id="thumb-detail-img" src="" alt="Thumbnail ampliado" draggable="false" />
+            </div>
+            <p class="thumb-detail-hint">Scroll para zoom · arrastar para mover · duplo-clique 1x↔2x · <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>0</kbd> reset · <kbd>Esc</kbd> fechar</p>
+            <div id="thumb-detail-meta" class="thumb-detail-meta"></div>
+        </div>
+    </div>

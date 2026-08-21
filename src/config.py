@@ -17,6 +17,11 @@ DATA_DIR = ROOT_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "events.db"
 
+# Versão da release. Bump a cada release (formato vX.Y.Z, ver AGENTS.md).
+# Fonte única: exibida no footer do dashboard e usada como sw_version no HA
+# (antes era hardcoded "0.2.0" e ficava defasada em relação às tags).
+APP_VERSION = "0.6.0"
+
 DEFAULT_CAMERAS = [
     {
         "name": "Camera 1",
@@ -129,3 +134,8 @@ LOITERING_MAX_DISTANCE = float(os.getenv("LOITERING_MAX_DISTANCE", "80"))
 LOITERING_LABELS = ["person", "car", "truck", "bus", "motorcycle", "bicycle"]
 
 FALL_ASPECT_RATIO = float(os.getenv("FALL_ASPECT_RATIO", "1.2"))
+
+# Auth settings
+SESSION_TTL_HOURS = int(os.getenv("SESSION_TTL_HOURS", "24"))
+MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "5"))
+LOCKOUT_MINUTES = int(os.getenv("LOCKOUT_MINUTES", "5"))

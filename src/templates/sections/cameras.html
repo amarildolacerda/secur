@@ -1,0 +1,83 @@
+<section class="panel" id="camera-management">
+    <div class="panel-header">
+        <div>
+            <h2>Gerenciamento de câmeras</h2>
+            <p>Lista de câmeras cadastradas e ações de editar/excluir.</p>
+        </div>
+        <button id="add-camera-button" class="button-primary">+ Adicionar câmera</button>
+    </div>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nome</th>
+                    <th>Fonte</th>
+                    <th>Zona</th>
+                    <th>Classes</th>
+                    <th>Exclusões</th>
+                    <th>Máscara</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody id="camera-table-body"></tbody>
+        </table>
+    </div>
+</section>
+
+<div id="camera-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true" aria-labelledby="camera-dialog-title">
+    <div class="dialog-card">
+        <div class="dialog-header">
+            <h3 id="camera-dialog-title">Adicionar câmera</h3>
+            <button id="camera-dialog-close" type="button" class="button-close" aria-label="Fechar">×</button>
+        </div>
+        <form id="camera-form">
+            <div class="form-row">
+                <label for="camera-name">Nome</label>
+                <input id="camera-name" type="text" placeholder="Nome da câmera" required>
+            </div>
+            <div class="form-row">
+                <label for="camera-source">URL RTSP</label>
+                <input id="camera-source" type="text" placeholder="rtsp://..." required>
+            </div>
+            <div class="form-row">
+                <label for="camera-zone">Zona</label>
+                <select id="camera-zone">
+                    <option value="">Nenhuma zona</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label for="camera-alert-classes">Classes de alerta (vazio = todas)</label>
+                <div id="camera-alert-classes" class="checkbox-group"></div>
+            </div>
+            <div class="form-row">
+                <label for="camera-exclusion-zones">Zonas de exclusão (JSON)</label>
+                <textarea id="camera-exclusion-zones" rows="3" placeholder='[{"x":0,"y":0},{"x":100,"y":0},{"x":100,"y":100}]'></textarea>
+            </div>
+            <div class="form-row">
+                <label for="camera-mask-polygons">Máscara de privacidade (JSON)</label>
+                <textarea id="camera-mask-polygons" rows="3" placeholder='[{"x":0,"y":0},{"x":100,"y":0},{"x":100,"y":100}]'></textarea>
+                <small style="color:var(--muted-subtle);">Regiões com blur nos thumbnails, clipes e snapshot. Mesmo formato das zonas de exclusão.</small>
+            </div>
+            <div class="form-row">
+                <span class="form-label" id="camera-preview-label">Preview</span>
+                <div id="camera-preview-box" class="preview-box">
+                    <canvas id="camera-preview-canvas" role="img" aria-label="Prévia das zonas de exclusão e máscara de privacidade sobre o frame da câmera"></canvas>
+                    <div id="camera-preview-loading" class="preview-loading" hidden>
+                        <span class="preview-spinner"></span>
+                    </div>
+                </div>
+                <div class="preview-legend">
+                    <span class="preview-legend-item"><span class="preview-legend-swatch exclusion"></span>Zona de exclusão — movimento ignorado</span>
+                    <span class="preview-legend-item"><span class="preview-legend-swatch mask"></span>Máscara de privacidade — borrado</span>
+                </div>
+                <small id="camera-preview-note" class="preview-note" aria-live="polite"></small>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="button-primary" id="camera-form-submit">Salvar</button>
+                <button type="button" class="button-secondary" id="cancel-camera-edit">Cancelar</button>
+            </div>
+            <span id="camera-form-message" class="form-message"></span>
+        </form>
+    </div>
+</div>

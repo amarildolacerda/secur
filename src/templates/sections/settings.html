@@ -1,0 +1,25 @@
+<section class="panel" id="settings">
+    <h2>Configurações</h2>
+    <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <div>
+                <strong>Modo privacidade</strong>
+                <p style="color:var(--muted-subtle);font-size:0.85rem;margin:4px 0 0;">
+                    Desliga o reconhecimento de identidade (faces/ReID). Movimento e
+                    detecção de objetos continuam ativos. Tudo permanece 100% local.
+                </p>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="privacy-mode-toggle" />
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+    <div class="card">
+        <button type="button" class="button-secondary button-mini" id="settings-config-toggle" aria-expanded="false" aria-controls="settings-config">
+            <span class="config-toggle-label"><span class="config-toggle-icon">&#x2699;</span> Configurações em uso</span>
+            <span class="config-toggle-chevron">&#9662;</span>
+        </button>
+        <div id="settings-config" class="hidden-panel" style="margin-top:12px;"></div>
+    </div>
+</section>

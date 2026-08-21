@@ -5,6 +5,7 @@ from .config import (
     IDENTITY_ENABLED,
     IDENTITY_FACE_MODEL_PATH,
     MOTION_MIN_AREA,
+    APP_VERSION,
     HOME_ASSISTANT_URL,
     HOME_ASSISTANT_TOKEN,
 )
@@ -132,6 +133,6 @@ def build_system_status(camera_manager=None):
     modules.append({"group": "Notificações", "items": notif_items})
 
     return {
-        "backend": {"opencv_version": opencv_ver, "dnn_backend": "OpenCV DNN (ONNX)"},
+        "backend": {"opencv_version": opencv_ver, "dnn_backend": "OpenCV DNN (ONNX)", "app_version": APP_VERSION},
         "modules": modules,
     }

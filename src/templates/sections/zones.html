@@ -1,0 +1,62 @@
+<section class="panel" id="zones-management">
+    <div class="panel-header">
+        <div>
+            <h2>Gerenciamento de zonas</h2>
+            <p>Cadastro de zonas com classificação de severidade de alerta.</p>
+        </div>
+        <button id="add-zone-button" class="button-primary">+ Adicionar zona</button>
+    </div>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nome</th>
+                    <th>Classificação</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody id="zone-table-body"></tbody>
+        </table>
+    </div>
+</section>
+
+<div id="zone-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true" aria-labelledby="zone-dialog-title">
+    <div class="dialog-card">
+        <div class="dialog-header">
+            <h3 id="zone-dialog-title">Adicionar zona</h3>
+            <button id="zone-dialog-close" type="button" class="button-close" aria-label="Fechar">×</button>
+        </div>
+        <form id="zone-form">
+            <div class="form-row">
+                <label for="zone-name">Nome</label>
+                <input id="zone-name" type="text" placeholder="Nome da zona" required>
+            </div>
+            <div class="form-row">
+                <label for="zone-classification">Classificação</label>
+                <select id="zone-classification" required>
+                    <option value="pública">Pública</option>
+                    <option value="segurança">Segurança</option>
+                    <option value="privativa">Privativa</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label for="zone-schedule-start">Horário de alerta (início)</label>
+                <input id="zone-schedule-start" type="time">
+            </div>
+            <div class="form-row">
+                <label for="zone-schedule-end">Horário de alerta (fim)</label>
+                <input id="zone-schedule-end" type="time">
+            </div>
+            <div class="form-row">
+                <label for="zone-direction-line">Linha de direção (JSON)</label>
+                <textarea id="zone-direction-line" rows="2" placeholder='{"axis":"vertical","position":0.5}'></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="button-primary" id="zone-form-submit">Salvar</button>
+                <button type="button" class="button-secondary" id="cancel-zone-edit">Cancelar</button>
+            </div>
+            <span id="zone-form-message" class="form-message"></span>
+        </form>
+    </div>
+</div>

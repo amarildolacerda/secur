@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuração Inicial — SecurityAI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body { display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; background:var(--bg); }
+        .setup-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2.5rem 2rem;
+            width: 100%; max-width: 400px;
+            box-shadow: 0 4px 24px rgba(0,0,0,.25);
+        }
+        .setup-card h1 { text-align:center; margin:0 0 .3rem; font-size:1.5rem; color:var(--text); }
+        .setup-card .subtitle { text-align:center; color:var(--muted); margin-bottom:1.5rem; font-size:.9rem; }
+        .setup-card label { display:block; margin-bottom:.3rem; font-size:.85rem; color:var(--muted); }
+        .setup-card input[type="text"],
+        .setup-card input[type="password"] {
+            width:100%; padding:.65rem .8rem; margin-bottom:1rem;
+            border:1px solid var(--border); border-radius:var(--radius-sm);
+            background:var(--bg); color:var(--text); font-size:.95rem;
+            box-sizing:border-box;
+        }
+        .setup-card input:focus { outline:none; border-color:var(--primary); }
+        .setup-card .error { color:var(--danger); font-size:.85rem; margin-bottom:1rem; display:none; text-align:center; }
+        .setup-card button {
+            width:100%; padding:.7rem; border:none; border-radius:var(--radius-sm);
+            background:var(--primary); color:#fff; font-size:1rem; cursor:pointer;
+            font-weight:600;
+        }
+        .setup-card button:hover { filter:brightness(1.1); }
+        .setup-card button:disabled { opacity:.5; cursor:wait; }
+        .setup-card .hint { font-size:.8rem; color:var(--muted); margin-top:-.5rem; margin-bottom:1rem; }
+    </style>
+</head>
+<body>
+    <div class="setup-card">
+        <h1>🔐 Configuração Inicial</h1>
+        <p class="subtitle">Crie o primeiro usuário administrador do sistema</p>
+        <form id="setup-form">
+            <label for="username">Usuário (admin)</label>
+            <input type="text" id="username" name="username" autocomplete="username" autofocus required>
+            <label for="password">Senha</label>
+            <input type="password" id="password" name="password" autocomplete="new-password" required minlength="6">
+            <p class="hint">Mínimo de 6 caracteres</p>
+            <label for="password2">Confirmar senha</label>
+            <input type="password" id="password2" name="password2" autocomplete="new-password" required>
+            <div class="error" id="setup-error"></div>
+            <button type="submit" id="setup-btn">Criar administrador</button>
+        </form>
+    </div>
+    <script>
+        document.getElementById('setup-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('setup-btn');
+            const errEl = document.getElementById('setup-error');
+            const pw = document.getElementById('password').value;
+            const pw2 = document.getElementById('password2').value;
+
+            if (pw !== pw2) {
+                errEl.textContent = 'As senhas não conferem';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (pw.length < 6) {
+                errEl.textContent = 'A senha deve ter pelo menos 6 caracteres';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Criando...';
+            errEl.style.display = 'none';
+            try {
+                const resp = await fetch('/api/setup', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: pw,
+                    }),
+                });
+                if (resp.redirected || resp.ok) {
+                    window.location.href = '/';
+                } else {
+                    const data = await resp.json();
+                    errEl.textContent = data.error || 'Erro ao criar administrador';
+                    errEl.style.display = 'block';
+                }
+            } catch(err) {
+                errEl.textContent = 'Erro de conexão';
+                errEl.style.display = 'block';
+            }
+            btn.disabled = false;
+            btn.textContent = 'Criar administrador';
+        });
+    </script>
+</body>
+</html>

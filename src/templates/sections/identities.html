@@ -1,0 +1,63 @@
+<section class="panel" id="identities-management">
+    <div class="panel-header">
+        <div>
+            <h2>Identidades conhecidas</h2>
+            <p>Cadastre e gerencie identidades conhecidas.</p>
+        </div>
+        <button id="add-identity-button" class="button-primary">+ Cadastrar identidade</button>
+    </div>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr><th>ID</th><th>Nome</th><th>Espécie</th><th>Criado</th><th>Ações</th></tr>
+            </thead>
+            <tbody id="identities-table-body"></tbody>
+        </table>
+    </div>
+</section>
+
+<div id="identity-dialog" class="dialog-overlay hidden-panel" role="dialog" aria-modal="true">
+    <div class="dialog-card">
+        <div class="dialog-header">
+            <h3>Cadastrar identidade</h3>
+            <button id="identity-dialog-close" type="button" class="button-close" aria-label="Fechar">×</button>
+        </div>
+        <form id="identity-form">
+            <div class="form-row">
+                <label for="identity-name">Nome</label>
+                <input id="identity-name" type="text" required />
+            </div>
+            <div class="form-row">
+                <label for="identity-species">Espécie</label>
+                <select id="identity-species">
+                    <option value="person">Pessoa</option>
+                    <option value="animal">Animal</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label for="identity-images">Imagens</label>
+                <input id="identity-images" type="file" accept="image/*" multiple />
+                <textarea id="identity-images-b64" style="display:none;" aria-hidden="true"></textarea>
+                <div style="margin-top:8px">
+                    <button type="button" id="identity-capture" class="button-secondary">Capturar da câmera</button>
+                    <span id="capture-status" style="margin-left:8px;color:var(--muted)"></span>
+                </div>
+                <div id="capture-preview-area" style="margin-top:10px; display:none;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <img id="capture-preview" alt="Preview" style="max-width:160px;max-height:120px;border:1px solid var(--border);" />
+                        <div>
+                            <button type="button" id="approve-capture" class="button-primary">Aprovar</button>
+                            <button type="button" id="recapture" class="button-secondary">Refazer</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="identity-thumbnails" class="identity-thumbnails"></div>
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Salvar</button>
+                <button type="button" class="button-secondary" id="identity-cancel">Cancelar</button>
+            </div>
+            <span id="identity-message" class="form-message"></span>
+        </form>
+    </div>
+</div>

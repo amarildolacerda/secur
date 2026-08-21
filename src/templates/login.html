@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — SecurityAI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body { display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; background:var(--bg); }
+        .login-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2.5rem 2rem;
+            width: 100%; max-width: 380px;
+            box-shadow: 0 4px 24px rgba(0,0,0,.25);
+        }
+        .login-card h1 { text-align:center; margin:0 0 .3rem; font-size:1.6rem; color:var(--text); }
+        .login-card .subtitle { text-align:center; color:var(--muted); margin-bottom:1.5rem; font-size:.9rem; }
+        .login-card label { display:block; margin-bottom:.3rem; font-size:.85rem; color:var(--muted); }
+        .login-card input[type="text"],
+        .login-card input[type="password"] {
+            width:100%; padding:.65rem .8rem; margin-bottom:1rem;
+            border:1px solid var(--border); border-radius:var(--radius-sm);
+            background:var(--bg); color:var(--text); font-size:.95rem;
+            box-sizing:border-box;
+        }
+        .login-card input:focus { outline:none; border-color:var(--primary); }
+        .login-card .error { color:var(--danger); font-size:.85rem; margin-bottom:1rem; display:none; text-align:center; }
+        .login-card button {
+            width:100%; padding:.7rem; border:none; border-radius:var(--radius-sm);
+            background:var(--primary); color:#fff; font-size:1rem; cursor:pointer;
+            font-weight:600;
+        }
+        .login-card button:hover { filter:brightness(1.1); }
+        .login-card button:disabled { opacity:.5; cursor:wait; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h1>🔒 Security</h1>
+        <p class="subtitle">Faça login para acessar o dashboard</p>
+        <form id="login-form">
+            <label for="username">Usuário</label>
+            <input type="text" id="username" name="username" autocomplete="username" autofocus required>
+            <label for="password">Senha</label>
+            <input type="password" id="password" name="password" autocomplete="current-password" required>
+            <div class="error" id="login-error"></div>
+            <button type="submit" id="login-btn">Entrar</button>
+        </form>
+    </div>
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('login-btn');
+            const errEl = document.getElementById('login-error');
+            btn.disabled = true;
+            btn.textContent = 'Entrando...';
+            errEl.style.display = 'none';
+            try {
+                const resp = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value,
+                    }),
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'ok') {
+                    window.location.href = '/';
+                } else {
+                    errEl.textContent = data.error || 'Erro ao fazer login';
+                    errEl.style.display = 'block';
+                }
+            } catch(err) {
+                errEl.textContent = 'Erro de conexão';
+                errEl.style.display = 'block';
+            }
+            btn.disabled = false;
+            btn.textContent = 'Entrar';
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<section class="panel" id="recent-events">
+    <div class="panel-header">
+        <div>
+            <h2>Eventos recentes</h2>
+            <p>Últimos 100 eventos carregados.</p>
+        </div>
+    </div>
+    <div class="chips-bar" id="event-filters">
+        <select id="filter-camera" class="chip-select"><option value="">Todas as câmeras</option></select>
+        <select id="filter-zone" class="chip-select"><option value="">Todas as zonas</option></select>
+        <select id="filter-type" class="chip-select"><option value="">Todos os tipos</option></select>
+        <select id="filter-level" class="chip-select">
+            <option value="">Todos os níveis</option>
+            <option value="0">N0 (captura)</option>
+            <option value="1">N1 (triagem)</option>
+            <option value="2">N2 (detecção)</option>
+            <option value="3">N3 (análise)</option>
+            <option value="4">N4 (providência)</option>
+        </select>
+        <select id="filter-since" class="chip-select">
+            <option value="">Todo o período</option>
+            <option value="1" selected>Última hora</option>
+            <option value="24">Últimas 24h</option>
+            <option value="168">Últimos 7 dias</option>
+        </select>
+        <label class="checkbox-inline" title="Mostrar apenas eventos de tipos classificados como 'alerta' na Configuração de notificações">
+            <input type="checkbox" id="filter-alerts" /> Só alertas
+        </label>
+        <label class="checkbox-inline" title="Mostrar apenas eventos retidos (marcados com 'reter', protegidos do prune)">
+            <input type="checkbox" id="filter-retained" /> Só retidos
+        </label>
+        <button type="button" class="button-secondary button-mini" id="filter-clear">Limpar</button>
+    </div>
+    <div id="events-grid" class="grid"></div>
+    <div id="events-empty" class="empty-state hidden-panel">
+        <div class="empty-icon">&#x1F50D;</div>
+        <h3>Nenhum evento encontrado</h3>
+        <p id="events-empty-text">Ajuste os filtros para ver resultados.</p>
+        <button type="button" class="button-primary" id="events-clear-filters">Limpar filtros</button>
+    </div>
+</section>
+
+{% include 'sections/_dialogs.html' %}

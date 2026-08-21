@@ -3,7 +3,7 @@ import os
 import time
 import threading
 from datetime import datetime, timezone
-from flask import Flask, jsonify, render_template, request, Response, send_file
+from flask import Flask, jsonify, render_template, request, Response, send_file, g, abort
 from .camera import CameraStream
 from .storage import EventStorage
 from .masking import frame_for_storage
@@ -11,6 +11,7 @@ from .config import is_privacy_mode_on
 from . import config as cfg
 from .notifications import CHANNELS, EVENT_TYPES
 from .status import build_system_status
+from .auth import setup_auth, require_auth, require_permission, has_permission, PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, invalidate_permission_cache
 import base64
 import json
 import numpy as np
@@ -123,6 +124,39 @@ def _validate_mask_polygons(mask_polygons):
                 return "cada ponto de mask_polygons deve ter x e y numéricos"
     return None
 
+
+def _get_allowed_camera_ids(user):
+    """Return the set of camera_ids the user can access, or None for unrestricted."""
+    if not user or user.get("role") != "viewer":
+        return None
+    ids = storage.get_user_cameras(user["id"])
+    return set(ids) if ids else None
+
+
+def _camera_allowed(user, camera_id):
+    """True if the user can access this specific camera."""
+    allowed = _get_allowed_camera_ids(user)
+    if allowed is None:
+        return True
+    return camera_id in allowed
+
+
+def _filter_cameras(cameras, user):
+    """Filter a list of camera dicts by user access."""
+    allowed = _get_allowed_camera_ids(user)
+    if allowed is None:
+        return cameras
+    return [c for c in cameras if c["id"] in allowed]
+
+
+def _filter_events_by_cameras(events, user):
+    """Filter events by user camera access."""
+    allowed = _get_allowed_camera_ids(user)
+    if allowed is None:
+        return events
+    return [e for e in events if str(e.get("camera_id", "")) in {str(i) for i in allowed}]
+
+
 try:
     from .identity import build_recognizer, IdentityRecognizer
 except Exception:
@@ -148,6 +182,9 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
 
     app.recognizer_factory_internal = _make_recognizer
 
+    # ── Auth setup ──
+    setup_auth(app, storage)
+
     @app.route("/health")
     def health():
         return jsonify({"status": "ok"})
@@ -158,6 +195,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         events = storage.list_events(limit=10)
         status_payload = {
             "status": "ok",
+            "version": cfg.APP_VERSION,
             "camera_count": len(cameras),
             "recent_events": len(events),
             "cameras": cameras,
@@ -225,6 +263,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         })
 
     @app.route("/api/events/prune", methods=["POST"])
+    @require_permission("prune_events")
     def api_events_prune():
         """Executa limpeza de eventos sob demanda e SALVA a política de retenção.
         Body opcional: {"type_days": {"motion_detected": 1}, "default_days": 7, "max_age_days": 30}
@@ -270,6 +309,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         return jsonify({"deleted": deleted, "saved": True})
 
     @app.route("/api/events/<int:event_id>/retain", methods=["PUT"])
+    @require_permission("retain_event")
     def api_event_retain(event_id):
         """Toggle retain flag on an event."""
         data = request.get_json(silent=True) or {}
@@ -300,8 +340,9 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
 
     @app.route("/api/dashboard")
     def api_dashboard():
-        cameras = storage.list_cameras()
-        events = storage.list_events(limit=100)
+        user = getattr(g, "current_user", None)
+        cameras = _filter_cameras(storage.list_cameras(), user)
+        events = _filter_events_by_cameras(storage.list_events(limit=100), user)
         zones = storage.list_zones()
         n0_events = storage.list_events(level=0, limit=100)
         worker_status = camera_manager.get_status() if camera_manager is not None else []
@@ -315,6 +356,9 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
 
     @app.route("/camera/<int:camera_id>/snapshot")
     def camera_snapshot(camera_id):
+        user = getattr(g, "current_user", None)
+        if not _camera_allowed(user, camera_id):
+            return jsonify({"error": "Sem permissão para acessar esta câmera"}), 403
         import logging
         import threading
         log = logging.getLogger(__name__)
@@ -324,11 +368,13 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
             return jsonify({"error": "Câmera não encontrada"}), 404
 
         # Fast path: serve the worker's latest in-memory frame (no new capture).
+        # ?raw=1 retorna o frame sem máscara (usado no preview do formulário de câmera).
+        raw = request.args.get("raw") == "1"
         if camera_manager is not None:
             frame, ts = camera_manager.get_latest_frame(camera_id)
             if frame is not None:
                 try:
-                    out = frame_for_storage(frame, camera.get("mask_polygons"))
+                    out = frame if raw else frame_for_storage(frame, camera.get("mask_polygons"))
                     ok, jpg = cv2.imencode(".jpg", out)
                     if ok:
                         captured_iso = datetime.fromtimestamp(ts, timezone.utc).isoformat()
@@ -383,7 +429,8 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
             return jsonify({"error": result["error"]}), 502
 
         frame = result["frame"]
-        frame = frame_for_storage(frame, camera.get("mask_polygons"))
+        if not raw:
+            frame = frame_for_storage(frame, camera.get("mask_polygons"))
         success, jpg = cv2.imencode(".jpg", frame)
         if not success:
             return jsonify({"error": "Falha ao codificar imagem"}), 500
@@ -403,6 +450,9 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
 
     @app.route("/camera/<int:camera_id>/thumbnails")
     def camera_thumbnails(camera_id):
+        user = getattr(g, "current_user", None)
+        if not _camera_allowed(user, camera_id):
+            return jsonify({"error": "Sem permissão para acessar esta câmera"}), 403
         camera = storage.get_camera(camera_id)
         if not camera:
             return jsonify({"error": "Câmera não encontrada"}), 404
@@ -433,6 +483,9 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
 
     @app.route("/camera/<int:camera_id>/clips")
     def camera_clips(camera_id):
+        user = getattr(g, "current_user", None)
+        if not _camera_allowed(user, camera_id):
+            return jsonify({"error": "Sem permissão para acessar esta câmera"}), 403
         camera = storage.get_camera(camera_id)
         if not camera:
             return jsonify({"error": "Câmera não encontrada"}), 404
@@ -492,14 +545,33 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
             {"path": "/api/classes", "method": "GET", "description": "Lista de classes de objetos detectáveis (filtro por câmera)"},
             {"path": "/api/settings", "method": "GET", "description": "Flags globais (modo privacidade)"},
             {"path": "/api/settings", "method": "PUT", "description": "Atualiza flags globais (privacy_mode)"},
+            {"path": "/login", "method": "GET", "description": "Tela de login"},
+            {"path": "/api/auth/login", "method": "POST", "description": "Autenticar (username/password)"},
+            {"path": "/api/auth/logout", "method": "POST", "description": "Encerrar sessão"},
+            {"path": "/api/auth/me", "method": "GET", "description": "Dados do usuário logado + permissões"},
+            {"path": "/users", "method": "GET", "description": "Gestão de usuários (HTML)"},
+            {"path": "/api/users", "method": "GET", "description": "Lista usuários"},
+            {"path": "/api/users", "method": "POST", "description": "Criar usuário"},
+            {"path": "/api/users/<id>", "method": "PUT", "description": "Editar usuário"},
+            {"path": "/permissions", "method": "GET", "description": "Permissões por role (HTML)"},
+            {"path": "/api/permissions", "method": "GET", "description": "Permissões atuais por role"},
+            {"path": "/api/permissions", "method": "PUT", "description": "Atualizar permissões de um role"},
+            {"path": "/api/api-keys", "method": "GET", "description": "Lista API keys"},
+            {"path": "/api/api-keys", "method": "POST", "description": "Criar API key (retorna chave uma vez)"},
+            {"path": "/api/api-keys/<id>", "method": "DELETE", "description": "Revogar API key"},
+            {"path": "/audit", "method": "GET", "description": "Log de auditoria (HTML)"},
+            {"path": "/api/audit", "method": "GET", "description": "Lista registros de auditoria (filtro por user, action)"},
         ]
         return render_template("docs.html", api_docs=api_docs)
 
     @app.route("/cameras")
     def cameras():
-        return jsonify(storage.list_cameras())
+        user = getattr(g, "current_user", None)
+        cams = storage.list_cameras()
+        return jsonify(_filter_cameras(cams, user))
 
     @app.route("/cameras", methods=["POST"])
+    @require_permission("manage_cameras")
     def add_camera():
         payload = request.get_json() or {}
         name = payload.get("name")
@@ -531,6 +603,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         }), 201
 
     @app.route("/cameras/<int:camera_id>", methods=["PUT"])
+    @require_permission("manage_cameras")
     def update_camera(camera_id):
         camera = storage.get_camera(camera_id)
         if not camera:
@@ -563,6 +636,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         return jsonify(updated_camera), 200
 
     @app.route("/cameras/<int:camera_id>", methods=["DELETE"])
+    @require_permission("manage_cameras")
     def delete_camera(camera_id):
         removed = storage.remove_camera(camera_id)
         if not removed:
@@ -573,6 +647,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
 
     @app.route("/events")
     def events():
+        user = getattr(g, "current_user", None)
         level = request.args.get("level", type=int)
         camera_id = request.args.get("camera_id")
         retained = request.args.get("retained", type=int)
@@ -580,6 +655,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         # com retained=1 o limite sobe para 1000.
         limit = 1000 if retained == 1 else 100
         items = storage.list_events(limit=limit, level=level, camera_id=camera_id, retained=retained)
+        items = _filter_events_by_cameras(items, user)
         return jsonify(items)
 
     @app.route("/api/ingest", methods=["POST"])
@@ -634,6 +710,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         })
 
     @app.route("/api/notifications/routing", methods=["PUT"])
+    @require_permission("manage_notifications")
     def notifications_put():
         payload = request.get_json() or {}
         channel = payload.get("channel")
@@ -667,6 +744,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         return jsonify({"privacy_mode": is_privacy_mode_on(privacy_mode)})
 
     @app.route("/api/settings", methods=["PUT"])
+    @require_permission("manage_settings")
     def settings_put():
         payload = request.get_json() or {}
         privacy_mode = payload.get("privacy_mode")
@@ -691,6 +769,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         return jsonify(out)
 
     @app.route("/identities", methods=["POST"])
+    @require_permission("manage_identities")
     def add_identity():
         payload = request.get_json() or {}
         name = payload.get("name")
@@ -755,6 +834,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
             return jsonify({'error': 'Failed to serve thumbnail'}), 500
 
     @app.route("/identities/<int:identity_id>", methods=["DELETE"])
+    @require_permission("manage_identities")
     def delete_identity(identity_id):
         recognizer = app.recognizer_factory_internal()
         if recognizer is not None and hasattr(recognizer, "remove_identity"):
@@ -766,6 +846,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         return jsonify({"status": "removido"}), 200
 
     @app.route('/identities/import', methods=['POST'])
+    @require_permission("manage_identities")
     def import_identity():
         """Create an identity directly with a thumbnail (bypass recognizer). Useful for testing."""
         payload = request.get_json() or {}
@@ -815,22 +896,8 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
             logger.exception("Falha ao importar identidade")
             return jsonify({'error': 'falha ao importar identidade'}), 500
 
-    @app.route("/identities/view")
-    def identities_view():
-        # derive species options from recognizer labels
-        try:
-            from .identity import RECOGNITION_LABELS
-            species_vals = sorted(set(RECOGNITION_LABELS.values()))
-        except Exception:
-            species_vals = ["person", "animal"]
-
-        def label_for(s):
-            return {"person": "Pessoa", "animal": "Animal", "vehicle": "Veículo"}.get(s, s.capitalize())
-
-        species_options = [{"value": s, "label": label_for(s)} for s in species_vals]
-        return render_template("identities.html", species_options=species_options)
-
     @app.route("/zones", methods=["POST"])
+    @require_permission("manage_zones")
     def add_zone():
         payload = request.get_json() or {}
         name = payload.get("name")
@@ -865,6 +932,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
                         "direction_line": direction_line}), 201
 
     @app.route("/zones/<int:zone_id>", methods=["PUT"])
+    @require_permission("manage_zones")
     def update_zone(zone_id):
         zone = storage.get_zone(zone_id)
         if not zone:
@@ -898,6 +966,7 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
         return jsonify(updated_zone), 200
 
     @app.route("/zones/<int:zone_id>", methods=["DELETE"])
+    @require_permission("manage_zones")
     def delete_zone(zone_id):
         removed = storage.remove_zone(zone_id)
         if not removed:
@@ -907,6 +976,235 @@ def create_app(camera_manager=None, db_path=None, alerts=None, event_bus=None):
     @app.route("/")
     def dashboard():
         return render_template("dashboard.html")
+
+    @app.route("/section/<name>")
+    def section_partial(name):
+        allowed = {
+            "overview", "events", "cameras", "zones", "identities",
+            "users", "permissions", "audit", "notifications", "settings", "retention",
+        }
+        if name not in allowed:
+            abort(404)
+        return render_template(f"sections/{name}.html")
+
+    # ════════════════════════════════════════════════════════════════════
+    # User management routes
+    # ════════════════════════════════════════════════════════════════════
+
+    @app.route("/users")
+    def users_page():
+        return render_template("users.html")
+
+    @app.route("/api/users")
+    @require_permission("view_users")
+    def api_list_users():
+        user = getattr(g, "current_user", None)
+        # chefe_seguranca only sees users they created
+        if user and user["role"] == "chefe_seguranca":
+            users = storage.list_users(created_by=user["id"])
+        else:
+            users = storage.list_users()
+        return jsonify(users)
+
+    @app.route("/api/users", methods=["POST"])
+    @require_permission("create_users")
+    def api_create_user():
+        from .auth import hash_password, CAN_CREATE_ROLES
+        user = getattr(g, "current_user", None)
+        data = request.get_json(silent=True) or {}
+        username = data.get("username", "").strip()
+        password = data.get("password", "")
+        role = data.get("role", "")
+
+        if not username or not password:
+            return jsonify({"error": "Usuário e senha são obrigatórios"}), 400
+        if len(password) < 6:
+            return jsonify({"error": "Senha deve ter pelo menos 6 caracteres"}), 400
+        if role not in ("admin", "chefe_seguranca", "vigilante", "viewer"):
+            return jsonify({"error": "Role inválida"}), 400
+
+        # Check if current user can create this role
+        allowed_roles = CAN_CREATE_ROLES.get(user["role"], [])
+        if role not in allowed_roles:
+            return jsonify({"error": f"Sem permissão para criar role '{role}'"}), 403
+
+        # Check username uniqueness
+        if storage.get_user_by_username(username):
+            return jsonify({"error": "Usuário já existe"}), 409
+
+        user_id = storage.add_user(username, hash_password(password), role, created_by=user["id"])
+        storage.add_audit_entry("create_user", user_id=user["id"],
+                                target_type="user", target_id=str(user_id),
+                                details={"username": username, "role": role},
+                                ip_address=request.remote_addr)
+        return jsonify({"id": user_id, "username": username, "role": role}), 201
+
+    @app.route("/api/users/<int:user_id>", methods=["PUT"])
+    @require_permission("manage_users")
+    def api_update_user(user_id):
+        user = getattr(g, "current_user", None)
+        target = storage.get_user(user_id)
+        if not target:
+            return jsonify({"error": "Usuário não encontrado"}), 404
+
+        # Check hierarchy: chefe_seguranca can only edit users they created
+        if user["role"] == "chefe_seguranca" and target.get("created_by") != user["id"]:
+            return jsonify({"error": "Sem permissão para editar este usuário"}), 403
+
+        # Cannot deactivate yourself
+        if user_id == user["id"]:
+            data = request.get_json(silent=True) or {}
+            if data.get("active") == 0:
+                return jsonify({"error": "Você não pode desativar a si mesmo"}), 400
+
+        # Cannot deactivate last admin
+        data = request.get_json(silent=True) or {}
+        if target["role"] == "admin" and data.get("active") == 0:
+            if storage.count_active_admins() <= 1:
+                return jsonify({"error": "Não é possível desativar o último admin"}), 400
+
+        storage.update_user(user_id, **{k: v for k, v in data.items() if k in ("username", "role", "active")})
+        storage.add_audit_entry("update_user", user_id=user["id"],
+                                target_type="user", target_id=str(user_id),
+                                details=data, ip_address=request.remote_addr)
+        return jsonify({"status": "ok"})
+
+    @app.route("/api/users/<int:user_id>/cameras", methods=["GET"])
+    @require_permission("view_users")
+    def api_get_user_cameras(user_id):
+        user = getattr(g, "current_user", None)
+        target = storage.get_user(user_id)
+        if not target:
+            return jsonify({"error": "Usuário não encontrado"}), 404
+        # chefe_seguranca can only manage users they created
+        if user["role"] == "chefe_seguranca" and target.get("created_by") != user["id"]:
+            return jsonify({"error": "Sem permissão"}), 403
+        camera_ids = storage.get_user_cameras(user_id)
+        return jsonify({"user_id": user_id, "camera_ids": camera_ids})
+
+    @app.route("/api/users/<int:user_id>/cameras", methods=["PUT"])
+    @require_permission("manage_users")
+    def api_set_user_cameras(user_id):
+        user = getattr(g, "current_user", None)
+        target = storage.get_user(user_id)
+        if not target:
+            return jsonify({"error": "Usuário não encontrado"}), 404
+        # chefe_seguranca can only manage users they created
+        if user["role"] == "chefe_seguranca" and target.get("created_by") != user["id"]:
+            return jsonify({"error": "Sem permissão"}), 403
+        data = request.get_json(silent=True) or {}
+        camera_ids = data.get("camera_ids", [])
+        if not isinstance(camera_ids, list):
+            return jsonify({"error": "camera_ids deve ser uma lista"}), 400
+        storage.set_user_cameras(user_id, camera_ids)
+        storage.add_audit_entry("set_user_cameras", user_id=user.get("id") if user else None,
+                                target_type="user", target_id=str(user_id),
+                                details={"camera_ids": camera_ids}, ip_address=request.remote_addr)
+        return jsonify({"status": "ok", "user_id": user_id, "camera_ids": camera_ids})
+
+    # ════════════════════════════════════════════════════════════════════
+    # Permissions routes
+    # ════════════════════════════════════════════════════════════════════
+
+    @app.route("/permissions")
+    def permissions_page():
+        return render_template("permissions.html")
+
+    @app.route("/api/permissions")
+    def api_get_permissions():
+        return jsonify(storage.get_all_role_permissions())
+
+    @app.route("/api/permissions", methods=["PUT"])
+    @require_permission("manage_permissions")
+    def api_update_permissions():
+        from .auth import PERMISSIONS, invalidate_permission_cache
+        data = request.get_json(silent=True) or {}
+        updates = data.get("permissions", [])
+        if not isinstance(updates, list):
+            return jsonify({"error": "permissions deve ser uma lista"}), 400
+        for item in updates:
+            role = item.get("role")
+            perm = item.get("permission")
+            enabled = item.get("enabled")
+            if role not in ("admin", "chefe_seguranca", "vigilante", "viewer"):
+                return jsonify({"error": f"Role inválida: {role}"}), 400
+            if perm not in PERMISSIONS:
+                return jsonify({"error": f"Permissão inválida: {perm}"}), 400
+            if not isinstance(enabled, bool):
+                return jsonify({"error": "enabled deve ser booleano"}), 400
+            storage.set_role_permission(role, perm, enabled)
+        invalidate_permission_cache()
+        storage.add_audit_entry("update_permissions", user_id=getattr(g, "current_user", {}).get("id"),
+                                details={"updates": updates}, ip_address=request.remote_addr)
+        return jsonify({"status": "ok"})
+
+    @app.route("/api/permissions/definitions")
+    def api_permission_definitions():
+        from .auth import PERMISSIONS
+        return jsonify(PERMISSIONS)
+
+    # ════════════════════════════════════════════════════════════════════
+    # API Keys routes
+    # ════════════════════════════════════════════════════════════════════
+
+    @app.route("/api/api-keys")
+    @require_permission("manage_users")
+    def api_list_keys():
+        return jsonify(storage.list_api_keys())
+
+    @app.route("/api/api-keys", methods=["POST"])
+    @require_permission("manage_users")
+    def api_create_key():
+        import hashlib as _hl
+        import secrets as _sec
+        user = getattr(g, "current_user", None)
+        data = request.get_json(silent=True) or {}
+        name = data.get("name", "").strip()
+        permissions = data.get("permissions")
+
+        if not name:
+            return jsonify({"error": "Nome é obrigatório"}), 400
+
+        # Generate key: 48 hex chars (24 bytes)
+        raw_key = _sec.token_hex(24)
+        key_hash = _hl.sha256(raw_key.encode()).hexdigest()
+
+        key_id = storage.add_api_key(key_hash, name, permissions, created_by=user.get("id") if user else None)
+        storage.add_audit_entry("create_api_key", user_id=user.get("id") if user else None,
+                                target_type="api_key", target_id=str(key_id),
+                                details={"name": name}, ip_address=request.remote_addr)
+        # Return the raw key ONCE — it cannot be retrieved later
+        return jsonify({"id": key_id, "name": name, "key": raw_key}), 201
+
+    @app.route("/api/api-keys/<int:key_id>", methods=["DELETE"])
+    @require_permission("manage_users")
+    def api_delete_key(key_id):
+        user = getattr(g, "current_user", None)
+        removed = storage.remove_api_key(key_id)
+        if not removed:
+            return jsonify({"error": "Chave não encontrada"}), 404
+        storage.add_audit_entry("delete_api_key", user_id=user.get("id") if user else None,
+                                target_type="api_key", target_id=str(key_id),
+                                ip_address=request.remote_addr)
+        return jsonify({"status": "removido"}), 200
+
+    # ════════════════════════════════════════════════════════════════════
+    # Audit log routes
+    # ════════════════════════════════════════════════════════════════════
+
+    @app.route("/audit")
+    def audit_page():
+        return render_template("audit.html")
+
+    @app.route("/api/audit")
+    @require_permission("view_audit_log")
+    def api_list_audit():
+        limit = request.args.get("limit", 100, type=int)
+        offset = request.args.get("offset", 0, type=int)
+        user_id = request.args.get("user_id", type=int)
+        action = request.args.get("action")
+        entries = storage.list_audit_log(limit=limit, offset=offset, user_id=user_id, action=action)
+        return jsonify(entries)
 
     # Auto-pruning scheduler
     if cfg.EVENT_PRUNE_ENABLED:

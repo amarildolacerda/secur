@@ -76,9 +76,17 @@ body {
 }
 
 .sidebar nav {
-  flex: 1;
-  padding-bottom: 40px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
+
+.sidebar nav::-webkit-scrollbar { width: 8px; }
+.sidebar nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); }
+.sidebar nav::-webkit-scrollbar-track { background: transparent; }
 
 .sidebar nav .nav-link {
   display: flex;
@@ -213,13 +221,173 @@ body {
   border-top: 1px solid var(--border);
   font-size: 0.7rem;
   color: var(--muted-subtle);
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 200px;
   background: var(--surface);
-  z-index: 11;
+  flex: none;
 }
+
+/* User bar in sidebar footer */
+.user-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.user-bar span {
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-bar .btn-sm {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.user-bar .btn-sm:hover {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+/* ── Users, Permissions & Audit (padrão style guide) ── */
+
+/* ── Padrão de páginas de gestão ── */
+
+/* Formulário de criação inline (toggle) */
+.inline-form {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+/* Linha horizontal de campos (forms curtos) */
+.form-row-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+.form-row-inline > div {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.form-row-inline .form-actions {
+  flex: 0 0 auto;
+}
+
+/* Linha vazia de tabela (empty state) */
+.table-empty td {
+  text-align: center;
+  color: var(--muted);
+  padding: 24px 12px;
+  font-size: 0.85rem;
+}
+
+/* Botão para ações destrutivas (futuro: excluir usuário, etc.) */
+.button-danger {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: var(--danger);
+  color: #fff;
+  transition: filter 0.12s;
+}
+.button-danger:hover { filter: brightness(1.1); }
+.button-danger.button-mini { padding: 4px 10px; font-size: 0.78rem; }
+
+/* Role badges */
+.badge-role {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.badge-admin { background: rgba(220,38,38,0.12); color: var(--danger); }
+.badge-chefe { background: rgba(245,158,11,0.12); color: var(--warn); }
+.badge-vigilante { background: rgba(94,106,210,0.12); color: var(--primary); }
+.badge-viewer { background: rgba(37,99,235,0.12); color: var(--info); }
+
+/* Permissions table — padrão tables do skill */
+.perm-table, .audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.perm-table th, .audit-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted-subtle);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.perm-table td, .audit-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.perm-table td:not(:first-child),
+.perm-table th:not(:first-child) { text-align: center; }
+
+/* Permission toggle switch */
+.perm-toggle {
+  width: 36px;
+  height: 20px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--border);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: 0.2s;
+  outline: none;
+  border: none;
+}
+.perm-toggle:checked { background: var(--primary); }
+.perm-toggle::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: 0.2s;
+}
+.perm-toggle:checked::before { left: 18px; }
+.perm-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Audit action badges — mesmo padrão de .badge */
+.action-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+}
+.action-create { background: rgba(22,163,74,0.12); color: var(--success); }
+.action-delete { background: rgba(220,38,38,0.12); color: var(--danger); }
+.action-update { background: rgba(37,99,235,0.12); color: var(--info); }
+.action-login { background: rgba(94,106,210,0.12); color: var(--primary); }
 
 /* ---------- Main ---------- */
 .main {
@@ -718,7 +886,7 @@ tbody tr:last-child td {
 }
 
 .live-label {
-  color: var(--text-secondary);
+  color: var(--muted);
   font-size: 0.75rem;
   margin-top: 8px;
 }
@@ -735,6 +903,99 @@ tbody tr:last-child td {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--primary);
+}
+
+/* ---------- Camera form: preview de zonas/máscara ---------- */
+.preview-box {
+  position: relative;
+  background: #12141a;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+
+.preview-box canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 300px;
+  object-fit: contain;
+}
+
+.preview-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(18, 20, 26, 0.55);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.preview-loading[hidden] {
+  display: none;
+}
+
+.preview-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(94, 106, 210, 0.25);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.preview-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.preview-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.preview-legend-swatch.exclusion {
+  background: rgba(245, 158, 11, 0.3);
+  border: 1.5px solid var(--warn);
+}
+
+.preview-legend-swatch.mask {
+  background: repeating-linear-gradient(45deg, rgba(31, 41, 55, 0.9) 0 2px, rgba(31, 41, 55, 0.35) 2px 5px);
+  border: 1px solid var(--border-strong);
+}
+
+.preview-note {
+  font-size: 0.74rem;
+  color: var(--muted-subtle);
+}
+
+.preview-note.error {
+  color: var(--danger);
+}
+
+.form-row .form-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 /* ---------- Camera Cards ---------- */
@@ -839,7 +1100,7 @@ tbody tr:last-child td {
   margin-top: 10px;
   background: var(--border);
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  color: var(--muted);
   font-size: 0.8rem;
 }
 
@@ -888,7 +1149,7 @@ tbody tr:last-child td {
 }
 
 tr.event-info td {
-  color: var(--text-secondary);
+  color: var(--muted);
 }
 
 /* ---------- Footer ---------- */

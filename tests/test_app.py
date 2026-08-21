@@ -408,6 +408,49 @@ def test_snapshot_route_applies_mask_polygons(client, monkeypatch):
     assert int(arr[10, 10, 0]) < 10
 
 
+def test_snapshot_route_raw_skips_mask(client, monkeypatch):
+    import cv2
+    import numpy as np
+    from src.camera import CameraStream
+    monkeypatch.setattr(CameraStream, "validate_source", staticmethod(lambda s: True))
+
+    class FakeCapture:
+        def __init__(self, source):
+            pass
+
+        def isOpened(self):
+            return True
+
+        def set(self, *args, **kwargs):
+            return True
+
+        def read(self):
+            frame = np.zeros((100, 100, 3), dtype=np.uint8)
+            frame[45:55, 45:55] = 255  # quadrado branco no centro
+            return True, frame
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr("src.app.cv2.VideoCapture", FakeCapture)
+
+    resp = client.post(
+        "/cameras",
+        data=json.dumps({
+            "name": "Cam", "source": "source://x", "zone": "entrada",
+            "mask_polygons": [[{"x": 40, "y": 40}, {"x": 60, "y": 40}, {"x": 60, "y": 60}, {"x": 40, "y": 60}]],
+        }),
+        content_type="application/json",
+    )
+    cam_id = resp.json["id"]
+
+    resp = client.get(f"/camera/{cam_id}/snapshot?raw=1")
+    assert resp.status_code == 200
+    arr = cv2.imdecode(np.frombuffer(resp.data, np.uint8), cv2.IMREAD_COLOR)
+    # sem máscara: o quadrado branco permanece intacto
+    assert int(arr[50, 50, 0]) > 200
+
+
 def test_snapshot_route_without_mask_keeps_frame(client, monkeypatch):
     import cv2
     import numpy as np
